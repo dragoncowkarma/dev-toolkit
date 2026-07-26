@@ -7,6 +7,7 @@ creates isolated git worktrees, and dispatches AI agents as subprocesses.
 
 Usage:
     python .agents/workflows/swarm_orchestrator.py [--interval 30] [--dry-run]
+    python .agents/workflows/swarm_orchestrator.py --status
 
 Requires: gh CLI authenticated, git, and at least one AI CLI installed.
 """
@@ -17,10 +18,13 @@ import logging
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from enum import Enum
 from pathlib import Path
 from typing import Optional
 
@@ -30,9 +34,11 @@ from typing import Optional
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKTREE_DIR = REPO_ROOT / ".worktrees"
+LOG_DIR = REPO_ROOT / ".agents" / "logs"
 POLL_INTERVAL_SECONDS = 30
 PROCESSED_ISSUES_FILE = REPO_ROOT / ".agents" / ".processed_issues.json"
 PROCESSED_PRS_FILE = REPO_ROOT / ".agents" / ".processed_prs.json"
+PROCESS_REGISTRY_FILE = REPO_ROOT / ".agents" / ".process_registry.json"
 
 # Metadata tag patterns
 WORKER_PATTERN = re.compile(
@@ -74,6 +80,13 @@ log = logging.getLogger("swarm")
 # Data Classes
 # ---------------------------------------------------------------------------
 
+class ProcessStatus(str, Enum):
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    UNKNOWN = "unknown"
+
+
 @dataclass
 class RoleAssignment:
     ai: str
@@ -97,6 +110,262 @@ class TaskPR:
     head_branch: str
     issue_number: Optional[int] = None
     reviewer: Optional[RoleAssignment] = None
+
+
+@dataclass
+class TrackedProcess:
+    """A dispatched AI subprocess with full lifecycle metadata."""
+    pid: int
+    role: str           # "worker", "reviewer", "maintainer"
+    ai_name: str
+    model: str
+    reasoning: str
+    task_ref: str        # e.g. "issue#3" or "pr#5"
+    branch: str
+    command: str
+    cwd: str
+    log_file: str
+    started_at: str      # ISO 8601
+    ended_at: Optional[str] = None
+    exit_code: Optional[int] = None
+    status: str = ProcessStatus.RUNNING
+
+
+# ---------------------------------------------------------------------------
+# Process Tracker — PID registry with poll()-based status checks
+# ---------------------------------------------------------------------------
+
+class ProcessTracker:
+    """Tracks all dispatched AI subprocesses and their lifecycle."""
+
+    def __init__(self):
+        self._active: dict[int, tuple[subprocess.Popen, TrackedProcess]] = {}
+        self._history: list[TrackedProcess] = []
+        self._load_registry()
+
+    # --- Persistence ---
+
+    def _load_registry(self):
+        """Load previous process history from disk (for --status across runs)."""
+        if PROCESS_REGISTRY_FILE.exists():
+            try:
+                with open(PROCESS_REGISTRY_FILE) as f:
+                    data = json.load(f)
+                for entry in data.get("history", []):
+                    self._history.append(TrackedProcess(**entry))
+            except (json.JSONDecodeError, TypeError):
+                log.warning("Corrupted process registry, starting fresh.")
+
+    def _save_registry(self):
+        """Persist process registry to disk."""
+        PROCESS_REGISTRY_FILE.parent.mkdir(parents=True, exist_ok=True)
+        all_records = self._history + [tp for _, tp in self._active.values()]
+        with open(PROCESS_REGISTRY_FILE, "w") as f:
+            json.dump({
+                "last_updated": datetime.now(timezone.utc).isoformat(),
+                "history": [vars(r) for r in all_records],
+            }, f, indent=2, ensure_ascii=False)
+
+    # --- Registration ---
+
+    def register(self, proc: subprocess.Popen, role: str, ai_name: str,
+                 model: str, reasoning: str, task_ref: str, branch: str,
+                 command: str, cwd: str, log_file: str) -> TrackedProcess:
+        """Register a newly launched subprocess."""
+        tracked = TrackedProcess(
+            pid=proc.pid,
+            role=role,
+            ai_name=ai_name,
+            model=model,
+            reasoning=reasoning,
+            task_ref=task_ref,
+            branch=branch,
+            command=command,
+            cwd=cwd,
+            log_file=log_file,
+            started_at=datetime.now(timezone.utc).isoformat(),
+        )
+        self._active[proc.pid] = (proc, tracked)
+        log.info(
+            "📌 Registered %s [PID %d] — %s (%s, %s)",
+            role, proc.pid, task_ref, ai_name, model,
+        )
+        self._save_registry()
+        return tracked
+
+    # --- Polling ---
+
+    def poll_all(self):
+        """Check status of all active processes via poll(). Non-blocking."""
+        finished_pids = []
+
+        for pid, (proc, tracked) in self._active.items():
+            retcode = proc.poll()
+
+            if retcode is None:
+                # Still running — log a heartbeat
+                elapsed = self._elapsed_str(tracked.started_at)
+                log.info(
+                    "⏳ [PID %d] %s %s — running for %s",
+                    pid, tracked.role.upper(), tracked.task_ref, elapsed,
+                )
+            else:
+                # Process finished
+                tracked.exit_code = retcode
+                tracked.ended_at = datetime.now(timezone.utc).isoformat()
+                elapsed = self._elapsed_str(tracked.started_at)
+
+                if retcode == 0:
+                    tracked.status = ProcessStatus.COMPLETED
+                    log.info(
+                        "✅ [PID %d] %s %s — completed successfully (%s)",
+                        pid, tracked.role.upper(), tracked.task_ref, elapsed,
+                    )
+                else:
+                    tracked.status = ProcessStatus.FAILED
+                    # Capture last lines of stderr for diagnostics
+                    stderr_tail = self._read_tail(proc.stderr, 500)
+                    log.error(
+                        "❌ [PID %d] %s %s — failed (exit %d, %s)\n  stderr: %s",
+                        pid, tracked.role.upper(), tracked.task_ref,
+                        retcode, elapsed, stderr_tail or "(empty)",
+                    )
+
+                finished_pids.append(pid)
+
+        # Move finished processes to history
+        for pid in finished_pids:
+            _, tracked = self._active.pop(pid)
+            self._history.append(tracked)
+
+        if finished_pids:
+            self._save_registry()
+
+    def check_pid_alive(self, pid: int) -> bool:
+        """Check if a PID is still alive via OS signal 0."""
+        try:
+            os.kill(pid, 0)
+            return True
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True  # Alive, just can't signal it
+
+    # --- Queries ---
+
+    @property
+    def active_count(self) -> int:
+        return len(self._active)
+
+    @property
+    def active_processes(self) -> list[TrackedProcess]:
+        return [tp for _, tp in self._active.values()]
+
+    @property
+    def all_records(self) -> list[TrackedProcess]:
+        return self._history + [tp for _, tp in self._active.values()]
+
+    def get_summary(self) -> str:
+        """Generate a human-readable status summary."""
+        lines = []
+        lines.append("=" * 72)
+        lines.append("🤖 SWARM PROCESS STATUS")
+        lines.append("=" * 72)
+
+        # Active processes
+        active = self.active_processes
+        lines.append(f"\n🟢 Active ({len(active)}):")
+        if active:
+            for tp in active:
+                elapsed = self._elapsed_str(tp.started_at)
+                lines.append(
+                    f"  PID {tp.pid:>7}  │ {tp.role:<12} │ {tp.ai_name:<14} │ "
+                    f"{tp.task_ref:<12} │ ⏱ {elapsed}"
+                )
+        else:
+            lines.append("  (none)")
+
+        # Recent history (last 10)
+        recent = self._history[-10:]
+        lines.append(f"\n📜 Recent History (last {len(recent)}):")
+        if recent:
+            for tp in recent:
+                icon = "✅" if tp.status == ProcessStatus.COMPLETED else "❌"
+                duration = self._duration_str(tp.started_at, tp.ended_at)
+                lines.append(
+                    f"  {icon} PID {tp.pid:>7}  │ {tp.role:<12} │ {tp.ai_name:<14} │ "
+                    f"{tp.task_ref:<12} │ exit={tp.exit_code} │ ⏱ {duration}"
+                )
+        else:
+            lines.append("  (none)")
+
+        # Stats
+        total = len(self._history)
+        succeeded = sum(1 for tp in self._history if tp.status == ProcessStatus.COMPLETED)
+        failed = sum(1 for tp in self._history if tp.status == ProcessStatus.FAILED)
+        lines.append(f"\n📊 Totals: {total} finished ({succeeded} ✅, {failed} ❌), {len(active)} running")
+        lines.append("=" * 72)
+        return "\n".join(lines)
+
+    # --- Cleanup ---
+
+    def kill_all(self):
+        """Send SIGTERM to all active processes."""
+        for pid, (proc, tracked) in list(self._active.items()):
+            log.warning("🛑 Killing [PID %d] %s %s", pid, tracked.role, tracked.task_ref)
+            try:
+                proc.terminate()
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+            tracked.exit_code = proc.returncode
+            tracked.ended_at = datetime.now(timezone.utc).isoformat()
+            tracked.status = ProcessStatus.FAILED
+            self._history.append(tracked)
+        self._active.clear()
+        self._save_registry()
+
+    # --- Helpers ---
+
+    @staticmethod
+    def _elapsed_str(started_at: str) -> str:
+        start = datetime.fromisoformat(started_at)
+        delta = datetime.now(timezone.utc) - start
+        secs = int(delta.total_seconds())
+        if secs < 60:
+            return f"{secs}s"
+        if secs < 3600:
+            return f"{secs // 60}m {secs % 60}s"
+        return f"{secs // 3600}h {(secs % 3600) // 60}m"
+
+    @staticmethod
+    def _duration_str(started_at: str, ended_at: Optional[str]) -> str:
+        if not ended_at:
+            return "?"
+        start = datetime.fromisoformat(started_at)
+        end = datetime.fromisoformat(ended_at)
+        secs = int((end - start).total_seconds())
+        if secs < 60:
+            return f"{secs}s"
+        if secs < 3600:
+            return f"{secs // 60}m {secs % 60}s"
+        return f"{secs // 3600}h {(secs % 3600) // 60}m"
+
+    @staticmethod
+    def _read_tail(stream, max_bytes: int = 500) -> str:
+        if stream is None:
+            return ""
+        try:
+            data = stream.read()
+            if isinstance(data, bytes):
+                data = data.decode("utf-8", errors="replace")
+            return data[-max_bytes:] if data else ""
+        except Exception:
+            return ""
+
+
+# Global tracker instance
+tracker = ProcessTracker()
 
 
 # ---------------------------------------------------------------------------
@@ -246,6 +515,31 @@ def cleanup_worktree(issue_number: int, branch_name: str):
 
 
 # ---------------------------------------------------------------------------
+# Log File Management
+# ---------------------------------------------------------------------------
+
+def create_log_file(role: str, task_ref: str, ai_name: str) -> tuple[Path, int, int]:
+    """Create a log file for an AI process and return (path, stdout_fd, stderr_fd)."""
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    safe_ref = re.sub(r"[^a-z0-9]+", "-", task_ref.lower())
+    log_path = LOG_DIR / f"{timestamp}_{role}_{ai_name}_{safe_ref}.log"
+
+    fd = os.open(str(log_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+    # Write header
+    header = (
+        f"--- Swarm AI Process Log ---\n"
+        f"Role:      {role}\n"
+        f"AI:        {ai_name}\n"
+        f"Task:      {task_ref}\n"
+        f"Started:   {datetime.now(timezone.utc).isoformat()}\n"
+        f"---\n\n"
+    ).encode()
+    os.write(fd, header)
+    return log_path, fd, fd  # stdout and stderr both go to the same file
+
+
+# ---------------------------------------------------------------------------
 # AI Agent Dispatch
 # ---------------------------------------------------------------------------
 
@@ -296,19 +590,34 @@ def dispatch_worker(issue: TaskIssue, dry_run: bool = False):
         log.info("[DRY RUN] Would execute: %s", cmd)
         return
 
-    log.info("Dispatching Worker %s for Issue #%d", worker.ai, issue.number)
-    log.info("Command: %s", cmd)
+    task_ref = f"issue#{issue.number}"
+    log_path, stdout_fd, stderr_fd = create_log_file("worker", task_ref, worker.ai)
+    log.info("Dispatching Worker %s for Issue #%d (log: %s)", worker.ai, issue.number, log_path)
 
     try:
-        subprocess.Popen(
+        proc = subprocess.Popen(
             cmd,
             shell=True,
             cwd=str(worktree_path),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stdout=stdout_fd,
+            stderr=stderr_fd,
+        )
+        tracker.register(
+            proc=proc,
+            role="worker",
+            ai_name=worker.ai,
+            model=worker.model,
+            reasoning=worker.reasoning,
+            task_ref=task_ref,
+            branch=branch_name,
+            command=cmd,
+            cwd=str(worktree_path),
+            log_file=str(log_path),
         )
     except Exception as e:
         log.error("Failed to dispatch Worker: %s", e)
+    finally:
+        os.close(stdout_fd)
 
 
 def dispatch_reviewer(pr: TaskPR, dry_run: bool = False):
@@ -332,11 +641,34 @@ def dispatch_reviewer(pr: TaskPR, dry_run: bool = False):
         log.info("[DRY RUN] Would execute reviewer: %s", cmd)
         return
 
-    log.info("Dispatching Reviewer %s for PR #%d", reviewer.ai, pr.number)
+    task_ref = f"pr#{pr.number}"
+    log_path, stdout_fd, stderr_fd = create_log_file("reviewer", task_ref, reviewer.ai)
+    log.info("Dispatching Reviewer %s for PR #%d (log: %s)", reviewer.ai, pr.number, log_path)
+
     try:
-        subprocess.Popen(cmd, shell=True, cwd=str(REPO_ROOT), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        proc = subprocess.Popen(
+            cmd,
+            shell=True,
+            cwd=str(REPO_ROOT),
+            stdout=stdout_fd,
+            stderr=stderr_fd,
+        )
+        tracker.register(
+            proc=proc,
+            role="reviewer",
+            ai_name=reviewer.ai,
+            model=reviewer.model,
+            reasoning=reviewer.reasoning,
+            task_ref=task_ref,
+            branch=pr.head_branch,
+            command=cmd,
+            cwd=str(REPO_ROOT),
+            log_file=str(log_path),
+        )
     except Exception as e:
         log.error("Failed to dispatch Reviewer: %s", e)
+    finally:
+        os.close(stdout_fd)
 
 
 def dispatch_maintainer(pr_number: int, maintainer: RoleAssignment, dry_run: bool = False):
@@ -355,11 +687,34 @@ def dispatch_maintainer(pr_number: int, maintainer: RoleAssignment, dry_run: boo
         log.info("[DRY RUN] Would execute maintainer: %s", cmd)
         return
 
-    log.info("Dispatching Maintainer %s for PR #%d", maintainer.ai, pr_number)
+    task_ref = f"pr#{pr_number}"
+    log_path, stdout_fd, stderr_fd = create_log_file("maintainer", task_ref, maintainer.ai)
+    log.info("Dispatching Maintainer %s for PR #%d (log: %s)", maintainer.ai, pr_number, log_path)
+
     try:
-        subprocess.Popen(cmd, shell=True, cwd=str(REPO_ROOT), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        proc = subprocess.Popen(
+            cmd,
+            shell=True,
+            cwd=str(REPO_ROOT),
+            stdout=stdout_fd,
+            stderr=stderr_fd,
+        )
+        tracker.register(
+            proc=proc,
+            role="maintainer",
+            ai_name=maintainer.ai,
+            model=maintainer.model,
+            reasoning=maintainer.reasoning,
+            task_ref=task_ref,
+            branch="",
+            command=cmd,
+            cwd=str(REPO_ROOT),
+            log_file=str(log_path),
+        )
     except Exception as e:
         log.error("Failed to dispatch Maintainer: %s", e)
+    finally:
+        os.close(stdout_fd)
 
 
 # ---------------------------------------------------------------------------
@@ -436,21 +791,38 @@ def process_prs(dry_run: bool = False):
 
 
 def run_loop(interval: int, dry_run: bool = False):
-    """Main polling loop."""
+    """Main polling loop with process status monitoring."""
     log.info("=" * 60)
     log.info("Swarm Orchestrator started")
     log.info("Repo root: %s", REPO_ROOT)
     log.info("Poll interval: %ds", interval)
     log.info("Dry run: %s", dry_run)
+    log.info("Log directory: %s", LOG_DIR)
     log.info("=" * 60)
+
+    # Graceful shutdown on SIGTERM/SIGINT
+    def handle_signal(signum, frame):
+        log.info("Received signal %d, shutting down...", signum)
+        tracker.kill_all()
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, handle_signal)
+    signal.signal(signal.SIGINT, handle_signal)
 
     while True:
         try:
-            log.info("--- Polling cycle ---")
+            log.info("--- Polling cycle (active: %d) ---", tracker.active_count)
+
+            # 1. Check status of all running AI processes
+            tracker.poll_all()
+
+            # 2. Poll for new work
             process_issues(dry_run)
             process_prs(dry_run)
+
         except KeyboardInterrupt:
             log.info("Shutting down gracefully...")
+            tracker.kill_all()
             break
         except Exception as e:
             log.error("Error in polling cycle: %s", e, exc_info=True)
@@ -479,12 +851,21 @@ def main():
         "--once", action="store_true",
         help="Run a single polling cycle and exit",
     )
+    parser.add_argument(
+        "--status", action="store_true",
+        help="Print status of all tracked AI processes and exit",
+    )
     args = parser.parse_args()
+
+    if args.status:
+        print(tracker.get_summary())
+        return
 
     if args.once:
         log.info("Running single polling cycle...")
         process_issues(args.dry_run)
         process_prs(args.dry_run)
+        tracker.poll_all()
         log.info("Done.")
     else:
         run_loop(args.interval, args.dry_run)
