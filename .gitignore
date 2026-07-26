@@ -3,5 +3,8 @@ dist/
 .worktrees/
 .venv/
 __pycache__/
+.agents/logs/
+.agents/.process_registry.json
+.agents/.processed_*.json
 *.local
 .DS_Store
