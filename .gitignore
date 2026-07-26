@@ -1,5 +1,7 @@
 node_modules/
 dist/
 .worktrees/
+.venv/
+__pycache__/
 *.local
 .DS_Store
