@@ -21,6 +21,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -61,12 +62,8 @@ DEFAULT_ROTATION = {
     "claude":      {"reviewer": "codex",       "maintainer": "antigravity"},
 }
 
-# AI CLI command templates
-AI_CLI_COMMANDS = {
-    "codex": 'codex --model {model} --reasoning {reasoning} --prompt "{prompt}" --cwd {cwd}',
-    "antigravity": 'agy agent run --model {model} --reasoning {reasoning} --prompt "{prompt}" --cwd {cwd}',
-    "claude": 'claude --model {model} --reasoning {reasoning} --print --prompt "{prompt}" --cwd {cwd}',
-}
+# Prompt temp file directory (cleaned on shutdown)
+PROMPT_DIR = REPO_ROOT / ".agents" / ".prompts"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -518,43 +515,123 @@ def cleanup_worktree(issue_number: int, branch_name: str):
 # Log File Management
 # ---------------------------------------------------------------------------
 
-def create_log_file(role: str, task_ref: str, ai_name: str) -> tuple[Path, int, int]:
-    """Create a log file for an AI process and return (path, stdout_fd, stderr_fd)."""
+def create_log_files(role: str, task_ref: str, ai_name: str) -> tuple[Path, "IO", "IO"]:
+    """Create log files and return (log_path, stdout_file, stderr_file).
+
+    Returns open file objects (not raw fds) so they stay open for the
+    lifetime of the subprocess and are cleaned up by the GC.
+    """
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     safe_ref = re.sub(r"[^a-z0-9]+", "-", task_ref.lower())
     log_path = LOG_DIR / f"{timestamp}_{role}_{ai_name}_{safe_ref}.log"
 
-    fd = os.open(str(log_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
-    # Write header
-    header = (
+    log_file = open(log_path, "w", encoding="utf-8")
+    log_file.write(
         f"--- Swarm AI Process Log ---\n"
         f"Role:      {role}\n"
         f"AI:        {ai_name}\n"
         f"Task:      {task_ref}\n"
         f"Started:   {datetime.now(timezone.utc).isoformat()}\n"
         f"---\n\n"
-    ).encode()
-    os.write(fd, header)
-    return log_path, fd, fd  # stdout and stderr both go to the same file
-
-
-# ---------------------------------------------------------------------------
-# AI Agent Dispatch
-# ---------------------------------------------------------------------------
-
-def build_ai_command(ai_name: str, model: str, reasoning: str, prompt: str, cwd: str) -> str:
-    """Build the CLI command string for an AI agent."""
-    template = AI_CLI_COMMANDS.get(ai_name)
-    if not template:
-        log.error("Unknown AI agent: %s", ai_name)
-        return ""
-    return template.format(
-        model=model,
-        reasoning=reasoning,
-        prompt=prompt.replace('"', '\\"'),
-        cwd=cwd,
     )
+    log_file.flush()
+    return log_path, log_file, log_file
+
+
+def write_prompt_file(prompt: str, role: str, task_ref: str) -> Path:
+    """Write prompt to a temp file and return its path.
+
+    Using a file avoids shell escaping issues and OS ARG_MAX limits
+    that break when long multi-line Korean/Unicode prompts are passed
+    as command-line arguments.
+    """
+    PROMPT_DIR.mkdir(parents=True, exist_ok=True)
+    safe_ref = re.sub(r"[^a-z0-9]+", "-", task_ref.lower())
+    prompt_path = PROMPT_DIR / f"{role}_{safe_ref}.md"
+    prompt_path.write_text(prompt, encoding="utf-8")
+    return prompt_path
+
+
+# ---------------------------------------------------------------------------
+# AI Agent Dispatch — builds argv lists (NOT shell strings)
+# ---------------------------------------------------------------------------
+
+def build_ai_argv(ai_name: str, model: str, reasoning: str,
+                  prompt_file: Path, cwd: str) -> list[str]:
+    """Build an argv list for a specific AI CLI tool.
+
+    Each tool's actual flags (verified via --help):
+      codex exec -m <model> -C <dir> -s workspace-write --dangerously-bypass-approvals-and-sandbox <prompt_from_stdin>
+      agy -p --model <model> --effort <level> --dangerously-skip-permissions <prompt_from_file>
+      claude -p --model <model> --dangerously-skip-permissions <prompt_from_file>
+    """
+    prompt_text = prompt_file.read_text(encoding="utf-8")
+
+    if ai_name == "codex":
+        # codex exec: -m model, -C workdir, prompt is positional or stdin
+        # --dangerously-bypass-approvals-and-sandbox for autonomous mode
+        # -s workspace-write to allow file edits
+        return [
+            "codex", "exec",
+            "-m", model,
+            "-C", cwd,
+            "-s", "workspace-write",
+            "--dangerously-bypass-approvals-and-sandbox",
+            prompt_text,
+        ]
+
+    elif ai_name == "antigravity":
+        # agy: --model, --effort (not --reasoning), -p for non-interactive
+        # --dangerously-skip-permissions for autonomous mode
+        # cwd is set via subprocess cwd parameter
+        return [
+            "agy",
+            "--model", model,
+            "--effort", _map_reasoning_to_effort(reasoning),
+            "--dangerously-skip-permissions",
+            "-p", prompt_text,
+        ]
+
+    elif ai_name == "claude":
+        # claude: --model, -p for print mode, prompt is positional
+        # --dangerously-skip-permissions for autonomous mode
+        # cwd is set via subprocess cwd parameter
+        return [
+            "claude",
+            "--model", model,
+            "-p",
+            "--dangerously-skip-permissions",
+            prompt_text,
+        ]
+
+    else:
+        log.error("Unknown AI agent: %s", ai_name)
+        return []
+
+
+def _map_reasoning_to_effort(reasoning: str) -> str:
+    """Map AGENTS.md reasoning levels to agy --effort values."""
+    mapping = {
+        "high": "high", "높음": "high", "울트라": "high",
+        "매우 높음": "high",
+        "medium": "medium", "중간": "medium",
+        "low": "low", "낮음": "low", "light": "low",
+        "thinking": "high",
+        "엑스트라": "high", "최대": "high", "ultracode": "high",
+    }
+    return mapping.get(reasoning.lower().strip(), "medium")
+
+
+def _format_argv_for_log(argv: list[str]) -> str:
+    """Format argv for human-readable logging (truncate long prompts)."""
+    parts = []
+    for arg in argv:
+        if len(arg) > 200:
+            parts.append(arg[:100] + "...[truncated]")
+        else:
+            parts.append(arg)
+    return " ".join(parts)
 
 
 def dispatch_worker(issue: TaskIssue, dry_run: bool = False):
@@ -584,23 +661,27 @@ def dispatch_worker(issue: TaskIssue, dry_run: bool = False):
         f"4. Document your reasoning in the PR description."
     )
 
-    cmd = build_ai_command(worker.ai, worker.model, worker.reasoning, prompt, str(worktree_path))
+    task_ref = f"issue#{issue.number}"
+    prompt_file = write_prompt_file(prompt, "worker", task_ref)
+    argv = build_ai_argv(worker.ai, worker.model, worker.reasoning, prompt_file, str(worktree_path))
 
     if dry_run:
-        log.info("[DRY RUN] Would execute: %s", cmd)
+        log.info("[DRY RUN] Would execute: %s", _format_argv_for_log(argv))
         return
 
-    task_ref = f"issue#{issue.number}"
-    log_path, stdout_fd, stderr_fd = create_log_file("worker", task_ref, worker.ai)
+    if not argv:
+        return
+
+    log_path, stdout_file, stderr_file = create_log_files("worker", task_ref, worker.ai)
     log.info("Dispatching Worker %s for Issue #%d (log: %s)", worker.ai, issue.number, log_path)
+    log.info("  argv: %s", _format_argv_for_log(argv))
 
     try:
         proc = subprocess.Popen(
-            cmd,
-            shell=True,
+            argv,
             cwd=str(worktree_path),
-            stdout=stdout_fd,
-            stderr=stderr_fd,
+            stdout=stdout_file,
+            stderr=stderr_file,
         )
         tracker.register(
             proc=proc,
@@ -610,14 +691,14 @@ def dispatch_worker(issue: TaskIssue, dry_run: bool = False):
             reasoning=worker.reasoning,
             task_ref=task_ref,
             branch=branch_name,
-            command=cmd,
+            command=_format_argv_for_log(argv),
             cwd=str(worktree_path),
             log_file=str(log_path),
         )
+    except FileNotFoundError:
+        log.error("AI CLI '%s' not found in PATH. Is it installed?", argv[0])
     except Exception as e:
         log.error("Failed to dispatch Worker: %s", e)
-    finally:
-        os.close(stdout_fd)
 
 
 def dispatch_reviewer(pr: TaskPR, dry_run: bool = False):
@@ -635,23 +716,26 @@ def dispatch_reviewer(pr: TaskPR, dry_run: bool = False):
         f"Follow the review checklist in .agents/rules/review_checklist.md."
     )
 
-    cmd = build_ai_command(reviewer.ai, reviewer.model, reviewer.reasoning, prompt, str(REPO_ROOT))
+    task_ref = f"pr#{pr.number}"
+    prompt_file = write_prompt_file(prompt, "reviewer", task_ref)
+    argv = build_ai_argv(reviewer.ai, reviewer.model, reviewer.reasoning, prompt_file, str(REPO_ROOT))
 
     if dry_run:
-        log.info("[DRY RUN] Would execute reviewer: %s", cmd)
+        log.info("[DRY RUN] Would execute reviewer: %s", _format_argv_for_log(argv))
         return
 
-    task_ref = f"pr#{pr.number}"
-    log_path, stdout_fd, stderr_fd = create_log_file("reviewer", task_ref, reviewer.ai)
+    if not argv:
+        return
+
+    log_path, stdout_file, stderr_file = create_log_files("reviewer", task_ref, reviewer.ai)
     log.info("Dispatching Reviewer %s for PR #%d (log: %s)", reviewer.ai, pr.number, log_path)
 
     try:
         proc = subprocess.Popen(
-            cmd,
-            shell=True,
+            argv,
             cwd=str(REPO_ROOT),
-            stdout=stdout_fd,
-            stderr=stderr_fd,
+            stdout=stdout_file,
+            stderr=stderr_file,
         )
         tracker.register(
             proc=proc,
@@ -661,14 +745,14 @@ def dispatch_reviewer(pr: TaskPR, dry_run: bool = False):
             reasoning=reviewer.reasoning,
             task_ref=task_ref,
             branch=pr.head_branch,
-            command=cmd,
+            command=_format_argv_for_log(argv),
             cwd=str(REPO_ROOT),
             log_file=str(log_path),
         )
+    except FileNotFoundError:
+        log.error("AI CLI '%s' not found in PATH. Is it installed?", argv[0])
     except Exception as e:
         log.error("Failed to dispatch Reviewer: %s", e)
-    finally:
-        os.close(stdout_fd)
 
 
 def dispatch_maintainer(pr_number: int, maintainer: RoleAssignment, dry_run: bool = False):
@@ -681,23 +765,26 @@ def dispatch_maintainer(pr_number: int, maintainer: RoleAssignment, dry_run: boo
         f"Then clean up: the orchestrator will handle worktree removal."
     )
 
-    cmd = build_ai_command(maintainer.ai, maintainer.model, maintainer.reasoning, prompt, str(REPO_ROOT))
+    task_ref = f"pr#{pr_number}"
+    prompt_file = write_prompt_file(prompt, "maintainer", task_ref)
+    argv = build_ai_argv(maintainer.ai, maintainer.model, maintainer.reasoning, prompt_file, str(REPO_ROOT))
 
     if dry_run:
-        log.info("[DRY RUN] Would execute maintainer: %s", cmd)
+        log.info("[DRY RUN] Would execute maintainer: %s", _format_argv_for_log(argv))
         return
 
-    task_ref = f"pr#{pr_number}"
-    log_path, stdout_fd, stderr_fd = create_log_file("maintainer", task_ref, maintainer.ai)
+    if not argv:
+        return
+
+    log_path, stdout_file, stderr_file = create_log_files("maintainer", task_ref, maintainer.ai)
     log.info("Dispatching Maintainer %s for PR #%d (log: %s)", maintainer.ai, pr_number, log_path)
 
     try:
         proc = subprocess.Popen(
-            cmd,
-            shell=True,
+            argv,
             cwd=str(REPO_ROOT),
-            stdout=stdout_fd,
-            stderr=stderr_fd,
+            stdout=stdout_file,
+            stderr=stderr_file,
         )
         tracker.register(
             proc=proc,
@@ -707,14 +794,14 @@ def dispatch_maintainer(pr_number: int, maintainer: RoleAssignment, dry_run: boo
             reasoning=maintainer.reasoning,
             task_ref=task_ref,
             branch="",
-            command=cmd,
+            command=_format_argv_for_log(argv),
             cwd=str(REPO_ROOT),
             log_file=str(log_path),
         )
+    except FileNotFoundError:
+        log.error("AI CLI '%s' not found in PATH. Is it installed?", argv[0])
     except Exception as e:
         log.error("Failed to dispatch Maintainer: %s", e)
-    finally:
-        os.close(stdout_fd)
 
 
 # ---------------------------------------------------------------------------

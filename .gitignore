@@ -6,5 +6,6 @@ __pycache__/
 .agents/logs/
 .agents/.process_registry.json
 .agents/.processed_*.json
+.agents/.prompts/
 *.local
 .DS_Store
