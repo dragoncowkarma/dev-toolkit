@@ -569,12 +569,11 @@ def build_ai_argv(ai_name: str, model: str, reasoning: str,
     prompt_text = prompt_file.read_text(encoding="utf-8")
 
     if ai_name == "codex":
-        # codex exec: -m model, -C workdir, prompt is positional or stdin
+        # codex exec: -C workdir, prompt is positional
         # --dangerously-bypass-approvals-and-sandbox for autonomous mode
         # -s workspace-write to allow file edits
         return [
             "codex", "exec",
-            "-m", model,
             "-C", cwd,
             "-s", "workspace-write",
             "--dangerously-bypass-approvals-and-sandbox",
@@ -582,24 +581,21 @@ def build_ai_argv(ai_name: str, model: str, reasoning: str,
         ]
 
     elif ai_name == "antigravity":
-        # agy: --model, --effort (not --reasoning), -p for non-interactive
+        # agy: -p for non-interactive
         # --dangerously-skip-permissions for autonomous mode
         # cwd is set via subprocess cwd parameter
         return [
             "agy",
-            "--model", model,
-            "--effort", _map_reasoning_to_effort(reasoning),
             "--dangerously-skip-permissions",
             "-p", prompt_text,
         ]
 
     elif ai_name == "claude":
-        # claude: --model, -p for print mode, prompt is positional
+        # claude: -p for print mode, prompt is positional
         # --dangerously-skip-permissions for autonomous mode
         # cwd is set via subprocess cwd parameter
         return [
             "claude",
-            "--model", model,
             "-p",
             "--dangerously-skip-permissions",
             prompt_text,
