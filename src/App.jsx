@@ -19,7 +19,12 @@ function ToolCard({ tool, onClick }) {
       style={{ cursor: isAvailable ? 'pointer' : 'default' }}
       role={isAvailable ? "button" : undefined}
       tabIndex={isAvailable ? 0 : undefined}
-      onKeyDown={isAvailable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } } : undefined}
+      onKeyDown={isAvailable ? (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onClick();
+        }
+      } : undefined}
     >
       <div className="tool-icon">{tool.icon}</div>
       <h3 className="tool-name">{tool.name}</h3>

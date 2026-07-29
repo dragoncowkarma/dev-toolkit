@@ -129,7 +129,7 @@
 
 .status-badge.invalid {
   background: rgba(239, 68, 68, 0.15);
-  color: #ef4444;
+  color: var(--color-error);
 }
 
 .status-badge.empty {
@@ -234,7 +234,7 @@
   display: flex;
   flex: 1;
   position: relative;
-  background: #06060a;
+  background: var(--color-code-bg);
   min-height: 400px;
 }
 
@@ -281,7 +281,7 @@
 /* Output Display Area */
 .output-container {
   flex: 1;
-  background: #06060a;
+  background: var(--color-code-bg);
   padding: 12px;
   overflow: auto;
   min-height: 400px;
@@ -290,7 +290,7 @@
 .error-snippet-container {
   font-family: 'Fira Code', 'Courier New', Courier, monospace;
   font-size: 0.85rem;
-  color: #f87171;
+  color: var(--color-error-light);
   white-space: pre-wrap;
   background: rgba(239, 68, 68, 0.05);
   border: 1px dashed rgba(239, 68, 68, 0.3);
@@ -397,21 +397,21 @@
 }
 
 .json-tree-value.json-tree-null {
-  color: #f87171;
+  color: var(--color-error-light);
   font-weight: bold;
 }
 
 .json-tree-value.json-tree-boolean {
-  color: #fbbf24;
+  color: var(--color-warning);
   font-weight: bold;
 }
 
 .json-tree-value.json-tree-number {
-  color: #34d399;
+  color: var(--color-success);
 }
 
 .json-tree-value.json-tree-string {
-  color: #60a5fa;
+  color: var(--color-info);
 }
 
 /* Copy success toast notification */

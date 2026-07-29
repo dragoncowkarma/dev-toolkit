@@ -108,6 +108,13 @@ function JsonNode({ name, value, isLast, defaultExpanded = true }) {
         className={`json-tree-toggle ${expanded ? 'expanded' : 'collapsed'}`} 
         onClick={toggleExpand}
         role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            toggleExpand(e);
+          }
+        }}
         aria-label={expanded ? 'Collapse node' : 'Expand node'}
       >
         ▶
@@ -116,7 +123,18 @@ function JsonNode({ name, value, isLast, defaultExpanded = true }) {
       <span className="json-tree-bracket">{startBracket}</span>
       
       {!expanded && (
-        <span className="json-tree-summary" onClick={toggleExpand}>
+        <span 
+          className="json-tree-summary" 
+          onClick={toggleExpand}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              toggleExpand(e);
+            }
+          }}
+        >
           {isArray ? ` ... ${value.length} items ` : ` ... ${keys.length} keys `}
         </span>
       )}
@@ -196,6 +214,7 @@ export default function JsonTool({ onBack }) {
 
   const handleInputChange = (e) => {
     setInput(e.target.value);
+    setOutput('');
   };
 
   const handleFormat = () => {
@@ -245,7 +264,9 @@ export default function JsonTool({ onBack }) {
   };
 
   const handleCopy = () => {
-    const textToCopy = viewMode === 'tree' ? (validation.isValid && input ? formatJson(input, indent) : '') : output || input;
+    const textToCopy = viewMode === 'tree'
+      ? (validation.isValid && input ? formatJson(input, indent) : '')
+      : output || input;
     if (!textToCopy) return;
 
     navigator.clipboard.writeText(textToCopy)
@@ -259,7 +280,9 @@ export default function JsonTool({ onBack }) {
   };
 
   const handleDownload = () => {
-    const textToDownload = viewMode === 'tree' ? (validation.isValid && input ? formatJson(input, indent) : '') : output || input;
+    const textToDownload = viewMode === 'tree'
+      ? (validation.isValid && input ? formatJson(input, indent) : '')
+      : output || input;
     if (!textToDownload) return;
 
     const blob = new Blob([textToDownload], { type: 'application/json' });
@@ -332,12 +355,20 @@ export default function JsonTool({ onBack }) {
               )}
             </h3>
             <div className="panel-actions">
-              <label htmlFor="indent-select" style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Indent:</label>
+              <label 
+                htmlFor="indent-select" 
+                style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}
+              >
+                Indent:
+              </label>
               <select 
                 id="indent-select"
                 className="select-input" 
                 value={indent} 
-                onChange={(e) => setIndent(e.target.value)}
+                onChange={(e) => {
+                  setIndent(e.target.value);
+                  setOutput('');
+                }}
                 aria-label="Indent size"
               >
                 <option value="2">2 Spaces</option>
@@ -428,10 +459,18 @@ export default function JsonTool({ onBack }) {
           {viewMode === 'tree' && validation.isValid && parsedData !== null ? (
             <>
               <div className="tree-actions-toolbar">
-                <button className="btn" onClick={() => toggleTreeExpansion(true)} aria-label="Expand all nodes">
+                <button 
+                  className="btn" 
+                  onClick={() => toggleTreeExpansion(true)} 
+                  aria-label="Expand all nodes"
+                >
                   ➕ Expand All
                 </button>
-                <button className="btn" onClick={() => toggleTreeExpansion(false)} aria-label="Collapse all nodes">
+                <button 
+                  className="btn" 
+                  onClick={() => toggleTreeExpansion(false)} 
+                  aria-label="Collapse all nodes"
+                >
                   ➖ Collapse All
                 </button>
               </div>
@@ -444,7 +483,14 @@ export default function JsonTool({ onBack }) {
           ) : (
             <div className="output-container">
               {validation.isValid ? (
-                <pre style={{ margin: 0, fontFamily: 'inherit', fontSize: 'inherit', color: 'inherit', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                <pre style={{ 
+                  margin: 0, 
+                  fontFamily: 'inherit', 
+                  fontSize: 'inherit', 
+                  color: 'inherit', 
+                  whiteSpace: 'pre-wrap', 
+                  wordBreak: 'break-all' 
+                }}>
                   {output || (input.trim() ? formatJson(input, indent) : '')}
                 </pre>
               ) : (
@@ -452,9 +498,17 @@ export default function JsonTool({ onBack }) {
                   <div className="error-message">
                     ❌ JSON Parse Error:
                   </div>
-                  <div style={{ color: 'var(--color-text)', marginBottom: '1rem' }}>{validation.message}</div>
+                  <div style={{ color: 'var(--color-text)', marginBottom: '1rem' }}>
+                    {validation.message}
+                  </div>
                   {validation.snippet && (
-                    <pre style={{ margin: 0, fontFamily: 'inherit', color: '#f87171' }}>{validation.snippet}</pre>
+                    <pre style={{ 
+                      margin: 0, 
+                      fontFamily: 'inherit', 
+                      color: 'var(--color-error-light)' 
+                    }}>
+                      {validation.snippet}
+                    </pre>
                   )}
                 </div>
               )}
