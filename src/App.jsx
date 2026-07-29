@@ -1,5 +1,6 @@
 import React from 'react';
 import Layout from './components/Layout.jsx';
+import Base64Tool from './tools/base64/Base64Tool.jsx';
 import JsonTool from './tools/json/JsonTool.jsx';
 
 const TOOLS = [
@@ -9,7 +10,7 @@ const TOOLS = [
     description: 'Encode and decode Base64 strings without leaving your browser.',
     icon: '⌁',
     category: 'Encoder',
-    component: ToolPlaceholder,
+    component: Base64Tool,
   },
   {
     id: 'json',
