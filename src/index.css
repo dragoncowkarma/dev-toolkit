@@ -114,6 +114,29 @@ a:hover {
   margin: 0 auto;
 }
 
+.tool-hero {
+  position: relative;
+  padding-top: 3rem;
+}
+
+.back-link {
+  position: absolute;
+  top: 0;
+  left: 2rem;
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  font-family: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: 0.5rem 0;
+  transition: color var(--transition);
+}
+
+.back-link:hover {
+  color: var(--color-primary-light);
+}
+
 /* === Tools Grid === */
 .tools-grid {
   max-width: 1200px;
@@ -142,6 +165,10 @@ a:hover {
   background: linear-gradient(135deg, rgba(99, 102, 241, 0.05), rgba(167, 139, 250, 0.05));
   opacity: 0;
   transition: opacity var(--transition);
+}
+
+.tool-card-clickable {
+  cursor: pointer;
 }
 
 .tool-card:hover {
