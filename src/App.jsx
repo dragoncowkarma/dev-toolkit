@@ -1,5 +1,6 @@
 import React from 'react';
 import Layout from './components/Layout.jsx';
+import JsonTool from './tools/json/JsonTool.jsx';
 
 const TOOLS = [
   {
@@ -16,7 +17,7 @@ const TOOLS = [
     description: 'Format, validate, and minify JSON with a clear structured view.',
     icon: '{ }',
     category: 'Formatter',
-    component: ToolPlaceholder,
+    component: JsonTool,
   },
   {
     id: 'url',

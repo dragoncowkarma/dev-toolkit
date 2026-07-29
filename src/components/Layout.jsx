@@ -109,7 +109,10 @@ export default function Layout({ tools, defaultToolId }) {
           </header>
 
           <main id="main-content" className="layout__main" tabIndex="-1">
-            <ActiveToolComponent tool={activeTool} />
+            <ActiveToolComponent
+              tool={activeTool}
+              onBack={() => setActiveToolId(defaultToolId)}
+            />
           </main>
 
           <footer className="layout__footer">
