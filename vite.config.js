@@ -8,4 +8,9 @@ export default defineConfig({
     outDir: 'dist',
     sourcemap: false,
   },
+  test: {
+    environment: 'jsdom',
+    globals: false,
+    setupFiles: ['./vitest.setup.js'],
+  },
 });
