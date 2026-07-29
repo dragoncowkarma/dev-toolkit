@@ -1,0 +1,310 @@
+.hash-tool {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+}
+
+.hash-tool__controls {
+  display: grid;
+  gap: 1rem;
+}
+
+.hash-tool__fieldset {
+  min-width: 0;
+  padding: 1rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.hash-tool__fieldset legend {
+  padding: 0 0.4rem;
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.hash-tool__algorithm-list,
+.hash-tool__format-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.hash-tool__check,
+.hash-tool__radio {
+  position: relative;
+  cursor: pointer;
+}
+
+.hash-tool__check input,
+.hash-tool__radio input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.hash-tool__check span,
+.hash-tool__radio span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.25rem;
+  padding: 0.4rem 0.8rem;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--color-text-muted);
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+  font-size: 0.82rem;
+  font-weight: 600;
+  transition:
+    border-color var(--transition),
+    background var(--transition),
+    color var(--transition);
+}
+
+.hash-tool__check input:checked + span,
+.hash-tool__radio input:checked + span {
+  background: rgba(99, 102, 241, 0.16);
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.hash-tool__check input:focus-visible + span,
+.hash-tool__radio input:focus-visible + span {
+  outline: 2px solid var(--color-primary-light);
+  outline-offset: 3px;
+}
+
+.hash-tool__input-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 1rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.hash-tool__input-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.hash-tool__input-header label,
+.hash-tool__input-header > div > label {
+  color: var(--color-text);
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.hash-tool__input-header p {
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+}
+
+.hash-tool__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.hash-tool__button,
+.hash-result button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.35rem;
+  padding: 0.45rem 0.85rem;
+  background: var(--color-surface-hover);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--color-text);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    border-color var(--transition),
+    color var(--transition);
+}
+
+.hash-tool__button:hover:not(:disabled),
+.hash-result button:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.hash-tool__button:disabled,
+.hash-result button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.hash-tool__upload {
+  position: relative;
+  overflow: hidden;
+}
+
+.hash-tool__upload:focus-within {
+  outline: 2px solid var(--color-primary-light);
+  outline-offset: 3px;
+}
+
+.hash-tool__upload input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.hash-tool textarea {
+  width: 100%;
+  min-height: 150px;
+  padding: 0.9rem;
+  resize: vertical;
+  background: var(--color-code-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--color-text);
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  transition: border-color var(--transition);
+}
+
+.hash-tool textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.hash-tool__source {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+}
+
+.hash-tool__source > span:first-child {
+  color: var(--color-primary-light);
+  font-weight: 600;
+}
+
+.hash-tool__memory-note {
+  color: var(--color-warning);
+}
+
+.hash-tool__results {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.85rem;
+}
+
+.hash-result {
+  min-width: 0;
+  overflow: hidden;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.hash-result__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.8rem 1rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.hash-result__header > div {
+  display: flex;
+  align-items: baseline;
+  gap: 0.55rem;
+}
+
+.hash-result h2 {
+  font-size: 0.95rem;
+}
+
+.hash-result__header span {
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+}
+
+.hash-result button {
+  min-height: 2rem;
+  padding: 0.3rem 0.7rem;
+}
+
+.hash-result__value {
+  display: block;
+  min-height: 4.8rem;
+  padding: 1rem;
+  overflow-wrap: anywhere;
+  background: var(--color-code-bg);
+  color: var(--color-success);
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+  font-size: 0.82rem;
+  line-height: 1.65;
+  user-select: all;
+}
+
+.hash-tool__empty,
+.hash-tool__error {
+  padding: 0.8rem 1rem;
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+}
+
+.hash-tool__empty {
+  background: rgba(96, 165, 250, 0.1);
+  border: 1px solid rgba(96, 165, 250, 0.3);
+  color: var(--color-info);
+}
+
+.hash-tool__error {
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  color: var(--color-error-light);
+}
+
+.hash-tool__privacy {
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  text-align: center;
+}
+
+@media (min-width: 720px) {
+  .hash-tool {
+    padding: 0 2rem 3rem;
+  }
+
+  .hash-tool__controls {
+    grid-template-columns: minmax(0, 2fr) minmax(220px, 1fr);
+  }
+
+  .hash-tool__input-header {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .hash-tool__source {
+    flex-direction: row;
+    justify-content: space-between;
+  }
+
+  .hash-tool__results {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
