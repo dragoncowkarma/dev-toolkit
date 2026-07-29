@@ -43,13 +43,15 @@ This project uses a **vendor-agnostic autonomous multi-agent swarm** where multi
 > Within a single Issue→PR lifecycle, the Worker, Reviewer, and Maintainer MUST be **three different AIs**.
 
 ### 2.5 Dispatch Idempotency
-- A lifecycle event MUST dispatch its assigned AI at most once.
+- A lifecycle event MUST dispatch its assigned AI at most once successfully.
 - Event identity is based on the Issue, PR head SHA, or triggering comment ID.
 - The same Worker may run again only after new Reviewer feedback.
 - The same Reviewer may run again only after a new Worker commit and
   `[Worker] Revision complete.` signal.
-- Polling or restarting the orchestrator MUST NOT duplicate an already
-  dispatched event.
+- Polling or restarting the orchestrator MUST NOT duplicate an event that is
+  running or already succeeded.
+- An event whose AI process crashed IS retried, up to 3 attempts, so a single
+  transient CLI failure cannot deadlock the swarm.
 
 ---
 

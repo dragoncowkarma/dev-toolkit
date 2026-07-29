@@ -18,7 +18,8 @@ The orchestrator assigns roles using this priority:
 | Rotation | Prefer rotating AIs across tasks to avoid single-AI dominance |
 | Capability matching | Assign complex tasks to high-reasoning models |
 | Fail closed | Missing or duplicate role metadata blocks dispatch |
-| Event idempotency | One AI process per Issue, head SHA, or trigger comment ID |
+| Event idempotency | One successful AI process per Issue, head SHA, or trigger comment ID |
+| Bounded retry | A crashed process is retried up to 3 times for the same event |
 
 ## Lifecycle Signals
 
@@ -29,9 +30,16 @@ The orchestrator assigns roles using this priority:
 | Tagged Reviewer feedback | Original Worker | PR number + feedback comment ID |
 | Tagged Reviewer approval | Maintainer | PR number + approval comment ID |
 
-Informational comments do not advance the lifecycle. The Worker and Reviewer
-can alternate repeatedly, but only after the other role emits a new signal.
-Polling and orchestrator restarts must never repeat the same event.
+Informational comments do not advance the lifecycle, and an approval is
+recognized only when one comment carries BOTH the Reviewer and the Maintainer
+tag. The Worker and Reviewer can alternate repeatedly, but only after the other
+role emits a new signal. Polling and orchestrator restarts must never repeat an
+event that is running or already succeeded.
+
+An event whose process crashed is retried, because abandoning it after one
+failure stalls the swarm permanently. Retries stop after 3 failed attempts, and
+records left `running` by a crashed orchestrator become retryable once their
+PID is confirmed gone.
 
 ## Metadata Placement
 

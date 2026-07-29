@@ -21,7 +21,8 @@ This project is developed by an autonomous multi-agent swarm. See [AGENTS.md](./
 
 The orchestrator advances work only after a new lifecycle signal and records
 each dispatch persistently, preventing duplicate AI processes across polling
-cycles and restarts.
+cycles and restarts. A crashed process is retried up to 3 times for the same
+event, so one transient CLI failure does not stall the swarm.
 
 ```bash
 python3 .agents/workflows/test_swarm_orchestrator.py

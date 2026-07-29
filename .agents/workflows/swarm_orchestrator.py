@@ -39,6 +39,17 @@ LOG_DIR = REPO_ROOT / ".agents" / "logs"
 POLL_INTERVAL_SECONDS = 30
 PROCESS_REGISTRY_FILE = REPO_ROOT / ".agents" / ".process_registry.json"
 
+# A lifecycle event runs at most once successfully, but a crashed process is
+# retried so a transient AI CLI failure cannot deadlock the swarm forever.
+MAX_DISPATCH_ATTEMPTS = 3
+
+# Stable reasons returned by ProcessTracker.should_dispatch().
+DISPATCH_RUNNING = "already running"
+DISPATCH_COMPLETED = "already completed"
+
+# Upper bound on persisted history so the registry cannot grow without limit.
+MAX_HISTORY_RECORDS = 500
+
 # Metadata tag patterns
 WORKER_PATTERN = re.compile(
     r"\[Worker:\s*(?P<ai>\w+)\s*\|\s*Model:\s*(?P<model>[^|]+?)\s*\|\s*Reasoning:\s*(?P<reasoning>[^\]]+?)\]",
@@ -69,6 +80,22 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 log = logging.getLogger("swarm")
+
+# Blocker states already reported, so a stuck PR cannot flood the log on every
+# polling cycle. Keys include the head SHA or comment ID, so a new lifecycle
+# signal is always reported again.
+_REPORTED_BLOCKERS: set[str] = set()
+
+
+def log_blocker(key: str, message: str, *args, level: int = logging.ERROR):
+    """Report a lifecycle blocker once at `level`, then at DEBUG while it persists."""
+    if key in _REPORTED_BLOCKERS:
+        log.debug(message, *args)
+        return
+    if len(_REPORTED_BLOCKERS) > MAX_HISTORY_RECORDS:
+        _REPORTED_BLOCKERS.clear()
+    _REPORTED_BLOCKERS.add(key)
+    log.log(level, message, *args)
 
 
 # ---------------------------------------------------------------------------
@@ -151,10 +178,33 @@ class ProcessTracker:
                     self._history.append(TrackedProcess(**entry))
             except (json.JSONDecodeError, TypeError):
                 log.warning("Corrupted process registry, starting fresh.")
+        self._reconcile_orphans()
+
+    def _reconcile_orphans(self):
+        """Demote records left RUNNING by a crashed orchestrator.
+
+        A previous run that died without `kill_all()` leaves records claiming to
+        be running. Treating those as live would block their lifecycle event
+        forever, so any record whose PID is gone becomes UNKNOWN and therefore
+        retryable.
+        """
+        for record in self._history:
+            if record.status != ProcessStatus.RUNNING:
+                continue
+            if self.check_pid_alive(record.pid):
+                continue
+            record.status = ProcessStatus.UNKNOWN
+            record.ended_at = record.ended_at or datetime.now(timezone.utc).isoformat()
+            log.warning(
+                "Orphaned %s record for %s [PID %d] marked UNKNOWN; event is retryable.",
+                record.role, record.task_ref, record.pid,
+            )
 
     def _save_registry(self):
         """Persist process registry to disk."""
         PROCESS_REGISTRY_FILE.parent.mkdir(parents=True, exist_ok=True)
+        if len(self._history) > MAX_HISTORY_RECORDS:
+            self._history = self._history[-MAX_HISTORY_RECORDS:]
         all_records = self._history + [tp for _, tp in self._active.values()]
         with open(PROCESS_REGISTRY_FILE, "w") as f:
             json.dump({
@@ -256,25 +306,31 @@ class ProcessTracker:
                 return True
         return False
 
-    def is_active_by_prefix(self, task_ref_prefix: str) -> bool:
-        """Check if there is an active process whose task_ref starts with the prefix."""
-        for tp in self.active_processes:
-            if tp.task_ref.startswith(task_ref_prefix):
-                return True
-        return False
+    def should_dispatch(self, task_ref: str, role: str) -> tuple[bool, str]:
+        """Decide whether a lifecycle event still needs a process, with a reason.
 
-    def was_dispatched(self, task_ref: str, role: str) -> bool:
-        """Return whether an event was already dispatched, including previous runs.
+        Task references identify lifecycle events rather than only an Issue or
+        PR, so dispatch stays idempotent across polling cycles and orchestrator
+        restarts while the Worker/Reviewer loop can still advance when a new
+        review comment or commit creates a new event.
 
-        Task references identify lifecycle events rather than only an Issue or PR.
-        This makes dispatch idempotent across polling cycles and orchestrator
-        restarts while still allowing the Worker/Reviewer loop to advance when a
-        new review comment or commit creates a new event.
+        A running or completed attempt blocks the event permanently. A crashed
+        attempt is retried up to MAX_DISPATCH_ATTEMPTS times, because a swarm
+        that abandons an event after one failed AI process stalls forever.
         """
-        return any(
-            record.task_ref == task_ref and record.role == role
-            for record in self.all_records
-        )
+        attempts = [
+            record for record in self.all_records
+            if record.task_ref == task_ref and record.role == role
+        ]
+        if not attempts:
+            return True, "new event"
+        if any(record.status == ProcessStatus.RUNNING for record in attempts):
+            return False, DISPATCH_RUNNING
+        if any(record.status == ProcessStatus.COMPLETED for record in attempts):
+            return False, DISPATCH_COMPLETED
+        if len(attempts) >= MAX_DISPATCH_ATTEMPTS:
+            return False, f"exhausted {len(attempts)} failed attempts"
+        return True, f"retry {len(attempts) + 1}/{MAX_DISPATCH_ATTEMPTS} after failure"
 
     @property
     def active_count(self) -> int:
@@ -410,7 +466,6 @@ def fetch_open_issues() -> list[dict]:
     raw = gh([
         "issue", "list",
         "--state", "open",
-        "--label", "",
         "--json", "number,title,body",
         "--limit", "50",
     ], check=False)
@@ -519,6 +574,11 @@ def determine_pr_action(comments: list[dict]) -> tuple[str, Optional[dict], int]
     Recognized signals are Reviewer feedback, Worker revision completion, and
     Reviewer approval containing a Maintainer assignment. Informational comments
     do not change state.
+
+    An approval must carry BOTH a Reviewer and a Maintainer tag. A lone
+    Maintainer tag — a human quoting the rules, or another agent naming a
+    candidate — is informational, because treating it as approval would freeze
+    the PR on a "maintain" action that later validation always rejects.
     """
     latest_action = "review"
     latest_comment: Optional[dict] = None
@@ -529,7 +589,7 @@ def determine_pr_action(comments: list[dict]) -> tuple[str, Optional[dict], int]
         maintainer = parse_role(MAINTAINER_PATTERN, body)
         reviewer = parse_role(REVIEWER_PATTERN, body)
 
-        if maintainer:
+        if maintainer and reviewer:
             latest_action = "maintain"
             latest_comment = comment
             latest_index = index
@@ -549,6 +609,15 @@ def determine_pr_action(comments: list[dict]) -> tuple[str, Optional[dict], int]
 # Git Worktree Management
 # ---------------------------------------------------------------------------
 
+def local_branch_exists(branch_name: str) -> bool:
+    """Return whether a local branch of this name exists."""
+    result = subprocess.run(
+        ["git", "branch", "--list", branch_name],
+        capture_output=True, text=True, cwd=REPO_ROOT, check=False,
+    )
+    return bool(result.stdout.strip())
+
+
 def create_worktree(issue_number: int, branch_name: str) -> Path:
     """Create an isolated git worktree for a task."""
     worktree_path = WORKTREE_DIR / str(issue_number)
@@ -560,12 +629,7 @@ def create_worktree(issue_number: int, branch_name: str) -> Path:
     WORKTREE_DIR.mkdir(parents=True, exist_ok=True)
 
     # Create branch from current HEAD if it doesn't exist
-    existing_branches = subprocess.run(
-        ["git", "branch", "--list", branch_name],
-        capture_output=True, text=True, cwd=REPO_ROOT,
-    ).stdout.strip()
-
-    if not existing_branches:
+    if not local_branch_exists(branch_name):
         subprocess.run(
             ["git", "branch", branch_name],
             cwd=REPO_ROOT, check=True,
@@ -582,9 +646,16 @@ def create_worktree(issue_number: int, branch_name: str) -> Path:
 def cleanup_worktree(issue_number: int, branch_name: str):
     """Safely remove a clean, merged task worktree and its local branch."""
     worktree_path = WORKTREE_DIR / str(issue_number)
+
+    # Merged PRs are re-listed every polling cycle, so exit before spending any
+    # subprocess or log output on work that is already done.
+    if not worktree_path.exists() and not local_branch_exists(branch_name):
+        return
+
     expected_prefix = f"worker/{issue_number}-"
     if not branch_name.startswith(expected_prefix):
-        log.error(
+        log_blocker(
+            f"cleanup:{issue_number}:{branch_name}",
             "Refusing cleanup for unexpected branch '%s' (expected prefix '%s').",
             branch_name,
             expected_prefix,
@@ -600,10 +671,12 @@ def cleanup_worktree(issue_number: int, branch_name: str):
             check=False,
         )
         if status.returncode != 0 or status.stdout.strip():
-            log.warning(
+            log_blocker(
+                f"dirty-worktree:{issue_number}",
                 "Refusing to remove non-clean worktree for Issue #%d: %s",
                 issue_number,
                 worktree_path,
+                level=logging.WARNING,
             )
             return
 
@@ -1084,9 +1157,11 @@ def process_issues(dry_run: bool = False, open_prs: list[dict] = None):
             
         # 2. A persistent event key prevents repeat dispatch after completion.
         task_ref = f"issue#{num}:initial"
-        if tracker.was_dispatched(task_ref, role="worker"):
+        allowed, reason = tracker.should_dispatch(task_ref, role="worker")
+        if not allowed:
+            log.debug("Skipping Worker for Issue #%d: %s.", num, reason)
             continue
-            
+
         # 3. Dispatch Worker
         worker = parse_role(WORKER_PATTERN, raw.get("body", ""))
         if not worker:
@@ -1100,7 +1175,10 @@ def process_issues(dry_run: bool = False, open_prs: list[dict] = None):
             worker=worker,
         )
 
-        log.info("=== Open Task Issue #%d needs Worker: %s ===", num, issue.title)
+        log.info(
+            "=== Open Task Issue #%d needs Worker (%s): %s ===",
+            num, reason, issue.title,
+        )
         dispatch_worker(issue, dry_run, task_ref=task_ref)
 
 
@@ -1116,6 +1194,41 @@ def process_prs(dry_run: bool = False, open_prs: list[dict] = None):
         head_sha = raw.get("headRefOid", "")
         issue_number = extract_issue_number_from_pr_title(pr_title)
 
+        # Validate cheaply before spending API calls on comments and the Issue.
+        if issue_number is None:
+            log_blocker(
+                f"pr-title:{pr_num}",
+                "PR #%d has no Issue number in its title; refusing role dispatch.",
+                pr_num,
+            )
+            continue
+
+        reviewer = parse_role(REVIEWER_PATTERN, pr_body)
+        if not reviewer:
+            log_blocker(
+                f"pr-reviewer:{pr_num}:{head_sha}",
+                "PR #%d has no Reviewer metadata; refusing dispatch.",
+                pr_num,
+            )
+            continue
+
+        issue_raw = fetch_issue(issue_number)
+        if not issue_raw:
+            log_blocker(
+                f"pr-issue:{pr_num}:{issue_number}",
+                "Could not fetch Issue #%d for PR #%d.", issue_number, pr_num,
+            )
+            continue
+
+        worker = parse_role(WORKER_PATTERN, issue_raw.get("body", ""))
+        if not worker:
+            log_blocker(
+                f"pr-worker:{pr_num}:{issue_number}",
+                "Issue #%d has no Worker metadata; refusing dispatch for PR #%d.",
+                issue_number, pr_num,
+            )
+            continue
+
         comments = fetch_pr_comments(pr_num)
 
         pr_obj = TaskPR(
@@ -1126,27 +1239,6 @@ def process_prs(dry_run: bool = False, open_prs: list[dict] = None):
             head_sha=head_sha,
             issue_number=issue_number,
         )
-
-        if issue_number is None:
-            log.error(
-                "PR #%d has no Issue number in its title; refusing role dispatch.",
-                pr_num,
-            )
-            continue
-
-        issue_raw = fetch_issue(issue_number)
-        if not issue_raw:
-            log.error("Could not fetch Issue #%d for PR #%d.", issue_number, pr_num)
-            continue
-
-        worker = parse_role(WORKER_PATTERN, issue_raw.get("body", ""))
-        reviewer = parse_role(REVIEWER_PATTERN, pr_body)
-        if not worker or not reviewer:
-            log.error(
-                "PR #%d is missing Worker or Reviewer metadata; refusing dispatch.",
-                pr_num,
-            )
-            continue
 
         issue_obj = TaskIssue(
             number=issue_number,
@@ -1172,21 +1264,30 @@ def process_prs(dry_run: bool = False, open_prs: list[dict] = None):
                 signal_comment.get("body", ""),
             )
             if not approval_reviewer or approval_reviewer.ai != reviewer.ai:
-                log.error(
+                log_blocker(
+                    f"approval-reviewer:{pr_num}:{signal_id}",
                     "PR #%d approval signal does not match assigned Reviewer '%s'.",
                     pr_num,
                     reviewer.ai,
                 )
                 continue
-            valid, reason = validate_distinct_roles(worker, reviewer, maintainer)
+            valid, why = validate_distinct_roles(worker, reviewer, maintainer)
             if not valid:
-                log.error("PR #%d role assignment rejected: %s.", pr_num, reason)
+                log_blocker(
+                    f"roles:{pr_num}:{signal_id}",
+                    "PR #%d role assignment rejected: %s.", pr_num, why,
+                )
                 continue
 
             task_ref = f"maintain#{pr_num}-{signal_id}"
-            if tracker.was_dispatched(task_ref, role="maintainer"):
+            allowed, reason = tracker.should_dispatch(task_ref, role="maintainer")
+            if not allowed:
+                log.debug("Skipping Maintainer for PR #%d: %s.", pr_num, reason)
                 continue
-            log.info("=== PR #%d approved, dispatching AI3 Maintainer ===", pr_num)
+            log.info(
+                "=== PR #%d approved, dispatching AI3 Maintainer (%s) ===",
+                pr_num, reason,
+            )
             dispatch_maintainer(
                 pr_obj,
                 issue_obj,
@@ -1196,17 +1297,37 @@ def process_prs(dry_run: bool = False, open_prs: list[dict] = None):
             )
             continue
 
-        valid, reason = validate_distinct_roles(worker, reviewer)
+        valid, why = validate_distinct_roles(worker, reviewer)
         if not valid:
-            log.error("PR #%d role assignment rejected: %s.", pr_num, reason)
+            log_blocker(
+                f"roles:{pr_num}:{head_sha}",
+                "PR #%d role assignment rejected: %s.", pr_num, why,
+            )
             continue
 
         if action == "review":
             review_version = head_sha or signal_id
             task_ref = f"review#{pr_num}-{review_version}"
-            if tracker.was_dispatched(task_ref, role="reviewer"):
+            allowed, reason = tracker.should_dispatch(task_ref, role="reviewer")
+            if not allowed:
+                # A finished review on an unchanged head SHA cannot produce a
+                # new event key, so the lifecycle would stall in silence: either
+                # the Worker never pushed, or the Reviewer posted no tagged
+                # comment. A review still running is normal and stays quiet.
+                if signal_comment is not None and reason == DISPATCH_COMPLETED:
+                    log_blocker(
+                        f"stale-revision:{pr_num}:{signal_id}",
+                        "PR #%d already reviewed head SHA %s and has no newer signal; "
+                        "the Worker may not have pushed, or the Reviewer left no tag.",
+                        pr_num, review_version,
+                        level=logging.WARNING,
+                    )
+                log.debug("Skipping Reviewer for PR #%d: %s.", pr_num, reason)
                 continue
-            log.info("=== PR #%d needs review for %s ===", pr_num, review_version)
+            log.info(
+                "=== PR #%d needs review for %s (%s) ===",
+                pr_num, review_version, reason,
+            )
             dispatch_reviewer(
                 pr_obj,
                 worker,
@@ -1216,20 +1337,26 @@ def process_prs(dry_run: bool = False, open_prs: list[dict] = None):
             continue
 
         task_ref = f"revise#{pr_num}-{signal_id}"
-        if tracker.was_dispatched(task_ref, role="worker_revise"):
+        allowed, reason = tracker.should_dispatch(task_ref, role="worker_revise")
+        if not allowed:
+            log.debug("Skipping Worker revision for PR #%d: %s.", pr_num, reason)
             continue
         feedback_reviewer = parse_role(
             REVIEWER_PATTERN,
             signal_comment.get("body", ""),
         )
         if not feedback_reviewer or feedback_reviewer.ai != reviewer.ai:
-            log.error(
+            log_blocker(
+                f"feedback-reviewer:{pr_num}:{signal_id}",
                 "PR #%d feedback signal does not match assigned Reviewer '%s'.",
                 pr_num,
                 reviewer.ai,
             )
             continue
-        log.info("=== PR #%d needs Worker revision for %s ===", pr_num, signal_id)
+        log.info(
+            "=== PR #%d needs Worker revision for %s (%s) ===",
+            pr_num, signal_id, reason,
+        )
         dispatch_worker_revision(
             pr_obj,
             issue_obj,
@@ -1237,6 +1364,18 @@ def process_prs(dry_run: bool = False, open_prs: list[dict] = None):
             dry_run,
             task_ref=task_ref,
         )
+
+
+def close_issue_if_open(issue_num: int, pr_num: int, dry_run: bool):
+    """Close the Issue behind a merged PR if it is still open."""
+    issue_raw = gh(["issue", "view", str(issue_num), "--json", "state"], check=False)
+    if not issue_raw:
+        return
+    if json.loads(issue_raw).get("state") != "OPEN":
+        return
+    log.info("🧹 PR #%d is merged. Closing associated Issue #%d", pr_num, issue_num)
+    if not dry_run:
+        gh(["issue", "close", str(issue_num)], check=False)
 
 
 def cleanup_merged_prs(dry_run: bool = False):
@@ -1257,24 +1396,22 @@ def cleanup_merged_prs(dry_run: bool = False):
     for pr in merged_prs:
         pr_title = pr.get("title", "")
         issue_num = extract_issue_number_from_pr_title(pr_title)
-        if issue_num:
-            issue_raw = gh(["issue", "view", str(issue_num), "--json", "state"], check=False)
-            if issue_raw:
-                try:
-                    state = json.loads(issue_raw).get("state")
-                    if state == "OPEN":
-                        log.info(
-                            "🧹 PR #%d is merged. Closing associated Issue #%d",
-                            pr["number"],
-                            issue_num,
-                        )
-                        if not dry_run:
-                            gh(["issue", "close", str(issue_num)], check=False)
-                    branch_name = pr.get("headRefName", "")
-                    if branch_name and not dry_run:
-                        cleanup_worktree(issue_num, branch_name)
-                except Exception as e:
-                    log.error("Failed to check/close issue #%d: %s", issue_num, e)
+        if not issue_num:
+            continue
+
+        try:
+            close_issue_if_open(issue_num, pr["number"], dry_run)
+        except Exception as e:
+            log.error("Failed to check/close issue #%d: %s", issue_num, e)
+
+        # Worktree cleanup is independent of the Issue state: a failed Issue
+        # lookup must not leave the merged worktree behind forever.
+        branch_name = pr.get("headRefName", "")
+        if branch_name and not dry_run:
+            try:
+                cleanup_worktree(issue_num, branch_name)
+            except Exception as e:
+                log.error("Failed to clean worktree for issue #%d: %s", issue_num, e)
 
 
 def run_loop(interval: int, dry_run: bool = False):
