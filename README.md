@@ -19,6 +19,15 @@ A curated collection of essential developer utilities, deployed as a static site
 
 This project is developed by an autonomous multi-agent swarm. See [AGENTS.md](./AGENTS.md) for the complete governance and workflow rules.
 
+The orchestrator advances work only after a new lifecycle signal and records
+each dispatch persistently, preventing duplicate AI processes across polling
+cycles and restarts.
+
+```bash
+python3 .agents/workflows/test_swarm_orchestrator.py
+python3 .agents/workflows/swarm_orchestrator.py --status
+```
+
 ## 🚀 Development
 
 ```bash

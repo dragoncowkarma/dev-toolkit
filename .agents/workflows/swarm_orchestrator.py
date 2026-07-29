@@ -103,6 +103,7 @@ class TaskPR:
     title: str
     body: str
     head_branch: str
+    head_sha: str = ""
     issue_number: Optional[int] = None
     reviewer: Optional[RoleAssignment] = None
 
@@ -262,6 +263,19 @@ class ProcessTracker:
                 return True
         return False
 
+    def was_dispatched(self, task_ref: str, role: str) -> bool:
+        """Return whether an event was already dispatched, including previous runs.
+
+        Task references identify lifecycle events rather than only an Issue or PR.
+        This makes dispatch idempotent across polling cycles and orchestrator
+        restarts while still allowing the Worker/Reviewer loop to advance when a
+        new review comment or commit creates a new event.
+        """
+        return any(
+            record.task_ref == task_ref and record.role == role
+            for record in self.all_records
+        )
+
     @property
     def active_count(self) -> int:
         return len(self._active)
@@ -411,7 +425,7 @@ def fetch_open_prs() -> list[dict]:
     raw = gh([
         "pr", "list",
         "--state", "open",
-        "--json", "number,title,body,headRefName",
+        "--json", "number,title,body,headRefName,headRefOid",
         "--limit", "50",
     ], check=False)
     if not raw:
@@ -468,6 +482,69 @@ def extract_issue_number_from_pr_title(title: str) -> Optional[int]:
     return int(m.group(1)) if m else None
 
 
+def comment_signal_id(comment: dict, index: int) -> str:
+    """Build a stable identifier for a GitHub comment signal."""
+    raw_id = str(comment.get("id") or comment.get("url") or f"index-{index}")
+    return re.sub(r"[^a-zA-Z0-9._-]+", "-", raw_id).strip("-")
+
+
+def validate_distinct_roles(
+    worker: Optional[RoleAssignment],
+    reviewer: Optional[RoleAssignment],
+    maintainer: Optional[RoleAssignment] = None,
+) -> tuple[bool, str]:
+    """Validate that every assigned lifecycle role uses a different AI."""
+    assignments = {
+        "Worker": worker,
+        "Reviewer": reviewer,
+        "Maintainer": maintainer,
+    }
+    seen: dict[str, str] = {}
+    for role, assignment in assignments.items():
+        if assignment is None:
+            continue
+        previous_role = seen.get(assignment.ai)
+        if previous_role:
+            return (
+                False,
+                f"{previous_role} and {role} both use AI '{assignment.ai}'",
+            )
+        seen[assignment.ai] = role
+    return True, ""
+
+
+def determine_pr_action(comments: list[dict]) -> tuple[str, Optional[dict], int]:
+    """Return the next action from the newest recognized lifecycle signal.
+
+    Recognized signals are Reviewer feedback, Worker revision completion, and
+    Reviewer approval containing a Maintainer assignment. Informational comments
+    do not change state.
+    """
+    latest_action = "review"
+    latest_comment: Optional[dict] = None
+    latest_index = -1
+
+    for index, comment in enumerate(comments):
+        body = comment.get("body", "")
+        maintainer = parse_role(MAINTAINER_PATTERN, body)
+        reviewer = parse_role(REVIEWER_PATTERN, body)
+
+        if maintainer:
+            latest_action = "maintain"
+            latest_comment = comment
+            latest_index = index
+        elif "[Worker] Revision complete." in body:
+            latest_action = "review"
+            latest_comment = comment
+            latest_index = index
+        elif reviewer:
+            latest_action = "revise"
+            latest_comment = comment
+            latest_index = index
+
+    return latest_action, latest_comment, latest_index
+
+
 # ---------------------------------------------------------------------------
 # Git Worktree Management
 # ---------------------------------------------------------------------------
@@ -503,14 +580,41 @@ def create_worktree(issue_number: int, branch_name: str) -> Path:
 
 
 def cleanup_worktree(issue_number: int, branch_name: str):
-    """Remove worktree and optionally the branch."""
+    """Safely remove a clean, merged task worktree and its local branch."""
     worktree_path = WORKTREE_DIR / str(issue_number)
+    expected_prefix = f"worker/{issue_number}-"
+    if not branch_name.startswith(expected_prefix):
+        log.error(
+            "Refusing cleanup for unexpected branch '%s' (expected prefix '%s').",
+            branch_name,
+            expected_prefix,
+        )
+        return
 
     if worktree_path.exists():
-        subprocess.run(
-            ["git", "worktree", "remove", str(worktree_path), "--force"],
-            cwd=REPO_ROOT, check=False,
+        status = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=worktree_path,
+            capture_output=True,
+            text=True,
+            check=False,
         )
+        if status.returncode != 0 or status.stdout.strip():
+            log.warning(
+                "Refusing to remove non-clean worktree for Issue #%d: %s",
+                issue_number,
+                worktree_path,
+            )
+            return
+
+        removed = subprocess.run(
+            ["git", "worktree", "remove", str(worktree_path)],
+            cwd=REPO_ROOT,
+            check=False,
+        )
+        if removed.returncode != 0:
+            log.warning("Failed to remove worktree: %s", worktree_path)
+            return
         log.info("Removed worktree: %s", worktree_path)
 
     # Delete branch if it was merged
@@ -639,7 +743,11 @@ def _format_argv_for_log(argv: list[str]) -> str:
     return " ".join(parts)
 
 
-def dispatch_worker(issue: TaskIssue, dry_run: bool = False):
+def dispatch_worker(
+    issue: TaskIssue,
+    dry_run: bool = False,
+    task_ref: Optional[str] = None,
+):
     """Dispatch a Worker AI to implement a task."""
     worker = issue.worker
     if not worker:
@@ -662,14 +770,16 @@ def dispatch_worker(issue: TaskIssue, dry_run: bool = False):
         f"Work inside this directory. When done:\n"
         f"1. Commit your changes with conventional commit messages referencing #{issue.number}.\n"
         f"2. Push the branch '{branch_name}'.\n"
-        f"3. Create a PR titled '[PR] {issue.number} - <summary>' with a [Reviewer: ...] tag in the body.\n"
-        f"4. Document your reasoning in the PR description.\n\n"
+        f"3. Create a PR titled '[PR] {issue.number} - <summary>' with a "
+        f"[Reviewer: ...] tag in the body.\n"
+        f"4. The Reviewer AI MUST be different from Worker AI '{worker.ai}'.\n"
+        f"5. Document your decisions and verification evidence in the PR description.\n\n"
         f"CRITICAL: You are running as a background worker in a fully autonomous swarm. "
         f"Do NOT use planning mode. Do NOT request human feedback, approval, or ask questions. "
         f"Execute your task completely and exit."
     )
 
-    task_ref = f"issue#{issue.number}"
+    task_ref = task_ref or f"issue#{issue.number}:initial"
     prompt_file = write_prompt_file(prompt, "worker", task_ref)
     argv = build_ai_argv(worker.ai, worker.model, worker.reasoning, prompt_file, str(worktree_path))
 
@@ -710,7 +820,12 @@ def dispatch_worker(issue: TaskIssue, dry_run: bool = False):
         log.error("Failed to dispatch Worker: %s", e)
 
 
-def dispatch_reviewer(pr: TaskPR, dry_run: bool = False):
+def dispatch_reviewer(
+    pr: TaskPR,
+    worker: RoleAssignment,
+    dry_run: bool = False,
+    task_ref: Optional[str] = None,
+):
     """Dispatch a Reviewer AI to review a PR."""
     reviewer = pr.reviewer
     if not reviewer:
@@ -723,21 +838,30 @@ def dispatch_reviewer(pr: TaskPR, dry_run: bool = False):
         f"Review the PR diff, check code quality, and leave review comments.\n\n"
         f"When your review is complete, you MUST post exactly ONE final summary comment "
         f"on the PR containing your [Reviewer: ...] metadata tag. The tag format is:\n"
-        f"  [Reviewer: {reviewer.ai} | Model: {reviewer.model} | Reasoning: {reviewer.reasoning}]\n\n"
+        f"  [Reviewer: {reviewer.ai} | Model: {reviewer.model} | "
+        f"Reasoning: {reviewer.reasoning}]\n\n"
         f"If the PR is approved and ready to merge, your final comment MUST also include:\n"
         f"  [Maintainer: <ai_name> | Model: <model> | Reasoning: <level>]\n"
-        f"Choose the Maintainer from the DEFAULT_ROTATION in AGENTS.md (not the same as you).\n\n"
+        f"Choose the Maintainer using .agents/rules/role_assignment.md. It MUST differ "
+        f"from Worker '{worker.ai}' and Reviewer '{reviewer.ai}'.\n\n"
         f"If changes are needed, your final comment MUST include your [Reviewer: ...] tag "
-        f"AND clearly describe all required changes. Do NOT include [Maintainer: ...] in this case.\n\n"
+        f"AND clearly describe all required changes. Do NOT include "
+        f"[Maintainer: ...] in this case.\n\n"
         f"Follow the review checklist in .agents/rules/review_checklist.md.\n\n"
         f"CRITICAL: You are running as a background reviewer in a fully autonomous swarm. "
         f"Do NOT use planning mode. Do NOT request human feedback, approval, or ask questions. "
         f"Execute your review completely and exit."
     )
 
-    task_ref = f"pr#{pr.number}"
+    task_ref = task_ref or f"review#{pr.number}-{pr.head_sha or 'initial'}"
     prompt_file = write_prompt_file(prompt, "reviewer", task_ref)
-    argv = build_ai_argv(reviewer.ai, reviewer.model, reviewer.reasoning, prompt_file, str(REPO_ROOT))
+    argv = build_ai_argv(
+        reviewer.ai,
+        reviewer.model,
+        reviewer.reasoning,
+        prompt_file,
+        str(REPO_ROOT),
+    )
 
     if dry_run:
         log.info("[DRY RUN] Would execute reviewer: %s", _format_argv_for_log(argv))
@@ -774,22 +898,46 @@ def dispatch_reviewer(pr: TaskPR, dry_run: bool = False):
         log.error("Failed to dispatch Reviewer: %s", e)
 
 
-def dispatch_maintainer(pr_number: int, maintainer: RoleAssignment, dry_run: bool = False):
-    """Dispatch a Maintainer AI to merge a PR."""
+def dispatch_maintainer(
+    pr: TaskPR,
+    issue: TaskIssue,
+    maintainer: RoleAssignment,
+    dry_run: bool = False,
+    task_ref: Optional[str] = None,
+):
+    """Dispatch AI3 to maintain the PR and seed the next autonomous task."""
     prompt = (
-        f"You are the Maintainer for PR #{pr_number}.\n"
-        f"Read AGENTS.md for project rules.\n"
-        f"Verify the PR review is complete, CI passes, and merge the PR.\n"
-        f"After merging, comment with your [Maintainer: ...] metadata tag.\n"
-        f"Then clean up: the orchestrator will handle worktree removal.\n\n"
+        f"You are AI3, the Maintainer and post-merge Analyst for PR #{pr.number} "
+        f"(Issue #{issue.number}).\n"
+        f"Read AGENTS.md and .agents/rules/ for all project rules.\n"
+        f"1. Verify that the independent review is complete and CI passes.\n"
+        f"2. Merge PR #{pr.number}. A successful merge closes the PR.\n"
+        f"3. Close Issue #{issue.number} only after the merge succeeds.\n"
+        f"4. Comment on the PR with your exact metadata:\n"
+        f"   [Maintainer: {maintainer.ai} | Model: {maintainer.model} | "
+        f"Reasoning: {maintainer.reasoning}]\n"
+        f"   Include the merge rationale and verification evidence.\n"
+        f"5. Analyze the updated project and all open Issues after the merge.\n"
+        f"6. Create exactly ONE non-duplicate follow-up Issue titled "
+        f"'[Task] <Tool Name> - <Summary>'. Include requirements, acceptance criteria, "
+        f"and a valid [Worker: <ai> | Model: <model> | Reasoning: <level>] tag.\n"
+        f"7. Do not implement the follow-up Issue yourself. The orchestrator will "
+        f"dispatch its Worker in the next polling cycle.\n"
+        f"8. The orchestrator will safely remove the merged worktree.\n\n"
         f"CRITICAL: You are running as a background maintainer in a fully autonomous swarm. "
         f"Do NOT use planning mode. Do NOT request human feedback, approval, or ask questions. "
         f"Execute your task completely and exit."
     )
 
-    task_ref = f"pr#{pr_number}"
+    task_ref = task_ref or f"maintain#{pr.number}"
     prompt_file = write_prompt_file(prompt, "maintainer", task_ref)
-    argv = build_ai_argv(maintainer.ai, maintainer.model, maintainer.reasoning, prompt_file, str(REPO_ROOT))
+    argv = build_ai_argv(
+        maintainer.ai,
+        maintainer.model,
+        maintainer.reasoning,
+        prompt_file,
+        str(REPO_ROOT),
+    )
 
     if dry_run:
         log.info("[DRY RUN] Would execute maintainer: %s", _format_argv_for_log(argv))
@@ -799,7 +947,7 @@ def dispatch_maintainer(pr_number: int, maintainer: RoleAssignment, dry_run: boo
         return
 
     log_path, stdout_file, stderr_file = create_log_files("maintainer", task_ref, maintainer.ai)
-    log.info("Dispatching Maintainer %s for PR #%d (log: %s)", maintainer.ai, pr_number, log_path)
+    log.info("Dispatching Maintainer %s for PR #%d (log: %s)", maintainer.ai, pr.number, log_path)
 
     try:
         proc = subprocess.Popen(
@@ -826,20 +974,28 @@ def dispatch_maintainer(pr_number: int, maintainer: RoleAssignment, dry_run: boo
         log.error("Failed to dispatch Maintainer: %s", e)
 
 
-def dispatch_worker_revision(pr: TaskPR, issue: TaskIssue, feedback_text: str, dry_run: bool = False, task_ref: str = None):
+def dispatch_worker_revision(
+    pr: TaskPR,
+    issue: TaskIssue,
+    feedback_text: str,
+    dry_run: bool = False,
+    task_ref: Optional[str] = None,
+):
     """Dispatch the original Worker AI to fix the PR based on feedback."""
     worker = issue.worker
     if not worker:
-        log.warning("Issue #%d has no Worker tag, cannot dispatch revision for PR #%d.", issue.number, pr.number)
+        log.warning(
+            "Issue #%d has no Worker tag, cannot dispatch revision for PR #%d.",
+            issue.number,
+            pr.number,
+        )
         return
 
-    # Use existing branch name mapped from the issue
-    title_parts = issue.title.split("-")
-    raw_desc = title_parts[-1].strip() if len(title_parts) > 1 else issue.title
-    short_desc = re.sub(r"[^a-z0-9]+", "-", raw_desc.lower()).strip("-")[:30]
-    if not short_desc:
-        short_desc = f"task-{issue.number}"
-    branch_name = f"worker/{issue.number}-{worker.ai}-{short_desc}"
+    # Reuse the PR's actual branch so a title-derived branch cannot diverge.
+    branch_name = pr.head_branch
+    if not branch_name:
+        log.warning("PR #%d has no head branch, cannot dispatch revision.", pr.number)
+        return
     
     # We must run inside the same worktree or recreate it
     worktree_path = create_worktree(issue.number, branch_name)
@@ -907,7 +1063,7 @@ def dispatch_worker_revision(pr: TaskPR, issue: TaskIssue, feedback_text: str, d
 # ---------------------------------------------------------------------------
 
 def process_issues(dry_run: bool = False, open_prs: list[dict] = None):
-    """Poll and process new Issues with [Task] prefix statelessly."""
+    """Poll and dispatch each initial Issue event at most once."""
     issues = fetch_open_issues()
     if open_prs is None:
         open_prs = fetch_open_prs()
@@ -926,9 +1082,9 @@ def process_issues(dry_run: bool = False, open_prs: list[dict] = None):
         if num in pr_issue_numbers:
             continue
             
-        # 2. Check if Worker is currently running for this issue
-        task_ref = f"issue#{num}"
-        if tracker.is_active(task_ref, role="worker"):
+        # 2. A persistent event key prevents repeat dispatch after completion.
+        task_ref = f"issue#{num}:initial"
+        if tracker.was_dispatched(task_ref, role="worker"):
             continue
             
         # 3. Dispatch Worker
@@ -945,11 +1101,11 @@ def process_issues(dry_run: bool = False, open_prs: list[dict] = None):
         )
 
         log.info("=== Open Task Issue #%d needs Worker: %s ===", num, issue.title)
-        dispatch_worker(issue, dry_run)
+        dispatch_worker(issue, dry_run, task_ref=task_ref)
 
 
 def process_prs(dry_run: bool = False, open_prs: list[dict] = None):
-    """Poll and process PRs statelessly."""
+    """Advance each PR by one idempotent Worker/Reviewer/Maintainer event."""
     prs = open_prs if open_prs is not None else fetch_open_prs()
 
     for raw in prs:
@@ -957,6 +1113,8 @@ def process_prs(dry_run: bool = False, open_prs: list[dict] = None):
         pr_title = raw.get("title", "")
         pr_body = raw.get("body", "")
         head_branch = raw.get("headRefName", "")
+        head_sha = raw.get("headRefOid", "")
+        issue_number = extract_issue_number_from_pr_title(pr_title)
 
         comments = fetch_pr_comments(pr_num)
 
@@ -965,100 +1123,130 @@ def process_prs(dry_run: bool = False, open_prs: list[dict] = None):
             title=pr_title,
             body=pr_body,
             head_branch=head_branch,
+            head_sha=head_sha,
+            issue_number=issue_number,
         )
 
-        task_ref = f"pr#{pr_num}"
-
-        # --- Scan all comments to determine the last *meaningful* action ---
-        # Priority (highest wins): Maintainer approved > Worker done > Reviewer feedback
-        #
-        # A "meaningful" comment is one that contains a recognized signal tag.
-        # Plain informational comments (e.g. "리뷰를 시작합니다...") are ignored
-        # when determining state, preventing the reviewer's preamble from
-        # accidentally triggering a worker re-dispatch.
-
-        last_maintainer: Optional[RoleAssignment] = None
-        last_worker_done_idx: int = -1   # index of last "[Worker] Revision complete."
-        last_reviewer_feedback_idx: int = -1  # index of last reviewer feedback (non-approval)
-
-        for idx, comment in enumerate(comments):
-            body = comment.get("body", "")
-            if parse_role(MAINTAINER_PATTERN, body):
-                last_maintainer = parse_role(MAINTAINER_PATTERN, body)
-            if "[Worker] Revision complete." in body:
-                last_worker_done_idx = idx
-            if parse_role(REVIEWER_PATTERN, body):
-                # Reviewer left a tagged comment → could be feedback or approval notice
-                # Only count as "reviewer feedback" if it's NOT an approval
-                if not parse_role(MAINTAINER_PATTERN, body):
-                    last_reviewer_feedback_idx = idx
-
-        # 1. Maintainer tag found anywhere → dispatch Maintainer (once)
-        if last_maintainer:
-            if not tracker.is_active(task_ref, role="maintainer"):
-                log.info("=== PR #%d approved, dispatching Maintainer ===", pr_num)
-                dispatch_maintainer(pr_num, last_maintainer, dry_run)
+        if issue_number is None:
+            log.error(
+                "PR #%d has no Issue number in its title; refusing role dispatch.",
+                pr_num,
+            )
             continue
 
-        # 2. Determine current state from signal chronology
-        # "needs_review" if:  no comments, or last signal was worker completing revision
-        needs_review = False
-        needs_revision = False
-
-        if not comments:
-            needs_review = True
-        elif last_worker_done_idx > last_reviewer_feedback_idx:
-            # Worker finished AFTER the last reviewer feedback → needs fresh review
-            needs_review = True
-        elif last_reviewer_feedback_idx > last_worker_done_idx:
-            # Reviewer left feedback AFTER last worker-done signal → worker must revise
-            needs_revision = True
-        else:
-            # No recognized signals yet → treat as "needs initial review"
-            needs_review = True
-
-        if needs_review:
-            reviewer = parse_role(REVIEWER_PATTERN, pr_body)
-            if reviewer:
-                pr_obj.reviewer = reviewer
-                if not tracker.is_active(task_ref, role="reviewer"):
-                    log.info("=== PR #%d needs review ===", pr_num)
-                    dispatch_reviewer(pr_obj, dry_run)
+        issue_raw = fetch_issue(issue_number)
+        if not issue_raw:
+            log.error("Could not fetch Issue #%d for PR #%d.", issue_number, pr_num)
             continue
 
-        # 3. Changes requested — dispatch Worker revision
-        if comments:
-            latest_comment = comments[-1]
-            comment_id = latest_comment.get("id") or latest_comment.get("url", "unknown")
-            revise_task_ref = f"revise#{pr_num}-{comment_id}"
-            
-            if not tracker.is_active_by_prefix(f"revise#{pr_num}"):
-                issue_number = extract_issue_number_from_pr_title(pr_title)
-                if issue_number:
-                    issue_raw = fetch_issue(issue_number)
-                    if issue_raw:
-                        worker = parse_role(WORKER_PATTERN, issue_raw.get("body", ""))
-                        if worker:
-                            issue_obj = TaskIssue(
-                                number=issue_number,
-                                title=issue_raw["title"],
-                                body=issue_raw.get("body", ""),
-                                worker=worker,
-                            )
-                            log.info("=== PR #%d needs revision based on feedback, dispatching Worker ===", pr_num)
-                            feedback_text = "\n\n---\n\n".join([c.get("body", "") for c in comments[-3:]])
-                            dispatch_worker_revision(pr_obj, issue_obj, feedback_text, dry_run, task_ref=revise_task_ref)
-                        else:
-                            log.warning("Original Issue #%d has no worker metadata.", issue_number)
-                    else:
-                        log.warning("Could not fetch Issue #%d for PR #%d revision.", issue_number, pr_num)
-                else:
-                    log.warning("Could not extract Issue number from PR #%d title: %s", pr_num, pr_title)
+        worker = parse_role(WORKER_PATTERN, issue_raw.get("body", ""))
+        reviewer = parse_role(REVIEWER_PATTERN, pr_body)
+        if not worker or not reviewer:
+            log.error(
+                "PR #%d is missing Worker or Reviewer metadata; refusing dispatch.",
+                pr_num,
+            )
+            continue
+
+        issue_obj = TaskIssue(
+            number=issue_number,
+            title=issue_raw["title"],
+            body=issue_raw.get("body", ""),
+            worker=worker,
+        )
+        pr_obj.reviewer = reviewer
+        action, signal_comment, signal_index = determine_pr_action(comments)
+        signal_id = (
+            comment_signal_id(signal_comment, signal_index)
+            if signal_comment is not None
+            else "initial"
+        )
+
+        if action == "maintain":
+            approval_reviewer = parse_role(
+                REVIEWER_PATTERN,
+                signal_comment.get("body", ""),
+            )
+            maintainer = parse_role(
+                MAINTAINER_PATTERN,
+                signal_comment.get("body", ""),
+            )
+            if not approval_reviewer or approval_reviewer.ai != reviewer.ai:
+                log.error(
+                    "PR #%d approval signal does not match assigned Reviewer '%s'.",
+                    pr_num,
+                    reviewer.ai,
+                )
+                continue
+            valid, reason = validate_distinct_roles(worker, reviewer, maintainer)
+            if not valid:
+                log.error("PR #%d role assignment rejected: %s.", pr_num, reason)
+                continue
+
+            task_ref = f"maintain#{pr_num}-{signal_id}"
+            if tracker.was_dispatched(task_ref, role="maintainer"):
+                continue
+            log.info("=== PR #%d approved, dispatching AI3 Maintainer ===", pr_num)
+            dispatch_maintainer(
+                pr_obj,
+                issue_obj,
+                maintainer,
+                dry_run,
+                task_ref=task_ref,
+            )
+            continue
+
+        valid, reason = validate_distinct_roles(worker, reviewer)
+        if not valid:
+            log.error("PR #%d role assignment rejected: %s.", pr_num, reason)
+            continue
+
+        if action == "review":
+            review_version = head_sha or signal_id
+            task_ref = f"review#{pr_num}-{review_version}"
+            if tracker.was_dispatched(task_ref, role="reviewer"):
+                continue
+            log.info("=== PR #%d needs review for %s ===", pr_num, review_version)
+            dispatch_reviewer(
+                pr_obj,
+                worker,
+                dry_run,
+                task_ref=task_ref,
+            )
+            continue
+
+        task_ref = f"revise#{pr_num}-{signal_id}"
+        if tracker.was_dispatched(task_ref, role="worker_revise"):
+            continue
+        feedback_reviewer = parse_role(
+            REVIEWER_PATTERN,
+            signal_comment.get("body", ""),
+        )
+        if not feedback_reviewer or feedback_reviewer.ai != reviewer.ai:
+            log.error(
+                "PR #%d feedback signal does not match assigned Reviewer '%s'.",
+                pr_num,
+                reviewer.ai,
+            )
+            continue
+        log.info("=== PR #%d needs Worker revision for %s ===", pr_num, signal_id)
+        dispatch_worker_revision(
+            pr_obj,
+            issue_obj,
+            signal_comment.get("body", ""),
+            dry_run,
+            task_ref=task_ref,
+        )
 
 
 def cleanup_merged_prs(dry_run: bool = False):
-    """Close issues associated with recently merged PRs."""
-    raw = gh(["pr", "list", "--state", "merged", "--limit", "20", "--json", "number,title"], check=False)
+    """Close merged Issues and safely clean their task worktrees."""
+    raw = gh([
+        "pr", "list",
+        "--state", "merged",
+        "--limit", "20",
+        "--json", "number,title,headRefName",
+    ], check=False)
     if not raw:
         return
     try:
@@ -1075,9 +1263,16 @@ def cleanup_merged_prs(dry_run: bool = False):
                 try:
                     state = json.loads(issue_raw).get("state")
                     if state == "OPEN":
-                        log.info("🧹 PR #%d is merged. Closing associated Issue #%d", pr["number"], issue_num)
+                        log.info(
+                            "🧹 PR #%d is merged. Closing associated Issue #%d",
+                            pr["number"],
+                            issue_num,
+                        )
                         if not dry_run:
                             gh(["issue", "close", str(issue_num)], check=False)
+                    branch_name = pr.get("headRefName", "")
+                    if branch_name and not dry_run:
+                        cleanup_worktree(issue_num, branch_name)
                 except Exception as e:
                     log.error("Failed to check/close issue #%d: %s", issue_num, e)
 

@@ -25,7 +25,9 @@ Reviewers MUST check every item before approving a PR.
 - [ ] Commits use conventional commit format
 - [ ] PR title follows `[PR] <issue#> - <summary>` pattern
 - [ ] Worker/Reviewer/Maintainer are different AIs
-- [ ] Chain of Thought reasoning is documented
+- [ ] Decisions and reproducible verification evidence are documented
+- [ ] Final review summary contains exactly one Reviewer metadata tag
+- [ ] Approval names a Maintainer different from Worker and Reviewer
 
 ## Testing
 - [ ] New utility functions have unit tests
