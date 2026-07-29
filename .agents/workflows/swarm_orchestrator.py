@@ -37,8 +37,6 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKTREE_DIR = REPO_ROOT / ".worktrees"
 LOG_DIR = REPO_ROOT / ".agents" / "logs"
 POLL_INTERVAL_SECONDS = 30
-PROCESSED_ISSUES_FILE = REPO_ROOT / ".agents" / ".processed_issues.json"
-PROCESSED_PRS_FILE = REPO_ROOT / ".agents" / ".processed_prs.json"
 PROCESS_REGISTRY_FILE = REPO_ROOT / ".agents" / ".process_registry.json"
 
 # Metadata tag patterns
@@ -250,6 +248,20 @@ class ProcessTracker:
 
     # --- Queries ---
 
+    def is_active(self, task_ref: str, role: str) -> bool:
+        """Check if there is an active process for the given task and role."""
+        for tp in self.active_processes:
+            if tp.task_ref == task_ref and tp.role == role:
+                return True
+        return False
+
+    def is_active_by_prefix(self, task_ref_prefix: str) -> bool:
+        """Check if there is an active process whose task_ref starts with the prefix."""
+        for tp in self.active_processes:
+            if tp.task_ref.startswith(task_ref_prefix):
+                return True
+        return False
+
     @property
     def active_count(self) -> int:
         return len(self._active)
@@ -363,23 +375,6 @@ class ProcessTracker:
 
 # Global tracker instance
 tracker = ProcessTracker()
-
-
-# ---------------------------------------------------------------------------
-# Persistence — Track processed issues/PRs
-# ---------------------------------------------------------------------------
-
-def load_processed(filepath: Path) -> set:
-    if filepath.exists():
-        with open(filepath) as f:
-            return set(json.load(f))
-    return set()
-
-
-def save_processed(filepath: Path, data: set):
-    filepath.parent.mkdir(parents=True, exist_ok=True)
-    with open(filepath, "w") as f:
-        json.dump(sorted(data), f)
 
 
 # ---------------------------------------------------------------------------
@@ -824,7 +819,7 @@ def dispatch_maintainer(pr_number: int, maintainer: RoleAssignment, dry_run: boo
         log.error("Failed to dispatch Maintainer: %s", e)
 
 
-def dispatch_worker_revision(pr: TaskPR, issue: TaskIssue, feedback_text: str, dry_run: bool = False):
+def dispatch_worker_revision(pr: TaskPR, issue: TaskIssue, feedback_text: str, dry_run: bool = False, task_ref: str = None):
     """Dispatch the original Worker AI to fix the PR based on feedback."""
     worker = issue.worker
     if not worker:
@@ -851,13 +846,16 @@ def dispatch_worker_revision(pr: TaskPR, issue: TaskIssue, feedback_text: str, d
         f"1. Fix the code according to the feedback.\n"
         f"2. Commit your changes with conventional commit messages.\n"
         f"3. Push the branch '{branch_name}'.\n"
-        f"4. Add a comment to the PR indicating you have addressed the feedback and it is ready for another review.\n\n"
+        f"4. Add a comment to the PR containing EXACTLY the phrase:\n"
+        f"   [Worker] Revision complete.\n"
+        f"   indicating it is ready for another review.\n\n"
         f"CRITICAL: You are running as a background worker in a fully autonomous swarm. "
         f"Do NOT use planning mode. Do NOT request human feedback, approval, or ask questions. "
         f"Execute your task completely and exit."
     )
 
-    task_ref = f"revise#{pr.number}"
+    if not task_ref:
+        task_ref = f"revise#{pr.number}"
     prompt_file = write_prompt_file(prompt, "worker-revise", task_ref)
     argv = build_ai_argv(worker.ai, worker.model, worker.reasoning, prompt_file, str(worktree_path))
 
@@ -901,16 +899,32 @@ def dispatch_worker_revision(pr: TaskPR, issue: TaskIssue, feedback_text: str, d
 # Main Polling Loop
 # ---------------------------------------------------------------------------
 
-def process_issues(dry_run: bool = False):
-    """Poll and process new Issues with [Task] prefix."""
-    processed = load_processed(PROCESSED_ISSUES_FILE)
+def process_issues(dry_run: bool = False, open_prs: list[dict] = None):
+    """Poll and process new Issues with [Task] prefix statelessly."""
     issues = fetch_open_issues()
+    if open_prs is None:
+        open_prs = fetch_open_prs()
+        
+    pr_issue_numbers = set()
+    for pr in open_prs:
+        pr_title = pr.get("title", "")
+        issue_num = extract_issue_number_from_pr_title(pr_title)
+        if issue_num:
+            pr_issue_numbers.add(issue_num)
 
     for raw in issues:
         num = raw["number"]
-        if num in processed:
+        
+        # 1. If PR already exists, Worker is done (or PR handles the rest)
+        if num in pr_issue_numbers:
             continue
-
+            
+        # 2. Check if Worker is currently running for this issue
+        task_ref = f"issue#{num}"
+        if tracker.is_active(task_ref, role="worker"):
+            continue
+            
+        # 3. Dispatch Worker
         worker = parse_role(WORKER_PATTERN, raw.get("body", ""))
         if not worker:
             log.debug("Issue #%d has no Worker metadata, skipping.", num)
@@ -923,69 +937,70 @@ def process_issues(dry_run: bool = False):
             worker=worker,
         )
 
-        log.info("=== New Task Issue #%d: %s ===", num, issue.title)
-        log.info("Worker: %s | Model: %s | Reasoning: %s", worker.ai, worker.model, worker.reasoning)
-
+        log.info("=== Open Task Issue #%d needs Worker: %s ===", num, issue.title)
         dispatch_worker(issue, dry_run)
 
-        processed.add(num)
-        save_processed(PROCESSED_ISSUES_FILE, processed)
 
-
-def process_prs(dry_run: bool = False):
-    """Poll and process PRs that need review or merge."""
-    processed = load_processed(PROCESSED_PRS_FILE)
-    prs = fetch_open_prs()
+def process_prs(dry_run: bool = False, open_prs: list[dict] = None):
+    """Poll and process PRs statelessly."""
+    prs = open_prs if open_prs is not None else fetch_open_prs()
 
     for raw in prs:
         pr_num = raw["number"]
-        pr_key = f"review-{pr_num}"
-
-        if pr_key not in processed:
-            reviewer = parse_role(REVIEWER_PATTERN, raw.get("body", ""))
-            if reviewer:
-                pr = TaskPR(
-                    number=pr_num,
-                    title=raw["title"],
-                    body=raw.get("body", ""),
-                    head_branch=raw.get("headRefName", ""),
-                    reviewer=reviewer,
-                )
-                log.info("=== PR #%d needs review: %s ===", pr_num, pr.title)
-                dispatch_reviewer(pr, dry_run)
-                processed.add(pr_key)
-                save_processed(PROCESSED_PRS_FILE, processed)
-
-        # Retrieve comments for the PR
+        pr_title = raw.get("title", "")
+        pr_body = raw.get("body", "")
+        head_branch = raw.get("headRefName", "")
+        
         comments = fetch_pr_comments(pr_num)
-
-        # Check for Maintainer tag in comments
-        maint_key = f"maintain-{pr_num}"
-        maintainer_found = False
-        if maint_key not in processed:
-            for comment in comments:
-                maintainer = parse_role(MAINTAINER_PATTERN, comment.get("body", ""))
-                if maintainer:
-                    log.info("=== PR #%d approved, dispatching Maintainer ===", pr_num)
-                    dispatch_maintainer(pr_num, maintainer, dry_run)
-                    processed.add(maint_key)
-                    save_processed(PROCESSED_PRS_FILE, processed)
-                    maintainer_found = True
-                    break
-
-        if maintainer_found:
+        
+        pr_obj = TaskPR(
+            number=pr_num,
+            title=pr_title,
+            body=pr_body,
+            head_branch=head_branch,
+        )
+        
+        # 1. Check for Maintainer tag (Approved)
+        maintainer_assignment = None
+        for comment in comments:
+            maintainer = parse_role(MAINTAINER_PATTERN, comment.get("body", ""))
+            if maintainer:
+                maintainer_assignment = maintainer
+                break
+                
+        task_ref = f"pr#{pr_num}"
+        
+        if maintainer_assignment:
+            if not tracker.is_active(task_ref, role="maintainer"):
+                log.info("=== PR #%d approved, dispatching Maintainer ===", pr_num)
+                dispatch_maintainer(pr_num, maintainer_assignment, dry_run)
             continue
-
-        # If not approved by maintainer, check for other new comments requesting changes
+            
+        # 2. Check if we need initial review or re-review
+        latest_comment_body = comments[-1].get("body", "") if comments else ""
+        needs_review = False
+        
+        if not comments:
+            needs_review = True
+        elif "[Worker] Revision complete." in latest_comment_body:
+            needs_review = True
+            
+        if needs_review:
+            reviewer = parse_role(REVIEWER_PATTERN, pr_body)
+            if reviewer:
+                pr_obj.reviewer = reviewer
+                if not tracker.is_active_by_prefix(f"review#{pr_num}") and not tracker.is_active(task_ref, role="reviewer"):
+                    log.info("=== PR #%d needs review ===", pr_num)
+                    dispatch_reviewer(pr_obj, dry_run)
+            continue
+            
+        # 3. If there are comments and no maintainer approval, and latest is not worker completion -> Changes Requested
         if comments:
             latest_comment = comments[-1]
             comment_id = latest_comment.get("id") or latest_comment.get("url", "unknown")
-            revise_key = f"revise-{pr_num}-{comment_id}"
+            revise_task_ref = f"revise#{pr_num}-{comment_id}"
             
-            if revise_key not in processed and pr_key in processed:
-                # The PR has been reviewed/commented on but NOT merged.
-                # We need the original issue number to extract worker metadata.
-                pr_title = raw.get("title", "")
+            if not tracker.is_active_by_prefix(f"revise#{pr_num}"):
                 issue_number = extract_issue_number_from_pr_title(pr_title)
                 if issue_number:
                     issue_raw = fetch_issue(issue_number)
@@ -998,26 +1013,41 @@ def process_prs(dry_run: bool = False):
                                 body=issue_raw.get("body", ""),
                                 worker=worker,
                             )
-                            log.info("=== PR #%d needs revision based on new comments, dispatching Worker ===", pr_num)
-                            # Combine recent comments for context (e.g. last 3 comments)
+                            log.info("=== PR #%d needs revision based on feedback, dispatching Worker ===", pr_num)
                             feedback_text = "\n\n---\n\n".join([c.get("body", "") for c in comments[-3:]])
-                            if 'pr' not in locals():
-                                pr = TaskPR(
-                                    number=pr_num,
-                                    title=pr_title,
-                                    body=raw.get("body", ""),
-                                    head_branch=raw.get("headRefName", "")
-                                )
-                            dispatch_worker_revision(pr, issue_obj, feedback_text, dry_run)
-                            
-                            processed.add(revise_key)
-                            save_processed(PROCESSED_PRS_FILE, processed)
+                            dispatch_worker_revision(pr_obj, issue_obj, feedback_text, dry_run, task_ref=revise_task_ref)
                         else:
-                            log.warning("Original Issue #%d has no worker metadata, skipping revision loop.", issue_number)
+                            log.warning("Original Issue #%d has no worker metadata.", issue_number)
                     else:
                         log.warning("Could not fetch Issue #%d for PR #%d revision.", issue_number, pr_num)
                 else:
                     log.warning("Could not extract Issue number from PR #%d title: %s", pr_num, pr_title)
+
+
+def cleanup_merged_prs(dry_run: bool = False):
+    """Close issues associated with recently merged PRs."""
+    raw = gh(["pr", "list", "--state", "merged", "--limit", "20", "--json", "number,title"], check=False)
+    if not raw:
+        return
+    try:
+        merged_prs = json.loads(raw)
+    except json.JSONDecodeError:
+        return
+        
+    for pr in merged_prs:
+        pr_title = pr.get("title", "")
+        issue_num = extract_issue_number_from_pr_title(pr_title)
+        if issue_num:
+            issue_raw = gh(["issue", "view", str(issue_num), "--json", "state"], check=False)
+            if issue_raw:
+                try:
+                    state = json.loads(issue_raw).get("state")
+                    if state == "OPEN":
+                        log.info("🧹 PR #%d is merged. Closing associated Issue #%d", pr["number"], issue_num)
+                        if not dry_run:
+                            gh(["issue", "close", str(issue_num)], check=False)
+                except Exception as e:
+                    log.error("Failed to check/close issue #%d: %s", issue_num, e)
 
 
 def run_loop(interval: int, dry_run: bool = False):
@@ -1047,8 +1077,12 @@ def run_loop(interval: int, dry_run: bool = False):
             tracker.poll_all()
 
             # 2. Poll for new work
-            process_issues(dry_run)
-            process_prs(dry_run)
+            open_prs = fetch_open_prs()
+            process_issues(dry_run, open_prs)
+            process_prs(dry_run, open_prs)
+            
+            # 3. Clean up merged PR issues
+            cleanup_merged_prs(dry_run)
 
         except KeyboardInterrupt:
             log.info("Shutting down gracefully...")
@@ -1093,8 +1127,10 @@ def main():
 
     if args.once:
         log.info("Running single polling cycle...")
-        process_issues(args.dry_run)
-        process_prs(args.dry_run)
+        open_prs = fetch_open_prs()
+        process_issues(args.dry_run, open_prs)
+        process_prs(args.dry_run, open_prs)
+        cleanup_merged_prs(args.dry_run)
         tracker.poll_all()
         log.info("Done.")
     else:
