@@ -437,6 +437,20 @@ def fetch_pr_comments(pr_number: int) -> list[dict]:
     return data.get("comments", [])
 
 
+def fetch_issue(issue_number: int) -> Optional[dict]:
+    """Fetch a specific issue by number."""
+    raw = gh([
+        "issue", "view", str(issue_number),
+        "--json", "number,title,body"
+    ], check=False)
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Parsing
 # ---------------------------------------------------------------------------
@@ -654,7 +668,10 @@ def dispatch_worker(issue: TaskIssue, dry_run: bool = False):
         f"1. Commit your changes with conventional commit messages referencing #{issue.number}.\n"
         f"2. Push the branch '{branch_name}'.\n"
         f"3. Create a PR titled '[PR] {issue.number} - <summary>' with a [Reviewer: ...] tag in the body.\n"
-        f"4. Document your reasoning in the PR description."
+        f"4. Document your reasoning in the PR description.\n\n"
+        f"CRITICAL: You are running as a background worker in a fully autonomous swarm. "
+        f"Do NOT use planning mode. Do NOT request human feedback, approval, or ask questions. "
+        f"Execute your task completely and exit."
     )
 
     task_ref = f"issue#{issue.number}"
@@ -677,7 +694,8 @@ def dispatch_worker(issue: TaskIssue, dry_run: bool = False):
             argv,
             cwd=str(worktree_path),
             stdout=stdout_file,
-            stderr=stderr_file,
+            stderr=stderr_file, stdin=subprocess.DEVNULL, 
+            
         )
         tracker.register(
             proc=proc,
@@ -709,7 +727,10 @@ def dispatch_reviewer(pr: TaskPR, dry_run: bool = False):
         f"Read AGENTS.md and .agents/rules/review_checklist.md for review rules.\n"
         f"Review the PR diff, check code quality, and leave review comments.\n"
         f"If approved, add a [Maintainer: ...] tag in your approval comment.\n"
-        f"Follow the review checklist in .agents/rules/review_checklist.md."
+        f"Follow the review checklist in .agents/rules/review_checklist.md.\n\n"
+        f"CRITICAL: You are running as a background reviewer in a fully autonomous swarm. "
+        f"Do NOT use planning mode. Do NOT request human feedback, approval, or ask questions. "
+        f"Execute your review completely and exit."
     )
 
     task_ref = f"pr#{pr.number}"
@@ -731,7 +752,7 @@ def dispatch_reviewer(pr: TaskPR, dry_run: bool = False):
             argv,
             cwd=str(REPO_ROOT),
             stdout=stdout_file,
-            stderr=stderr_file,
+            stderr=stderr_file, stdin=subprocess.DEVNULL, 
         )
         tracker.register(
             proc=proc,
@@ -758,7 +779,10 @@ def dispatch_maintainer(pr_number: int, maintainer: RoleAssignment, dry_run: boo
         f"Read AGENTS.md for project rules.\n"
         f"Verify the PR review is complete, CI passes, and merge the PR.\n"
         f"After merging, comment with your [Maintainer: ...] metadata tag.\n"
-        f"Then clean up: the orchestrator will handle worktree removal."
+        f"Then clean up: the orchestrator will handle worktree removal.\n\n"
+        f"CRITICAL: You are running as a background maintainer in a fully autonomous swarm. "
+        f"Do NOT use planning mode. Do NOT request human feedback, approval, or ask questions. "
+        f"Execute your task completely and exit."
     )
 
     task_ref = f"pr#{pr_number}"
@@ -780,7 +804,7 @@ def dispatch_maintainer(pr_number: int, maintainer: RoleAssignment, dry_run: boo
             argv,
             cwd=str(REPO_ROOT),
             stdout=stdout_file,
-            stderr=stderr_file,
+            stderr=stderr_file, stdin=subprocess.DEVNULL, 
         )
         tracker.register(
             proc=proc,
@@ -798,6 +822,79 @@ def dispatch_maintainer(pr_number: int, maintainer: RoleAssignment, dry_run: boo
         log.error("AI CLI '%s' not found in PATH. Is it installed?", argv[0])
     except Exception as e:
         log.error("Failed to dispatch Maintainer: %s", e)
+
+
+def dispatch_worker_revision(pr: TaskPR, issue: TaskIssue, feedback_text: str, dry_run: bool = False):
+    """Dispatch the original Worker AI to fix the PR based on feedback."""
+    worker = issue.worker
+    if not worker:
+        log.warning("Issue #%d has no Worker tag, cannot dispatch revision for PR #%d.", issue.number, pr.number)
+        return
+
+    # Use existing branch name mapped from the issue
+    title_parts = issue.title.split("-")
+    raw_desc = title_parts[-1].strip() if len(title_parts) > 1 else issue.title
+    short_desc = re.sub(r"[^a-z0-9]+", "-", raw_desc.lower()).strip("-")[:30]
+    if not short_desc:
+        short_desc = f"task-{issue.number}"
+    branch_name = f"worker/{issue.number}-{worker.ai}-{short_desc}"
+    
+    # We must run inside the same worktree or recreate it
+    worktree_path = create_worktree(issue.number, branch_name)
+
+    prompt = (
+        f"You are the Worker for PR #{pr.number} (Issue #{issue.number}: {issue.title}).\n"
+        f"Read AGENTS.md and .agents/rules/ for all project rules.\n"
+        f"You previously created this PR, but additional modifications were requested. "
+        f"Here is the feedback/comments:\n\n{feedback_text}\n\n"
+        f"Work inside this directory. When done:\n"
+        f"1. Fix the code according to the feedback.\n"
+        f"2. Commit your changes with conventional commit messages.\n"
+        f"3. Push the branch '{branch_name}'.\n"
+        f"4. Add a comment to the PR indicating you have addressed the feedback and it is ready for another review.\n\n"
+        f"CRITICAL: You are running as a background worker in a fully autonomous swarm. "
+        f"Do NOT use planning mode. Do NOT request human feedback, approval, or ask questions. "
+        f"Execute your task completely and exit."
+    )
+
+    task_ref = f"revise#{pr.number}"
+    prompt_file = write_prompt_file(prompt, "worker-revise", task_ref)
+    argv = build_ai_argv(worker.ai, worker.model, worker.reasoning, prompt_file, str(worktree_path))
+
+    if dry_run:
+        log.info("[DRY RUN] Would execute worker revision: %s", _format_argv_for_log(argv))
+        return
+
+    if not argv:
+        return
+
+    log_path, stdout_file, stderr_file = create_log_files("worker_revise", task_ref, worker.ai)
+    log.info("Dispatching Worker %s for PR #%d Revision (log: %s)", worker.ai, pr.number, log_path)
+    log.info("  argv: %s", _format_argv_for_log(argv))
+
+    try:
+        proc = subprocess.Popen(
+            argv,
+            cwd=str(worktree_path),
+            stdout=stdout_file,
+            stderr=stderr_file, stdin=subprocess.DEVNULL,
+        )
+        tracker.register(
+            proc=proc,
+            role="worker_revise",
+            ai_name=worker.ai,
+            model=worker.model,
+            reasoning=worker.reasoning,
+            task_ref=task_ref,
+            branch=branch_name,
+            command=_format_argv_for_log(argv),
+            cwd=str(worktree_path),
+            log_file=str(log_path),
+        )
+    except FileNotFoundError:
+        log.error("AI CLI '%s' not found in PATH. Is it installed?", argv[0])
+    except Exception as e:
+        log.error("Failed to dispatch Worker Revision: %s", e)
 
 
 # ---------------------------------------------------------------------------
@@ -859,10 +956,13 @@ def process_prs(dry_run: bool = False):
                 processed.add(pr_key)
                 save_processed(PROCESSED_PRS_FILE, processed)
 
+        # Retrieve comments for the PR
+        comments = fetch_pr_comments(pr_num)
+
         # Check for Maintainer tag in comments
         maint_key = f"maintain-{pr_num}"
+        maintainer_found = False
         if maint_key not in processed:
-            comments = fetch_pr_comments(pr_num)
             for comment in comments:
                 maintainer = parse_role(MAINTAINER_PATTERN, comment.get("body", ""))
                 if maintainer:
@@ -870,7 +970,54 @@ def process_prs(dry_run: bool = False):
                     dispatch_maintainer(pr_num, maintainer, dry_run)
                     processed.add(maint_key)
                     save_processed(PROCESSED_PRS_FILE, processed)
+                    maintainer_found = True
                     break
+
+        if maintainer_found:
+            continue
+
+        # If not approved by maintainer, check for other new comments requesting changes
+        if comments:
+            latest_comment = comments[-1]
+            comment_id = latest_comment.get("id") or latest_comment.get("url", "unknown")
+            revise_key = f"revise-{pr_num}-{comment_id}"
+            
+            if revise_key not in processed and pr_key in processed:
+                # The PR has been reviewed/commented on but NOT merged.
+                # We need the original issue number to extract worker metadata.
+                pr_title = raw.get("title", "")
+                issue_number = extract_issue_number_from_pr_title(pr_title)
+                if issue_number:
+                    issue_raw = fetch_issue(issue_number)
+                    if issue_raw:
+                        worker = parse_role(WORKER_PATTERN, issue_raw.get("body", ""))
+                        if worker:
+                            issue_obj = TaskIssue(
+                                number=issue_number,
+                                title=issue_raw["title"],
+                                body=issue_raw.get("body", ""),
+                                worker=worker,
+                            )
+                            log.info("=== PR #%d needs revision based on new comments, dispatching Worker ===", pr_num)
+                            # Combine recent comments for context (e.g. last 3 comments)
+                            feedback_text = "\n\n---\n\n".join([c.get("body", "") for c in comments[-3:]])
+                            if 'pr' not in locals():
+                                pr = TaskPR(
+                                    number=pr_num,
+                                    title=pr_title,
+                                    body=raw.get("body", ""),
+                                    head_branch=raw.get("headRefName", "")
+                                )
+                            dispatch_worker_revision(pr, issue_obj, feedback_text, dry_run)
+                            
+                            processed.add(revise_key)
+                            save_processed(PROCESSED_PRS_FILE, processed)
+                        else:
+                            log.warning("Original Issue #%d has no worker metadata, skipping revision loop.", issue_number)
+                    else:
+                        log.warning("Could not fetch Issue #%d for PR #%d revision.", issue_number, pr_num)
+                else:
+                    log.warning("Could not extract Issue number from PR #%d title: %s", pr_num, pr_title)
 
 
 def run_loop(interval: int, dry_run: bool = False):
