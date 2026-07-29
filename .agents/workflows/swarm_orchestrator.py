@@ -654,7 +654,10 @@ def dispatch_worker(issue: TaskIssue, dry_run: bool = False):
         f"1. Commit your changes with conventional commit messages referencing #{issue.number}.\n"
         f"2. Push the branch '{branch_name}'.\n"
         f"3. Create a PR titled '[PR] {issue.number} - <summary>' with a [Reviewer: ...] tag in the body.\n"
-        f"4. Document your reasoning in the PR description."
+        f"4. Document your reasoning in the PR description.\n\n"
+        f"CRITICAL: You are running as a background worker in a fully autonomous swarm. "
+        f"Do NOT use planning mode. Do NOT request human feedback, approval, or ask questions. "
+        f"Execute your task completely and exit."
     )
 
     task_ref = f"issue#{issue.number}"
@@ -677,7 +680,8 @@ def dispatch_worker(issue: TaskIssue, dry_run: bool = False):
             argv,
             cwd=str(worktree_path),
             stdout=stdout_file,
-            stderr=stderr_file,
+            stderr=stderr_file, stdin=subprocess.DEVNULL, 
+            
         )
         tracker.register(
             proc=proc,
@@ -709,7 +713,10 @@ def dispatch_reviewer(pr: TaskPR, dry_run: bool = False):
         f"Read AGENTS.md and .agents/rules/review_checklist.md for review rules.\n"
         f"Review the PR diff, check code quality, and leave review comments.\n"
         f"If approved, add a [Maintainer: ...] tag in your approval comment.\n"
-        f"Follow the review checklist in .agents/rules/review_checklist.md."
+        f"Follow the review checklist in .agents/rules/review_checklist.md.\n\n"
+        f"CRITICAL: You are running as a background reviewer in a fully autonomous swarm. "
+        f"Do NOT use planning mode. Do NOT request human feedback, approval, or ask questions. "
+        f"Execute your review completely and exit."
     )
 
     task_ref = f"pr#{pr.number}"
@@ -731,7 +738,7 @@ def dispatch_reviewer(pr: TaskPR, dry_run: bool = False):
             argv,
             cwd=str(REPO_ROOT),
             stdout=stdout_file,
-            stderr=stderr_file,
+            stderr=stderr_file, stdin=subprocess.DEVNULL, 
         )
         tracker.register(
             proc=proc,
@@ -758,7 +765,10 @@ def dispatch_maintainer(pr_number: int, maintainer: RoleAssignment, dry_run: boo
         f"Read AGENTS.md for project rules.\n"
         f"Verify the PR review is complete, CI passes, and merge the PR.\n"
         f"After merging, comment with your [Maintainer: ...] metadata tag.\n"
-        f"Then clean up: the orchestrator will handle worktree removal."
+        f"Then clean up: the orchestrator will handle worktree removal.\n\n"
+        f"CRITICAL: You are running as a background maintainer in a fully autonomous swarm. "
+        f"Do NOT use planning mode. Do NOT request human feedback, approval, or ask questions. "
+        f"Execute your task completely and exit."
     )
 
     task_ref = f"pr#{pr_number}"
@@ -780,7 +790,7 @@ def dispatch_maintainer(pr_number: int, maintainer: RoleAssignment, dry_run: boo
             argv,
             cwd=str(REPO_ROOT),
             stdout=stdout_file,
-            stderr=stderr_file,
+            stderr=stderr_file, stdin=subprocess.DEVNULL, 
         )
         tracker.register(
             proc=proc,
