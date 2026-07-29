@@ -2,7 +2,8 @@
  * Calculates the line and column number from an absolute character position in a text.
  * @param {string} text - The input text.
  * @param {number} position - The 0-indexed character position.
- * @returns {{line: number, column: number}} The line (1-indexed) and column (1-indexed) coordinates.
+ * @returns {{line: number, column: number}}
+ * The line (1-indexed) and column (1-indexed) coordinates.
  */
 function getLineColumn(text, position) {
   if (position < 0 || position > text.length) {
@@ -49,7 +50,14 @@ function getErrorSnippet(text, position, line, column) {
 /**
  * Validates a JSON string and provides detailed error coordinates and visualization on failure.
  * @param {string} text - The JSON text to validate.
- * @returns {{isValid: boolean, message: string, line?: number, column?: number, position?: number, snippet?: string}} Validation results.
+ * @returns {{
+ *   isValid: boolean,
+ *   message: string,
+ *   line?: number,
+ *   column?: number,
+ *   position?: number,
+ *   snippet?: string
+ * }} Validation results.
  */
 export function validateJson(text) {
   if (!text || text.trim() === '') {
