@@ -720,8 +720,15 @@ def dispatch_reviewer(pr: TaskPR, dry_run: bool = False):
     prompt = (
         f"You are the Reviewer for PR #{pr.number}: {pr.title}.\n"
         f"Read AGENTS.md and .agents/rules/review_checklist.md for review rules.\n"
-        f"Review the PR diff, check code quality, and leave review comments.\n"
-        f"If approved, add a [Maintainer: ...] tag in your approval comment.\n"
+        f"Review the PR diff, check code quality, and leave review comments.\n\n"
+        f"When your review is complete, you MUST post exactly ONE final summary comment "
+        f"on the PR containing your [Reviewer: ...] metadata tag. The tag format is:\n"
+        f"  [Reviewer: {reviewer.ai} | Model: {reviewer.model} | Reasoning: {reviewer.reasoning}]\n\n"
+        f"If the PR is approved and ready to merge, your final comment MUST also include:\n"
+        f"  [Maintainer: <ai_name> | Model: <model> | Reasoning: <level>]\n"
+        f"Choose the Maintainer from the DEFAULT_ROTATION in AGENTS.md (not the same as you).\n\n"
+        f"If changes are needed, your final comment MUST include your [Reviewer: ...] tag "
+        f"AND clearly describe all required changes. Do NOT include [Maintainer: ...] in this case.\n\n"
         f"Follow the review checklist in .agents/rules/review_checklist.md.\n\n"
         f"CRITICAL: You are running as a background reviewer in a fully autonomous swarm. "
         f"Do NOT use planning mode. Do NOT request human feedback, approval, or ask questions. "
@@ -950,51 +957,76 @@ def process_prs(dry_run: bool = False, open_prs: list[dict] = None):
         pr_title = raw.get("title", "")
         pr_body = raw.get("body", "")
         head_branch = raw.get("headRefName", "")
-        
+
         comments = fetch_pr_comments(pr_num)
-        
+
         pr_obj = TaskPR(
             number=pr_num,
             title=pr_title,
             body=pr_body,
             head_branch=head_branch,
         )
-        
-        # 1. Check for Maintainer tag (Approved)
-        maintainer_assignment = None
-        for comment in comments:
-            maintainer = parse_role(MAINTAINER_PATTERN, comment.get("body", ""))
-            if maintainer:
-                maintainer_assignment = maintainer
-                break
-                
+
         task_ref = f"pr#{pr_num}"
-        
-        if maintainer_assignment:
+
+        # --- Scan all comments to determine the last *meaningful* action ---
+        # Priority (highest wins): Maintainer approved > Worker done > Reviewer feedback
+        #
+        # A "meaningful" comment is one that contains a recognized signal tag.
+        # Plain informational comments (e.g. "리뷰를 시작합니다...") are ignored
+        # when determining state, preventing the reviewer's preamble from
+        # accidentally triggering a worker re-dispatch.
+
+        last_maintainer: Optional[RoleAssignment] = None
+        last_worker_done_idx: int = -1   # index of last "[Worker] Revision complete."
+        last_reviewer_feedback_idx: int = -1  # index of last reviewer feedback (non-approval)
+
+        for idx, comment in enumerate(comments):
+            body = comment.get("body", "")
+            if parse_role(MAINTAINER_PATTERN, body):
+                last_maintainer = parse_role(MAINTAINER_PATTERN, body)
+            if "[Worker] Revision complete." in body:
+                last_worker_done_idx = idx
+            if parse_role(REVIEWER_PATTERN, body):
+                # Reviewer left a tagged comment → could be feedback or approval notice
+                # Only count as "reviewer feedback" if it's NOT an approval
+                if not parse_role(MAINTAINER_PATTERN, body):
+                    last_reviewer_feedback_idx = idx
+
+        # 1. Maintainer tag found anywhere → dispatch Maintainer (once)
+        if last_maintainer:
             if not tracker.is_active(task_ref, role="maintainer"):
                 log.info("=== PR #%d approved, dispatching Maintainer ===", pr_num)
-                dispatch_maintainer(pr_num, maintainer_assignment, dry_run)
+                dispatch_maintainer(pr_num, last_maintainer, dry_run)
             continue
-            
-        # 2. Check if we need initial review or re-review
-        latest_comment_body = comments[-1].get("body", "") if comments else ""
+
+        # 2. Determine current state from signal chronology
+        # "needs_review" if:  no comments, or last signal was worker completing revision
         needs_review = False
-        
+        needs_revision = False
+
         if not comments:
             needs_review = True
-        elif "[Worker] Revision complete." in latest_comment_body:
+        elif last_worker_done_idx > last_reviewer_feedback_idx:
+            # Worker finished AFTER the last reviewer feedback → needs fresh review
             needs_review = True
-            
+        elif last_reviewer_feedback_idx > last_worker_done_idx:
+            # Reviewer left feedback AFTER last worker-done signal → worker must revise
+            needs_revision = True
+        else:
+            # No recognized signals yet → treat as "needs initial review"
+            needs_review = True
+
         if needs_review:
             reviewer = parse_role(REVIEWER_PATTERN, pr_body)
             if reviewer:
                 pr_obj.reviewer = reviewer
-                if not tracker.is_active_by_prefix(f"review#{pr_num}") and not tracker.is_active(task_ref, role="reviewer"):
+                if not tracker.is_active(task_ref, role="reviewer"):
                     log.info("=== PR #%d needs review ===", pr_num)
                     dispatch_reviewer(pr_obj, dry_run)
             continue
-            
-        # 3. If there are comments and no maintainer approval, and latest is not worker completion -> Changes Requested
+
+        # 3. Changes requested — dispatch Worker revision
         if comments:
             latest_comment = comments[-1]
             comment_id = latest_comment.get("id") or latest_comment.get("url", "unknown")
