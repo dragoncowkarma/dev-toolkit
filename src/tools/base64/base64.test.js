@@ -84,7 +84,9 @@ describe('fileToBase64', () => {
       }),
     };
     const OriginalFileReader = global.FileReader;
-    global.FileReader = vi.fn(() => failingReader);
+    global.FileReader = vi.fn(function FileReader() {
+      return failingReader;
+    });
 
     await expect(fileToBase64(new File(['x'], 'x.txt'))).rejects.toThrow(
       'Failed to read the selected file.'

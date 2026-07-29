@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   decodeFromBase64,
   encodeToBase64,
@@ -12,11 +12,19 @@ const MODES = {
   DECODE: 'decode',
 };
 
-export default function Base64Tool() {
+/**
+ * Renders the Base64 encoder/decoder tool with live text conversion and file upload support.
+ *
+ * @param {object} props Component props.
+ * @param {() => void} props.onBack Callback to return to the tool dashboard.
+ * @returns {React.JSX.Element} The Base64 tool UI.
+ */
+export default function Base64Tool({ onBack }) {
   const [mode, setMode] = useState(MODES.ENCODE);
   const [input, setInput] = useState('');
   const [output, setOutput] = useState('');
   const [error, setError] = useState('');
+  const [copyError, setCopyError] = useState('');
   const [file, setFile] = useState(null);
   const [copied, setCopied] = useState(false);
   const fileInputRef = useRef(null);
@@ -49,7 +57,13 @@ export default function Base64Tool() {
   function handleModeChange(nextMode) {
     if (nextMode === mode) return;
     setMode(nextMode);
-    setFile(null);
+    if (file) {
+      // Leaving file mode: the uploaded-file label lived in `input` for display
+      // purposes only and must not be re-interpreted as conversion input.
+      setFile(null);
+      setInput('');
+      setOutput('');
+    }
     setError('');
   }
 
@@ -69,6 +83,7 @@ export default function Base64Tool() {
     setInput('');
     setOutput('');
     setError('');
+    setCopyError('');
     setFile(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -80,8 +95,11 @@ export default function Base64Tool() {
     try {
       await navigator.clipboard.writeText(output);
       setCopied(true);
+      setCopyError('');
     } catch {
-      setError('Failed to copy to clipboard.');
+      // Clipboard failures are reported separately from conversion errors so
+      // a denied copy can never disable a valid Swap.
+      setCopyError('Failed to copy to clipboard.');
     }
   }
 
@@ -100,14 +118,26 @@ export default function Base64Tool() {
     }
   }
 
+  const alertMessage = error || copyError;
+
   return (
-    <div className="base64-tool">
+    <section className="base64-tool" aria-label="Base64 Encoder/Decoder Tool">
+      <div className="base64-header-row">
+        <button
+          type="button"
+          className="back-button"
+          onClick={onBack}
+          aria-label="Go back to tool dashboard"
+        >
+          <span aria-hidden="true">←</span> Back
+        </button>
+      </div>
+
       <div className="base64-toolbar">
-        <div className="mode-toggle" role="tablist" aria-label="Conversion mode">
+        <div className="mode-toggle" role="group" aria-label="Conversion mode">
           <button
             type="button"
-            role="tab"
-            aria-selected={mode === MODES.ENCODE}
+            aria-pressed={mode === MODES.ENCODE}
             className={`mode-btn ${mode === MODES.ENCODE ? 'active' : ''}`}
             onClick={() => handleModeChange(MODES.ENCODE)}
           >
@@ -115,8 +145,7 @@ export default function Base64Tool() {
           </button>
           <button
             type="button"
-            role="tab"
-            aria-selected={mode === MODES.DECODE}
+            aria-pressed={mode === MODES.DECODE}
             className={`mode-btn ${mode === MODES.DECODE ? 'active' : ''}`}
             onClick={() => handleModeChange(MODES.DECODE)}
           >
@@ -188,11 +217,11 @@ export default function Base64Tool() {
         </div>
       </div>
 
-      {error && (
+      {alertMessage && (
         <div className="base64-error" role="alert">
-          ⚠ {error}
+          ⚠ {alertMessage}
         </div>
       )}
-    </div>
+    </section>
   );
 }
