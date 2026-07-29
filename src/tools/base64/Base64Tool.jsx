@@ -15,11 +15,9 @@ const MODES = {
 /**
  * Renders the Base64 encoder/decoder tool with live text conversion and file upload support.
  *
- * @param {object} props Component props.
- * @param {() => void} props.onBack Callback to return to the tool dashboard.
  * @returns {React.JSX.Element} The Base64 tool UI.
  */
-export default function Base64Tool({ onBack }) {
+export default function Base64Tool() {
   const [mode, setMode] = useState(MODES.ENCODE);
   const [input, setInput] = useState('');
   const [output, setOutput] = useState('');
@@ -28,6 +26,7 @@ export default function Base64Tool({ onBack }) {
   const [file, setFile] = useState(null);
   const [copied, setCopied] = useState(false);
   const fileInputRef = useRef(null);
+  const fileRequestRef = useRef(0);
 
   // Real-time conversion whenever the input or mode changes.
   useEffect(() => {
@@ -56,6 +55,7 @@ export default function Base64Tool({ onBack }) {
 
   function handleModeChange(nextMode) {
     if (nextMode === mode) return;
+    fileRequestRef.current += 1;
     setMode(nextMode);
     if (file) {
       // Leaving file mode: the uploaded-file label lived in `input` for display
@@ -68,18 +68,21 @@ export default function Base64Tool({ onBack }) {
   }
 
   function handleInputChange(event) {
+    fileRequestRef.current += 1;
     setFile(null);
     setInput(event.target.value);
   }
 
   function handleSwap() {
     if (error) return;
+    fileRequestRef.current += 1;
     setFile(null);
     setInput(output);
     setMode(mode === MODES.ENCODE ? MODES.DECODE : MODES.ENCODE);
   }
 
   function handleClear() {
+    fileRequestRef.current += 1;
     setInput('');
     setOutput('');
     setError('');
@@ -106,14 +109,19 @@ export default function Base64Tool({ onBack }) {
   async function handleFileChange(event) {
     const selected = event.target.files?.[0];
     if (!selected) return;
+    const requestId = (fileRequestRef.current += 1);
     try {
       const base64 = await fileToBase64(selected);
+      // Discard this result if a newer read started, or the read was
+      // invalidated by a Clear/mode/input change while it was in flight.
+      if (fileRequestRef.current !== requestId) return;
       setMode(MODES.ENCODE);
       setFile(selected);
       setInput(`📁 ${selected.name} (${formatFileSize(selected.size)})`);
       setOutput(base64);
       setError('');
     } catch (err) {
+      if (fileRequestRef.current !== requestId) return;
       setError(err.message);
     }
   }
@@ -122,17 +130,6 @@ export default function Base64Tool({ onBack }) {
 
   return (
     <section className="base64-tool" aria-label="Base64 Encoder/Decoder Tool">
-      <div className="base64-header-row">
-        <button
-          type="button"
-          className="back-button"
-          onClick={onBack}
-          aria-label="Go back to tool dashboard"
-        >
-          <span aria-hidden="true">←</span> Back
-        </button>
-      </div>
-
       <div className="base64-toolbar">
         <div className="mode-toggle" role="group" aria-label="Conversion mode">
           <button
