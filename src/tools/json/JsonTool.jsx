@@ -315,6 +315,17 @@ export default function JsonTool({ onBack }) {
     }
   }
 
+  // Guards against the render that happens after input changes but before the
+  // validation effect catches up, where validation.isValid can still be stale.
+  let formattedOutputText = output;
+  if (!formattedOutputText && input.trim()) {
+    try {
+      formattedOutputText = formatJson(input, indent);
+    } catch (e) {
+      formattedOutputText = '';
+    }
+  }
+
   return (
     <section className="json-tool-container" aria-label="JSON Utility Tool">
       {toast && (
@@ -491,7 +502,7 @@ export default function JsonTool({ onBack }) {
                   whiteSpace: 'pre-wrap', 
                   wordBreak: 'break-all' 
                 }}>
-                  {output || (input.trim() ? formatJson(input, indent) : '')}
+                  {formattedOutputText}
                 </pre>
               ) : (
                 <div className="error-snippet-container" role="alert">
