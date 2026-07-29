@@ -60,4 +60,10 @@ describe('JSON Utilities - Minification', () => {
     const minified = minifyJson(formatted);
     expect(minified).toBe('{"name":"John","age":30}');
   });
+
+  it('should minify a deeply nested JSON structure', () => {
+    const complex = '{\n  "a": {\n    "b": [\n      {\n        "c": 1\n      }\n    ]\n  }\n}';
+    expect(minifyJson(complex)).toBe('{"a":{"b":[{"c":1}]}}');
+  });
 });
+
