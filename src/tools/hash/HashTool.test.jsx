@@ -5,7 +5,11 @@ import * as hashUtils from './hash.utils.js';
 
 vi.mock('./hash.utils.js', async (importOriginal) => {
   const actual = await importOriginal();
-  return { ...actual, hashFile: vi.fn(actual.hashFile) };
+  return {
+    ...actual,
+    hashFile: vi.fn(actual.hashFile),
+    hashText: vi.fn(actual.hashText),
+  };
 });
 
 function selectFile(input, file) {
@@ -60,6 +64,66 @@ describe('HashTool real-time text hashing', () => {
 
     fireEvent.change(screen.getByLabelText('Text'), { target: { value: '' } });
     await waitFor(() => expect(screen.getByLabelText('MD5 hash')).toHaveTextContent('—'));
+  });
+});
+
+describe('HashTool pending request handling', () => {
+  it('clears the previous digest while a new text request is pending', async () => {
+    render(<HashTool />);
+
+    fireEvent.change(screen.getByLabelText('Text'), { target: { value: 'hello' } });
+    await waitFor(() =>
+      expect(screen.getByLabelText('MD5 hash')).toHaveTextContent(
+        '5d41402abc4b2a76b9719d911017c592'
+      )
+    );
+
+    const deferred = createDeferred();
+    hashUtils.hashText.mockReturnValueOnce(deferred.promise);
+
+    fireEvent.change(screen.getByLabelText('Text'), { target: { value: 'world' } });
+
+    // The old MD5 digest must disappear immediately, before the new request
+    // resolves, so it can never be read or copied while a request is pending.
+    expect(screen.getByLabelText('MD5 hash')).not.toHaveTextContent(
+      '5d41402abc4b2a76b9719d911017c592'
+    );
+    expect(screen.getByLabelText('MD5 hash')).toHaveTextContent('Computing…');
+    expect(screen.getByRole('button', { name: 'Copy MD5 hash' })).toBeDisabled();
+
+    await act(async () => {
+      deferred.resolve('deadbeef');
+      await Promise.resolve();
+    });
+  });
+
+  it('clears the previous digest while a new file request is pending', async () => {
+    render(<HashTool />);
+
+    fireEvent.change(screen.getByLabelText('Text'), { target: { value: 'hello' } });
+    await waitFor(() =>
+      expect(screen.getByLabelText('MD5 hash')).toHaveTextContent(
+        '5d41402abc4b2a76b9719d911017c592'
+      )
+    );
+
+    const deferred = createDeferred();
+    hashUtils.hashFile.mockReturnValueOnce(deferred.promise);
+
+    const file = new File(['world'], 'greeting.txt', { type: 'text/plain' });
+    const fileInput = screen.getByLabelText('Compute a hash for a file');
+    selectFile(fileInput, file);
+
+    expect(screen.getByLabelText('MD5 hash')).not.toHaveTextContent(
+      '5d41402abc4b2a76b9719d911017c592'
+    );
+    expect(screen.getByLabelText('MD5 hash')).toHaveTextContent('Computing…');
+    expect(screen.getByRole('button', { name: 'Copy MD5 hash' })).toBeDisabled();
+
+    await act(async () => {
+      deferred.resolve('deadbeef');
+      await Promise.resolve();
+    });
   });
 });
 
@@ -161,15 +225,31 @@ describe('HashTool copy behavior', () => {
 
     const md5Row = screen.getByLabelText('MD5 hash').closest('.hash-result-row');
     await act(async () => {
-      fireEvent.click(within(md5Row).getByRole('button', { name: 'Copy' }));
+      fireEvent.click(within(md5Row).getByRole('button', { name: 'Copy MD5 hash' }));
       await Promise.resolve();
     });
 
     expect(writeText).toHaveBeenCalledWith('5d41402abc4b2a76b9719d911017c592');
-    expect(within(md5Row).getByRole('button', { name: '✓ Copied' })).toBeInTheDocument();
+    expect(within(md5Row).getByRole('button', { name: 'MD5 hash copied' })).toBeInTheDocument();
 
     const shaRow = screen.getByLabelText('SHA-1 hash').closest('.hash-result-row');
-    expect(within(shaRow).getByRole('button', { name: 'Copy' })).toBeInTheDocument();
+    expect(within(shaRow).getByRole('button', { name: 'Copy SHA-1 hash' })).toBeInTheDocument();
+  });
+
+  it('gives every per-algorithm copy control a distinct accessible name', async () => {
+    render(<HashTool />);
+
+    fireEvent.change(screen.getByLabelText('Text'), { target: { value: 'hello' } });
+    await waitFor(() => expect(screen.getByLabelText('MD5 hash')).not.toHaveTextContent('—'));
+
+    // Every algorithm's Copy control must resolve to exactly one button with
+    // a name unique to that algorithm, not a shared generic "Copy" name.
+    const copyButtonNames = hashUtils.ALGORITHMS.map((algorithm) => `Copy ${algorithm} hash`);
+    expect(new Set(copyButtonNames).size).toBe(hashUtils.ALGORITHMS.length);
+
+    copyButtonNames.forEach((name) => {
+      expect(screen.getByRole('button', { name })).toBeInTheDocument();
+    });
   });
 
   it('reports a copy failure without crashing', async () => {
@@ -184,7 +264,7 @@ describe('HashTool copy behavior', () => {
 
     const md5Row = screen.getByLabelText('MD5 hash').closest('.hash-result-row');
     await act(async () => {
-      fireEvent.click(within(md5Row).getByRole('button', { name: 'Copy' }));
+      fireEvent.click(within(md5Row).getByRole('button', { name: 'Copy MD5 hash' }));
       await Promise.resolve();
     });
 

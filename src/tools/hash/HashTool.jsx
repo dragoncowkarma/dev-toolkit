@@ -46,6 +46,9 @@ export default function HashTool({ onBack }) {
       return;
     }
 
+    // Clear any previous digest immediately so a stale hash from the prior
+    // input/file is never visible or copyable while this request is pending.
+    setHashes(EMPTY_HASHES);
     setComputing(true);
     const digestOf = (algorithm) =>
       file ? hashFile(algorithm, file) : hashText(algorithm, input);
@@ -234,6 +237,11 @@ export default function HashTool({ onBack }) {
                 className="btn copy-btn"
                 onClick={() => handleCopy(algorithm)}
                 disabled={!hashes[algorithm]}
+                aria-label={
+                  copiedAlgorithm === algorithm
+                    ? `${algorithm} hash copied`
+                    : `Copy ${algorithm} hash`
+                }
               >
                 {copiedAlgorithm === algorithm ? '✓ Copied' : 'Copy'}
               </button>
