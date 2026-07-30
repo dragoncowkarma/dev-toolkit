@@ -225,4 +225,3 @@ describe('JsonTool Large Data & Virtualization Regression', () => {
     expect(screen.queryByRole('button', { name: 'Collapse inner node' })).toBeNull();
   });
 });
-
