@@ -935,11 +935,17 @@ def cleanup_worktree(issue_number: int, branch_name: str):
                 return
             log.info("Removed worktree: %s", worktree_path)
 
-    # Delete branch if it was merged
-    subprocess.run(
-        ["git", "branch", "-d", branch_name],
-        cwd=REPO_ROOT, check=False,
+    # Force-delete the local branch. We already confirmed the PR is merged on
+    # GitHub, so the local merge check (`-d`) is unreliable when the PR was
+    # squash- or rebase-merged (the original commits never appear on HEAD).
+    result = subprocess.run(
+        ["git", "branch", "-D", branch_name],
+        cwd=REPO_ROOT, capture_output=True, text=True, check=False,
     )
+    if result.returncode != 0:
+        stderr = result.stderr.strip()
+        if stderr:
+            log.warning("Failed to delete branch '%s': %s", branch_name, stderr)
 
 
 # ---------------------------------------------------------------------------
