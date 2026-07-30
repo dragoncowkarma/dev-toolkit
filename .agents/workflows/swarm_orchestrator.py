@@ -24,7 +24,7 @@ import sys
 import tempfile
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Optional
@@ -38,17 +38,45 @@ WORKTREE_DIR = REPO_ROOT / ".worktrees"
 LOG_DIR = REPO_ROOT / ".agents" / "logs"
 POLL_INTERVAL_SECONDS = 30
 PROCESS_REGISTRY_FILE = REPO_ROOT / ".agents" / ".process_registry.json"
+OPEN_ITEMS_LIMIT = 1000
 
 # A lifecycle event runs at most once successfully, but a crashed process is
 # retried so a transient AI CLI failure cannot deadlock the swarm forever.
 MAX_DISPATCH_ATTEMPTS = 3
 
+# Provider quota/tool/timeout failures are availability pauses, not crashed
+# task attempts. Keep them out of the bounded crash budget and retry after the
+# provider's advertised reset, or after a conservative fallback cooldown.
+PROVIDER_COOLDOWN_SECONDS = 60 * 60
+PROVIDER_COOLDOWN_BUFFER_SECONDS = 60
+PROVIDER_LIMIT_PATTERNS = (
+    "individual quota reached",
+    "monthly spend limit",
+    "rate limit exceeded",
+    "resource_exhausted",
+    "too many requests",
+)
+EVENT_DEFER_PATTERNS = (
+    "timeout waiting for response",
+    "no_tool_withdrawn",
+)
+
+# `agy --print-timeout` defaults to 5m, which is shorter than a real Worker
+# task (exploration + npm install + implementation). Without an explicit
+# override, agy exits 1 with "Error: timeout waiting for response" well
+# before finishing, burning all MAX_DISPATCH_ATTEMPTS on tasks that never
+# had a chance to complete.
+ANTIGRAVITY_PRINT_TIMEOUT = "45m"
+
 # Stable reasons returned by ProcessTracker.should_dispatch().
 DISPATCH_RUNNING = "already running"
 DISPATCH_COMPLETED = "already completed"
+DISPATCH_UNCONFIRMED = "completed without confirmed lifecycle transition"
+DISPATCH_PROVIDER_COOLDOWN = "provider cooldown"
 
 # Upper bound on persisted history so the registry cannot grow without limit.
 MAX_HISTORY_RECORDS = 500
+IDLE_EXIT_CYCLES = 1
 
 # Metadata tag patterns
 WORKER_PATTERN = re.compile(
@@ -98,6 +126,20 @@ def log_blocker(key: str, message: str, *args, level: int = logging.ERROR):
     log.log(level, message, *args)
 
 
+def log_dispatch_blocker(key: str, subject: str, reason: str):
+    """Report terminal or deferred dispatch state without poll-cycle spam."""
+    if reason.startswith("exhausted") or reason == DISPATCH_UNCONFIRMED:
+        log_blocker(key, "%s dispatch blocked: %s.", subject, reason)
+    elif reason.startswith(DISPATCH_PROVIDER_COOLDOWN):
+        log_blocker(
+            key,
+            "%s dispatch deferred: %s.",
+            subject,
+            reason,
+            level=logging.WARNING,
+        )
+
+
 # ---------------------------------------------------------------------------
 # Data Classes
 # ---------------------------------------------------------------------------
@@ -106,6 +148,7 @@ class ProcessStatus(str, Enum):
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
+    DEFERRED = "deferred"
     UNKNOWN = "unknown"
 
 
@@ -152,6 +195,9 @@ class TrackedProcess:
     ended_at: Optional[str] = None
     exit_code: Optional[int] = None
     status: str = ProcessStatus.RUNNING
+    failure_reason: Optional[str] = None
+    retry_after: Optional[str] = None
+    defer_scope: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -179,6 +225,24 @@ class ProcessTracker:
             except (json.JSONDecodeError, TypeError):
                 log.warning("Corrupted process registry, starting fresh.")
         self._reconcile_orphans()
+        self._reclassify_deferred_failures()
+
+    def _reclassify_deferred_failures(self):
+        """Upgrade historical transient failures so a restart can recover them."""
+        for record in self._history:
+            if record.status not in (
+                ProcessStatus.FAILED,
+                ProcessStatus.COMPLETED,
+            ):
+                continue
+            output_tail = self._read_log_tail(record.log_file, 2000)
+            retry_after = self._provider_retry_after(output_tail, record.ended_at)
+            if not retry_after:
+                continue
+            record.status = ProcessStatus.DEFERRED
+            record.failure_reason = self._failure_summary(output_tail)
+            record.retry_after = retry_after
+            record.defer_scope = self._defer_scope(output_tail)
 
     def _reconcile_orphans(self):
         """Demote records left RUNNING by a crashed orchestrator.
@@ -260,21 +324,38 @@ class ProcessTracker:
                 tracked.exit_code = retcode
                 tracked.ended_at = datetime.now(timezone.utc).isoformat()
                 elapsed = self._elapsed_str(tracked.started_at)
+                output_tail = self._read_log_tail(tracked.log_file, 2000)
+                tracked.retry_after = self._provider_retry_after(
+                    output_tail,
+                    tracked.ended_at,
+                )
 
-                if retcode == 0:
+                if tracked.retry_after:
+                    tracked.status = ProcessStatus.DEFERRED
+                    tracked.failure_reason = self._failure_summary(output_tail)
+                    tracked.defer_scope = self._defer_scope(output_tail)
+                    log.warning(
+                        "⏸️ [PID %d] %s %s — provider unavailable "
+                        "(exit %d, %s); retry after %s\n  output: %s",
+                        pid, tracked.role.upper(), tracked.task_ref,
+                        retcode, elapsed, tracked.retry_after,
+                        tracked.failure_reason,
+                    )
+                elif retcode == 0:
                     tracked.status = ProcessStatus.COMPLETED
                     log.info(
                         "✅ [PID %d] %s %s — completed successfully (%s)",
                         pid, tracked.role.upper(), tracked.task_ref, elapsed,
                     )
                 else:
+                    tracked.failure_reason = self._failure_summary(output_tail)
                     tracked.status = ProcessStatus.FAILED
-                    # Capture last lines of stderr for diagnostics
-                    stderr_tail = self._read_tail(proc.stderr, 500)
                     log.error(
-                        "❌ [PID %d] %s %s — failed (exit %d, %s)\n  stderr: %s",
+                        "❌ [PID %d] %s %s — failed (exit %d, %s)\n"
+                        "  output: %s",
                         pid, tracked.role.upper(), tracked.task_ref,
-                        retcode, elapsed, stderr_tail or "(empty)",
+                        retcode, elapsed,
+                        tracked.failure_reason or "(empty)",
                     )
 
                 finished_pids.append(pid)
@@ -306,7 +387,13 @@ class ProcessTracker:
                 return True
         return False
 
-    def should_dispatch(self, task_ref: str, role: str) -> tuple[bool, str]:
+    def should_dispatch(
+        self,
+        task_ref: str,
+        role: str,
+        completion_confirmed: bool = True,
+        ai_name: Optional[str] = None,
+    ) -> tuple[bool, str]:
         """Decide whether a lifecycle event still needs a process, with a reason.
 
         Task references identify lifecycle events rather than only an Issue or
@@ -314,23 +401,78 @@ class ProcessTracker:
         restarts while the Worker/Reviewer loop can still advance when a new
         review comment or commit creates a new event.
 
-        A running or completed attempt blocks the event permanently. A crashed
-        attempt is retried up to MAX_DISPATCH_ATTEMPTS times, because a swarm
-        that abandons an event after one failed AI process stalls forever.
+        A running or completed attempt always blocks another dispatch for the
+        same lifecycle event. In particular, a successful process without its
+        required GitHub signal is surfaced as a blocker instead of being run
+        again, preserving the one-successful-dispatch invariant.
+
+        Provider quota failures pause until their cooldown expires and do not
+        consume the bounded crash retry budget.
         """
         attempts = [
             record for record in self.all_records
             if record.task_ref == task_ref and record.role == role
         ]
-        if not attempts:
-            return True, "new event"
         if any(record.status == ProcessStatus.RUNNING for record in attempts):
             return False, DISPATCH_RUNNING
-        if any(record.status == ProcessStatus.COMPLETED for record in attempts):
-            return False, DISPATCH_COMPLETED
-        if len(attempts) >= MAX_DISPATCH_ATTEMPTS:
-            return False, f"exhausted {len(attempts)} failed attempts"
-        return True, f"retry {len(attempts) + 1}/{MAX_DISPATCH_ATTEMPTS} after failure"
+        provider_cooldowns = []
+        if ai_name:
+            for record in self.all_records:
+                if (
+                    record.status != ProcessStatus.DEFERRED
+                    or record.ai_name != ai_name
+                    or record.defer_scope != "provider"
+                    or not record.retry_after
+                ):
+                    continue
+                retry_at = datetime.fromisoformat(record.retry_after)
+                if datetime.now(timezone.utc) < retry_at:
+                    provider_cooldowns.append(retry_at)
+        if provider_cooldowns:
+            retry_at = max(provider_cooldowns).isoformat()
+            return False, f"{DISPATCH_PROVIDER_COOLDOWN} until {retry_at}"
+        if not attempts:
+            return True, "new event"
+
+        deferred = [
+            record for record in attempts
+            if record.status == ProcessStatus.DEFERRED
+        ]
+        if deferred:
+            latest = deferred[-1]
+            if latest.retry_after:
+                retry_at = datetime.fromisoformat(latest.retry_after)
+                if datetime.now(timezone.utc) < retry_at:
+                    return (
+                        False,
+                        f"{DISPATCH_PROVIDER_COOLDOWN} until {latest.retry_after}",
+                    )
+
+        crash_attempts = [
+            record for record in attempts
+            if record.status in (ProcessStatus.FAILED, ProcessStatus.UNKNOWN)
+        ]
+        completed_attempts = [
+            record for record in attempts
+            if record.status == ProcessStatus.COMPLETED
+        ]
+        if completed_attempts:
+            if completion_confirmed:
+                return False, DISPATCH_COMPLETED
+            if len(crash_attempts) >= MAX_DISPATCH_ATTEMPTS:
+                return False, f"exhausted {len(crash_attempts)} failed attempts"
+            return (
+                True,
+                f"retry after unconfirmed completion ({len(crash_attempts) + 1}/{MAX_DISPATCH_ATTEMPTS})",
+            )
+        if len(crash_attempts) >= MAX_DISPATCH_ATTEMPTS:
+            return False, f"exhausted {len(crash_attempts)} failed attempts"
+        if deferred:
+            return True, "retry after provider cooldown"
+        return (
+            True,
+            f"retry {len(crash_attempts) + 1}/{MAX_DISPATCH_ATTEMPTS} after failure",
+        )
 
     @property
     def active_count(self) -> int:
@@ -369,7 +511,12 @@ class ProcessTracker:
         lines.append(f"\n📜 Recent History (last {len(recent)}):")
         if recent:
             for tp in recent:
-                icon = "✅" if tp.status == ProcessStatus.COMPLETED else "❌"
+                if tp.status == ProcessStatus.COMPLETED:
+                    icon = "✅"
+                elif tp.status == ProcessStatus.DEFERRED:
+                    icon = "⏸️"
+                else:
+                    icon = "❌"
                 duration = self._duration_str(tp.started_at, tp.ended_at)
                 lines.append(
                     f"  {icon} PID {tp.pid:>7}  │ {tp.role:<12} │ {tp.ai_name:<14} │ "
@@ -382,7 +529,14 @@ class ProcessTracker:
         total = len(self._history)
         succeeded = sum(1 for tp in self._history if tp.status == ProcessStatus.COMPLETED)
         failed = sum(1 for tp in self._history if tp.status == ProcessStatus.FAILED)
-        lines.append(f"\n📊 Totals: {total} finished ({succeeded} ✅, {failed} ❌), {len(active)} running")
+        deferred = sum(
+            1 for tp in self._history if tp.status == ProcessStatus.DEFERRED
+        )
+        lines.append(
+            f"\n📊 Totals: {total} finished "
+            f"({succeeded} ✅, {failed} ❌, {deferred} ⏸️), "
+            f"{len(active)} running"
+        )
         lines.append("=" * 72)
         return "\n".join(lines)
 
@@ -431,20 +585,77 @@ class ProcessTracker:
         return f"{secs // 3600}h {(secs % 3600) // 60}m"
 
     @staticmethod
-    def _read_tail(stream, max_bytes: int = 500) -> str:
-        if stream is None:
+    def _read_log_tail(log_file: str, max_bytes: int = 500) -> str:
+        if not log_file:
             return ""
         try:
-            data = stream.read()
-            if isinstance(data, bytes):
-                data = data.decode("utf-8", errors="replace")
-            return data[-max_bytes:] if data else ""
-        except Exception:
+            path = Path(log_file)
+            with path.open("rb") as stream:
+                stream.seek(0, os.SEEK_END)
+                size = stream.tell()
+                stream.seek(max(0, size - max_bytes))
+                return stream.read().decode("utf-8", errors="replace")
+        except OSError:
             return ""
+
+    @staticmethod
+    def _failure_summary(output: str) -> str:
+        lines = [line.strip() for line in output.splitlines() if line.strip()]
+        return lines[-1][-500:] if lines else ""
+
+    @staticmethod
+    def _provider_retry_after(
+        output: str,
+        ended_at: Optional[str] = None,
+    ) -> Optional[str]:
+        lowered = output.lower()
+        deferred_patterns = PROVIDER_LIMIT_PATTERNS + EVENT_DEFER_PATTERNS
+        if not any(pattern in lowered for pattern in deferred_patterns):
+            return None
+
+        reset_match = re.search(
+            r"resets?\s+in\s+"
+            r"(?:(?P<hours>\d+)h)?"
+            r"(?:(?P<minutes>\d+)m)?"
+            r"(?:(?P<seconds>\d+)s)?",
+            lowered,
+        )
+        delay = PROVIDER_COOLDOWN_SECONDS
+        if reset_match and any(reset_match.groupdict().values()):
+            delay = (
+                int(reset_match.group("hours") or 0) * 3600
+                + int(reset_match.group("minutes") or 0) * 60
+                + int(reset_match.group("seconds") or 0)
+                + PROVIDER_COOLDOWN_BUFFER_SECONDS
+            )
+
+        base = (
+            datetime.fromisoformat(ended_at)
+            if ended_at
+            else datetime.now(timezone.utc)
+        )
+        return (base + timedelta(seconds=delay)).isoformat()
+
+    @staticmethod
+    def _defer_scope(output: str) -> Optional[str]:
+        lowered = output.lower()
+        if any(pattern in lowered for pattern in PROVIDER_LIMIT_PATTERNS):
+            return "provider"
+        if any(pattern in lowered for pattern in EVENT_DEFER_PATTERNS):
+            return "event"
+        return None
 
 
 # Global tracker instance
 tracker = ProcessTracker()
+
+
+def reset_process_history():
+    """Start a fresh run with no persisted dispatch failures or active state."""
+    tracker._active.clear()
+    tracker._history.clear()
+    if PROCESS_REGISTRY_FILE.exists():
+        PROCESS_REGISTRY_FILE.unlink()
 
 
 # ---------------------------------------------------------------------------
@@ -455,38 +666,55 @@ def gh(args: list[str], check: bool = True) -> str:
     """Run a gh CLI command and return stdout."""
     cmd = ["gh"] + args
     log.debug("Running: %s", " ".join(cmd))
-    result = subprocess.run(cmd, capture_output=True, text=True, cwd=REPO_ROOT, check=check)
-    if result.returncode != 0 and check:
-        log.error("gh command failed: %s\nstderr: %s", " ".join(cmd), result.stderr)
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+        check=False,
+    )
+    if result.returncode != 0:
+        log.error(
+            "gh command failed (exit %d): %s\nstderr: %s",
+            result.returncode,
+            " ".join(cmd),
+            result.stderr.strip() or "(empty)",
+        )
+        if check:
+            raise subprocess.CalledProcessError(
+                result.returncode,
+                cmd,
+                output=result.stdout,
+                stderr=result.stderr,
+            )
+        return ""
     return result.stdout.strip()
 
 
 def fetch_open_issues() -> list[dict]:
-    """Fetch open issues with [Task] prefix."""
+    """Fetch every open Issue so the startup scan cannot hide malformed tasks."""
     raw = gh([
         "issue", "list",
         "--state", "open",
         "--json", "number,title,body",
-        "--limit", "50",
-    ], check=False)
+        "--limit", str(OPEN_ITEMS_LIMIT),
+    ])
     if not raw:
         return []
-    issues = json.loads(raw)
-    return [i for i in issues if i.get("title", "").startswith("[Task]")]
+    return json.loads(raw)
 
 
 def fetch_open_prs() -> list[dict]:
-    """Fetch open PRs with [PR] prefix."""
+    """Fetch every open PR so the startup scan cannot hide malformed work."""
     raw = gh([
         "pr", "list",
         "--state", "open",
         "--json", "number,title,body,headRefName,headRefOid",
-        "--limit", "50",
-    ], check=False)
+        "--limit", str(OPEN_ITEMS_LIMIT),
+    ])
     if not raw:
         return []
-    prs = json.loads(raw)
-    return [p for p in prs if p.get("title", "").startswith("[PR]")]
+    return json.loads(raw)
 
 
 def fetch_pr_comments(pr_number: int) -> list[dict]:
@@ -593,12 +821,12 @@ def determine_pr_action(comments: list[dict]) -> tuple[str, Optional[dict], int]
             latest_action = "maintain"
             latest_comment = comment
             latest_index = index
-        elif "[Worker] Revision complete." in body:
-            latest_action = "review"
-            latest_comment = comment
-            latest_index = index
         elif reviewer:
             latest_action = "revise"
+            latest_comment = comment
+            latest_index = index
+        elif "[Worker] Revision complete." in body:
+            latest_action = "review"
             latest_comment = comment
             latest_index = index
 
@@ -663,32 +891,49 @@ def cleanup_worktree(issue_number: int, branch_name: str):
         return
 
     if worktree_path.exists():
-        status = subprocess.run(
-            ["git", "status", "--porcelain"],
-            cwd=worktree_path,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if status.returncode != 0 or status.stdout.strip():
-            log_blocker(
-                f"dirty-worktree:{issue_number}",
-                "Refusing to remove non-clean worktree for Issue #%d: %s",
-                issue_number,
+        git_link = worktree_path / ".git"
+        if not git_link.exists():
+            # Prunable worktree: .git file is missing so `git worktree remove`
+            # will fail with "validation failed". Prune git's internal refs and
+            # remove the orphaned directory manually.
+            log.warning(
+                "Worktree %s is prunable (missing .git file); "
+                "pruning refs and removing directory.",
                 worktree_path,
-                level=logging.WARNING,
             )
-            return
+            subprocess.run(
+                ["git", "worktree", "prune"],
+                cwd=REPO_ROOT, check=False,
+            )
+            shutil.rmtree(worktree_path, ignore_errors=True)
+            log.info("Removed prunable worktree: %s", worktree_path)
+        else:
+            status = subprocess.run(
+                ["git", "status", "--porcelain"],
+                cwd=worktree_path,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if status.returncode != 0 or status.stdout.strip():
+                log_blocker(
+                    f"dirty-worktree:{issue_number}",
+                    "Refusing to remove non-clean worktree for Issue #%d: %s",
+                    issue_number,
+                    worktree_path,
+                    level=logging.WARNING,
+                )
+                return
 
-        removed = subprocess.run(
-            ["git", "worktree", "remove", str(worktree_path)],
-            cwd=REPO_ROOT,
-            check=False,
-        )
-        if removed.returncode != 0:
-            log.warning("Failed to remove worktree: %s", worktree_path)
-            return
-        log.info("Removed worktree: %s", worktree_path)
+            removed = subprocess.run(
+                ["git", "worktree", "remove", str(worktree_path)],
+                cwd=REPO_ROOT,
+                check=False,
+            )
+            if removed.returncode != 0:
+                log.warning("Failed to remove worktree: %s", worktree_path)
+                return
+            log.info("Removed worktree: %s", worktree_path)
 
     # Delete branch if it was merged
     subprocess.run(
@@ -743,23 +988,88 @@ def write_prompt_file(prompt: str, role: str, task_ref: str) -> Path:
 # AI Agent Dispatch — builds argv lists (NOT shell strings)
 # ---------------------------------------------------------------------------
 
+# Maps AGENTS.md model names + reasoning level to actual agy CLI model IDs.
+# agy embeds the effort level in the model name itself, e.g.:
+#   "Gemini 3.6 Flash (High)", "Gemini 3.6 Flash (Medium)", "Gemini 3.6 Flash (Low)"
+# There is NO separate --effort flag for agy.
+
+_AGY_EFFORT_LABEL: dict[str, str] = {
+    "high": "High", "높음": "High", "울트라": "High",
+    "매우 높음": "High",
+    "medium": "Medium", "중간": "Medium",
+    "low": "Low", "낮음": "Low", "light": "Low",
+    "thinking": "High",
+    "엑스트라": "High", "최대": "High", "ultracode": "High",
+}
+
+def _resolve_agy_model(model: str, reasoning: str) -> str:
+    """Build the full agy model string like 'Gemini 3.6 Flash (High)'."""
+    effort = _AGY_EFFORT_LABEL.get(reasoning.lower().strip(), "High")
+    # All AGENTS.md antigravity models map to Gemini 3.6 Flash
+    return f"Gemini 3.6 Flash ({effort})"
+
+_CLAUDE_MODEL_MAP: dict[str, str] = {
+    "sonnet 5":     "claude-sonnet-5",
+    "opus 5":       "claude-opus-5",
+    "fable 5":      "claude-fable-5",
+    "haiku 4.5":    "claude-haiku-4-5-20251001",
+    # Already fully-qualified names pass through.
+    "claude-sonnet-5":             "claude-sonnet-5",
+    "claude-opus-5":               "claude-opus-5",
+    "claude-fable-5":              "claude-fable-5",
+    "claude-haiku-4-5-20251001":   "claude-haiku-4-5-20251001",
+}
+
+# Claude CLI effort levels: low, medium, high, xhigh, max.
+_CLAUDE_EFFORT_MAP: dict[str, str] = {
+    "high": "high", "높음": "high", "울트라": "high",
+    "매우 높음": "high",
+    "medium": "medium", "중간": "medium",
+    "low": "low", "낮음": "low", "light": "low",
+    "thinking": "high",
+    "엑스트라": "xhigh", "최대": "max", "ultracode": "max",
+}
+
+# Map the human-friendly model names used in AGENTS.md to Codex CLI model IDs.
+# `gpt-5.6` is supported by Codex CLI when it is authenticated with ChatGPT.
+# Do not substitute unknown model names: passing them through gives the operator
+# a truthful CLI error instead of silently dispatching a different model.
+_CODEX_MODEL_MAP: dict[str, str] = {
+    "5.6 (sol, terra, luna)": "gpt-5.6",
+    "5.6":                    "gpt-5.6",
+    "5.6 sol":                "gpt-5.6-sol",
+    "5.6 terra":              "gpt-5.6-terra",
+    "5.6 luna":               "gpt-5.6-luna",
+    "5.5":                    "gpt-5.6",
+    "5.4":                    "gpt-5.6",
+    "5.4 mini":               "gpt-5.6",
+}
+
+
 def build_ai_argv(ai_name: str, model: str, reasoning: str,
                   prompt_file: Path, cwd: str) -> list[str]:
     """Build an argv list for a specific AI CLI tool.
 
-    Each tool's actual flags (verified via --help):
-      codex exec -m <model> -C <dir> -s workspace-write --dangerously-bypass-approvals-and-sandbox <prompt_from_stdin>
-      agy -p --model <model> --effort <level> --dangerously-skip-permissions <prompt_from_file>
-      claude -p --model <model> --dangerously-skip-permissions <prompt_from_file>
+    Each tool's actual flags (verified via CLI):
+      codex exec -m <model> -C <dir> -s workspace-write --dangerously-bypass-approvals-and-sandbox <prompt>
+      agy --model "Gemini 3.6 Flash (High)" --print-timeout <dur> --dangerously-skip-permissions -p <prompt>
+      claude -p --model <model> --effort <level> --dangerously-skip-permissions <prompt>
     """
     prompt_text = prompt_file.read_text(encoding="utf-8")
 
     if ai_name == "codex":
+        resolved_model = _CODEX_MODEL_MAP.get(model.lower().strip(), model)
+        if resolved_model != model:
+            log.info(
+                "Model alias: '%s' → '%s' (codex)",
+                model, resolved_model,
+            )
         # codex exec: -C workdir, prompt is positional
         # --dangerously-bypass-approvals-and-sandbox for autonomous mode
         # -s workspace-write to allow file edits
         return [
             "codex", "exec",
+            "-m", resolved_model,
             "-C", cwd,
             "-s", "workspace-write",
             "--dangerously-bypass-approvals-and-sandbox",
@@ -767,22 +1077,36 @@ def build_ai_argv(ai_name: str, model: str, reasoning: str,
         ]
 
     elif ai_name == "antigravity":
-        # agy: -p for non-interactive
-        # --dangerously-skip-permissions for autonomous mode
-        # cwd is set via subprocess cwd parameter
-        return [
+        resolved_model = _resolve_agy_model(model, reasoning)
+        log.info(
+            "Model alias: '%s' (reasoning=%s) → '%s' (antigravity)",
+            model, reasoning, resolved_model,
+        )
+        # agy does NOT use a separate --effort flag; effort is part of model name.
+        argv = [
             "agy",
             "--dangerously-skip-permissions",
+            "--model", resolved_model,
+            "--print-timeout", ANTIGRAVITY_PRINT_TIMEOUT,
             "-p", prompt_text,
         ]
+        return argv
 
     elif ai_name == "claude":
-        # claude: -p for print mode, prompt is positional
-        # --dangerously-skip-permissions for autonomous mode
-        # cwd is set via subprocess cwd parameter
+        resolved_model = _CLAUDE_MODEL_MAP.get(model.lower().strip(), model)
+        if resolved_model != model:
+            log.info(
+                "Model alias: '%s' → '%s' (claude)",
+                model, resolved_model,
+            )
+        effort = _CLAUDE_EFFORT_MAP.get(
+            reasoning.lower().strip(), "medium",
+        )
         return [
             "claude",
             "-p",
+            "--model", resolved_model,
+            "--effort", effort,
             "--dangerously-skip-permissions",
             prompt_text,
         ]
@@ -793,7 +1117,7 @@ def build_ai_argv(ai_name: str, model: str, reasoning: str,
 
 
 def _map_reasoning_to_effort(reasoning: str) -> str:
-    """Map AGENTS.md reasoning levels to agy --effort values."""
+    """Map AGENTS.md reasoning levels to agy --effort values (low/medium/high)."""
     mapping = {
         "high": "high", "높음": "high", "울트라": "high",
         "매우 높음": "high",
@@ -834,7 +1158,9 @@ def dispatch_worker(
     if not short_desc:
         short_desc = f"task-{issue.number}"
     branch_name = f"worker/{issue.number}-{worker.ai}-{short_desc}"
-    worktree_path = create_worktree(issue.number, branch_name)
+    worktree_path = WORKTREE_DIR / str(issue.number)
+    if not dry_run:
+        worktree_path = create_worktree(issue.number, branch_name)
 
     prompt = (
         f"You are the Worker for Issue #{issue.number}: {issue.title}.\n"
@@ -1070,8 +1396,11 @@ def dispatch_worker_revision(
         log.warning("PR #%d has no head branch, cannot dispatch revision.", pr.number)
         return
     
-    # We must run inside the same worktree or recreate it
-    worktree_path = create_worktree(issue.number, branch_name)
+    # We must run inside the same worktree or recreate it. Dry-run only reports
+    # the intended path and must not mutate git worktree state.
+    worktree_path = WORKTREE_DIR / str(issue.number)
+    if not dry_run:
+        worktree_path = create_worktree(issue.number, branch_name)
 
     prompt = (
         f"You are the Worker for PR #{pr.number} (Issue #{issue.number}: {issue.title}).\n"
@@ -1135,12 +1464,16 @@ def dispatch_worker_revision(
 # Main Polling Loop
 # ---------------------------------------------------------------------------
 
-def process_issues(dry_run: bool = False, open_prs: list[dict] = None):
+def process_issues(
+    dry_run: bool = False,
+    open_issues: Optional[list[dict]] = None,
+    open_prs: Optional[list[dict]] = None,
+):
     """Poll and dispatch each initial Issue event at most once."""
-    issues = fetch_open_issues()
+    issues = open_issues if open_issues is not None else fetch_open_issues()
     if open_prs is None:
         open_prs = fetch_open_prs()
-        
+
     pr_issue_numbers = set()
     for pr in open_prs:
         pr_title = pr.get("title", "")
@@ -1150,24 +1483,43 @@ def process_issues(dry_run: bool = False, open_prs: list[dict] = None):
 
     for raw in issues:
         num = raw["number"]
-        
+
+        if not raw.get("title", "").startswith("[Task]"):
+            log.debug(
+                "Open Issue #%d is not a [Task] Issue; inspected without dispatch.",
+                num,
+            )
+            continue
+
         # 1. If PR already exists, Worker is done (or PR handles the rest)
         if num in pr_issue_numbers:
             continue
-            
-        # 2. A persistent event key prevents repeat dispatch after completion.
-        task_ref = f"issue#{num}:initial"
-        allowed, reason = tracker.should_dispatch(task_ref, role="worker")
-        if not allowed:
-            log.debug("Skipping Worker for Issue #%d: %s.", num, reason)
-            continue
 
-        # 3. Dispatch Worker
         worker = parse_role(WORKER_PATTERN, raw.get("body", ""))
         if not worker:
             log.debug("Issue #%d has no Worker metadata, skipping.", num)
             continue
 
+        # 2. A persistent event key prevents repeat dispatch after completion.
+        # The still-open Issue and missing PR prove that a prior zero exit code
+        # did not complete the required GitHub transition.
+        task_ref = f"issue#{num}:initial"
+        allowed, reason = tracker.should_dispatch(
+            task_ref,
+            role="worker",
+            completion_confirmed=False,
+            ai_name=worker.ai,
+        )
+        if not allowed:
+            log_dispatch_blocker(
+                f"dispatch-blocked:{task_ref}",
+                f"Issue #{num} Worker",
+                reason,
+            )
+            log.debug("Skipping Worker for Issue #%d: %s.", num, reason)
+            continue
+
+        # 3. Dispatch Worker
         issue = TaskIssue(
             number=num,
             title=raw["title"],
@@ -1182,7 +1534,10 @@ def process_issues(dry_run: bool = False, open_prs: list[dict] = None):
         dispatch_worker(issue, dry_run, task_ref=task_ref)
 
 
-def process_prs(dry_run: bool = False, open_prs: list[dict] = None):
+def process_prs(
+    dry_run: bool = False,
+    open_prs: Optional[list[dict]] = None,
+):
     """Advance each PR by one idempotent Worker/Reviewer/Maintainer event."""
     prs = open_prs if open_prs is not None else fetch_open_prs()
 
@@ -1280,8 +1635,18 @@ def process_prs(dry_run: bool = False, open_prs: list[dict] = None):
                 continue
 
             task_ref = f"maintain#{pr_num}-{signal_id}"
-            allowed, reason = tracker.should_dispatch(task_ref, role="maintainer")
+            allowed, reason = tracker.should_dispatch(
+                task_ref,
+                role="maintainer",
+                completion_confirmed=False,
+                ai_name=maintainer.ai,
+            )
             if not allowed:
+                log_dispatch_blocker(
+                    f"dispatch-blocked:{task_ref}",
+                    f"PR #{pr_num} Maintainer",
+                    reason,
+                )
                 log.debug("Skipping Maintainer for PR #%d: %s.", pr_num, reason)
                 continue
             log.info(
@@ -1308,8 +1673,18 @@ def process_prs(dry_run: bool = False, open_prs: list[dict] = None):
         if action == "review":
             review_version = head_sha or signal_id
             task_ref = f"review#{pr_num}-{review_version}"
-            allowed, reason = tracker.should_dispatch(task_ref, role="reviewer")
+            allowed, reason = tracker.should_dispatch(
+                task_ref,
+                role="reviewer",
+                completion_confirmed=False,
+                ai_name=reviewer.ai,
+            )
             if not allowed:
+                log_dispatch_blocker(
+                    f"dispatch-blocked:{task_ref}",
+                    f"PR #{pr_num} Reviewer",
+                    reason,
+                )
                 # A finished review on an unchanged head SHA cannot produce a
                 # new event key, so the lifecycle would stall in silence: either
                 # the Worker never pushed, or the Reviewer posted no tagged
@@ -1337,8 +1712,18 @@ def process_prs(dry_run: bool = False, open_prs: list[dict] = None):
             continue
 
         task_ref = f"revise#{pr_num}-{signal_id}"
-        allowed, reason = tracker.should_dispatch(task_ref, role="worker_revise")
+        allowed, reason = tracker.should_dispatch(
+            task_ref,
+            role="worker_revise",
+            completion_confirmed=False,
+            ai_name=worker.ai,
+        )
         if not allowed:
+            log_dispatch_blocker(
+                f"dispatch-blocked:{task_ref}",
+                f"PR #{pr_num} Worker revision",
+                reason,
+            )
             log.debug("Skipping Worker revision for PR #%d: %s.", pr_num, reason)
             continue
         feedback_reviewer = parse_role(
@@ -1414,6 +1799,47 @@ def cleanup_merged_prs(dry_run: bool = False):
                 log.error("Failed to clean worktree for issue #%d: %s", issue_num, e)
 
 
+def log_open_items(issues: list[dict], prs: list[dict]):
+    """Log the complete startup snapshot before dispatch decisions are made."""
+    log.info(
+        "Initial GitHub scan found %d open Issue(s) and %d open PR(s).",
+        len(issues),
+        len(prs),
+    )
+    for issue in issues:
+        log.info(
+            "  Open Issue #%s: %s",
+            issue.get("number", "?"),
+            issue.get("title", "(untitled)"),
+        )
+    for pr in prs:
+        log.info(
+            "  Open PR #%s: %s",
+            pr.get("number", "?"),
+            pr.get("title", "(untitled)"),
+        )
+
+
+def process_polling_cycle(dry_run: bool = False, initial: bool = False):
+    """Fetch a consistent open-work snapshot and advance every eligible item."""
+    # Fetch both collections before dispatch. If either critical query fails,
+    # the cycle fails closed instead of creating a duplicate Worker while its
+    # existing PR was merely unavailable.
+    open_issues = fetch_open_issues()
+    open_prs = fetch_open_prs()
+
+    if initial:
+        log_open_items(open_issues, open_prs)
+
+    process_issues(
+        dry_run,
+        open_issues=open_issues,
+        open_prs=open_prs,
+    )
+    process_prs(dry_run, open_prs)
+    cleanup_merged_prs(dry_run)
+
+
 def run_loop(interval: int, dry_run: bool = False):
     """Main polling loop with process status monitoring."""
     log.info("=" * 60)
@@ -1433,6 +1859,8 @@ def run_loop(interval: int, dry_run: bool = False):
     signal.signal(signal.SIGTERM, handle_signal)
     signal.signal(signal.SIGINT, handle_signal)
 
+    initial = True
+    idle_cycles = 0
     while True:
         try:
             log.info("--- Polling cycle (active: %d) ---", tracker.active_count)
@@ -1440,13 +1868,20 @@ def run_loop(interval: int, dry_run: bool = False):
             # 1. Check status of all running AI processes
             tracker.poll_all()
 
-            # 2. Poll for new work
-            open_prs = fetch_open_prs()
-            process_issues(dry_run, open_prs)
-            process_prs(dry_run, open_prs)
-            
-            # 3. Clean up merged PR issues
-            cleanup_merged_prs(dry_run)
+            # 2. Poll every open item immediately on startup and every interval
+            process_polling_cycle(dry_run, initial=initial)
+            initial = False
+
+            if tracker.active_count == 0:
+                idle_cycles += 1
+                if idle_cycles >= IDLE_EXIT_CYCLES:
+                    log.info(
+                        "No active tasks remain after %d idle cycle(s); exiting.",
+                        idle_cycles,
+                    )
+                    break
+            else:
+                idle_cycles = 0
 
         except KeyboardInterrupt:
             log.info("Shutting down gracefully...")
@@ -1489,13 +1924,13 @@ def main():
         print(tracker.get_summary())
         return
 
+    reset_process_history()
+
     if args.once:
         log.info("Running single polling cycle...")
-        open_prs = fetch_open_prs()
-        process_issues(args.dry_run, open_prs)
-        process_prs(args.dry_run, open_prs)
-        cleanup_merged_prs(args.dry_run)
+        process_polling_cycle(args.dry_run, initial=True)
         tracker.poll_all()
+        cleanup_merged_prs(args.dry_run)
         log.info("Done.")
     else:
         run_loop(args.interval, args.dry_run)

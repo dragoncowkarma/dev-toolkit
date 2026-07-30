@@ -1,6 +1,20 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { validateJson, formatJson, minifyJson } from './json.utils';
 import './json.css';
+
+const EDITOR_LINE_HEIGHT = 20;
+const TREE_ROW_HEIGHT = 22;
+const TREE_INDENT_SIZE = 20;
+const VIRTUAL_OVERSCAN = 6;
+const DEFAULT_VIEWPORT_HEIGHT = 400;
+const EMPTY_EXPANSION_OVERRIDES = new Map();
 
 const SAMPLE_JSON = `{
   "name": "JSON Formatter",
@@ -20,164 +34,405 @@ const SAMPLE_JSON = `{
 }`;
 
 /**
- * Individual Node in the JSON tree visualization.
+ * Counts text lines without allocating an array proportional to the input size.
  */
-function JsonNode({ name, value, isLast, defaultExpanded = true }) {
-  const [expanded, setExpanded] = useState(defaultExpanded);
+function countLines(value) {
+  let count = 1;
+  let searchFrom = 0;
+  let nextNewline = value.indexOf('\n', searchFrom);
 
-  // Sync expanded state with defaultExpanded if reset from parent key changes
+  while (nextNewline !== -1) {
+    count += 1;
+    searchFrom = nextNewline + 1;
+    nextNewline = value.indexOf('\n', searchFrom);
+  }
+
+  return count;
+}
+
+/**
+ * Calculates the bounded set of rows required for the current viewport.
+ */
+function getVirtualRange(itemCount, scrollTop, viewportHeight, rowHeight) {
+  const safeItemCount = Math.max(itemCount, 1);
+  const firstVisible = Math.floor(scrollTop / rowHeight);
+  const lastVisible = Math.ceil((scrollTop + viewportHeight) / rowHeight);
+  const start = Math.min(
+    Math.max(firstVisible - VIRTUAL_OVERSCAN, 0),
+    safeItemCount - 1
+  );
+  const end = Math.min(
+    Math.max(lastVisible + VIRTUAL_OVERSCAN, start + 1),
+    safeItemCount
+  );
+
+  return { start, end };
+}
+
+/**
+ * Keeps scroll and resize updates local to a virtualized viewport.
+ */
+function useVirtualViewport(elementRef) {
+  const [viewport, setViewport] = useState({
+    height: DEFAULT_VIEWPORT_HEIGHT,
+    scrollTop: 0,
+  });
+
+  const handleScroll = useCallback((event) => {
+    const scrollTop = event.currentTarget.scrollTop;
+    setViewport((current) => (
+      current.scrollTop === scrollTop ? current : { ...current, scrollTop }
+    ));
+  }, []);
+
   useEffect(() => {
-    setExpanded(defaultExpanded);
-  }, [defaultExpanded]);
+    const element = elementRef.current;
+    if (!element) return undefined;
 
-  const toggleExpand = (e) => {
-    e.stopPropagation();
-    setExpanded(!expanded);
-  };
+    const updateHeight = () => {
+      const height = element.clientHeight || DEFAULT_VIEWPORT_HEIGHT;
+      setViewport((current) => (
+        current.height === height ? current : { ...current, height }
+      ));
+    };
 
-  const renderKey = () => {
-    if (name === undefined || name === null) return null;
-    return <span className="json-tree-key">"{name}": </span>;
-  };
+    updateHeight();
 
-  const renderComma = () => !isLast && <span className="json-tree-comma">,</span>;
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(updateHeight);
+      observer.observe(element);
+      return () => observer.disconnect();
+    }
 
-  if (value === null) {
-    return (
-      <div className="json-tree-node">
-        {renderKey()}
-        <span className="json-tree-value json-tree-null">null</span>
-        {renderComma()}
+    window.addEventListener('resize', updateHeight);
+    return () => window.removeEventListener('resize', updateHeight);
+  }, [elementRef]);
+
+  return { ...viewport, handleScroll };
+}
+
+/**
+ * JSON editor with a line-number gutter bounded to visible rows.
+ */
+const VirtualizedJsonEditor = memo(function VirtualizedJsonEditor({ value, onChange }) {
+  const textareaRef = useRef(null);
+  const lineCount = useMemo(() => countLines(value), [value]);
+  const {
+    height,
+    scrollTop,
+    handleScroll,
+  } = useVirtualViewport(textareaRef);
+  const { start, end } = getVirtualRange(
+    lineCount,
+    scrollTop,
+    height,
+    EDITOR_LINE_HEIGHT
+  );
+  const visibleLineNumbers = useMemo(
+    () => Array.from({ length: end - start }, (_, index) => start + index + 1),
+    [end, start]
+  );
+  const lineNumberOffset = 12 + (start * EDITOR_LINE_HEIGHT) - scrollTop;
+
+  return (
+    <div className="editor-container">
+      <div className="line-numbers" aria-hidden="true">
+        <div
+          className="line-numbers-window"
+          style={{ transform: `translateY(${lineNumberOffset}px)` }}
+        >
+          {visibleLineNumbers.map((lineNumber) => (
+            <div key={lineNumber} className="line-number-item">
+              {lineNumber}
+            </div>
+          ))}
+        </div>
       </div>
-    );
+      <textarea
+        ref={textareaRef}
+        className="editor-textarea"
+        placeholder="Paste or type your JSON here..."
+        value={value}
+        onChange={onChange}
+        onScroll={handleScroll}
+        aria-label="JSON Input Area"
+        spellCheck="false"
+      />
+    </div>
+  );
+});
+
+function escapeTreePathSegment(segment) {
+  return String(segment).replaceAll('~', '~0').replaceAll('/', '~1');
+}
+
+function getStoredExpansion(path, defaultExpanded, overrides) {
+  return overrides.has(path) ? overrides.get(path) : defaultExpanded;
+}
+
+/**
+ * Flattens only expanded JSON branches into lightweight virtual tree rows.
+ */
+function appendVisibleTreeRows(
+  rows,
+  value,
+  path,
+  depth,
+  name,
+  isLast,
+  defaultExpanded,
+  overrides
+) {
+  const isObject = value !== null && typeof value === 'object';
+  const isArray = Array.isArray(value);
+  const keys = isObject && !isArray ? Object.keys(value) : null;
+  const childCount = isArray ? value.length : keys?.length ?? 0;
+  const isExpandable = isObject && childCount > 0;
+  const expanded = isExpandable
+    ? getStoredExpansion(path, defaultExpanded, overrides)
+    : false;
+
+  rows.push({
+    childCount,
+    depth,
+    expanded,
+    isArray,
+    isExpandable,
+    isLast,
+    kind: 'node',
+    name,
+    path,
+    value,
+  });
+
+  if (!expanded) return;
+
+  if (isArray) {
+    value.forEach((child, index) => {
+      appendVisibleTreeRows(
+        rows,
+        child,
+        `${path}/${index}`,
+        depth + 1,
+        undefined,
+        index === value.length - 1,
+        defaultExpanded,
+        overrides
+      );
+    });
+  } else {
+    keys.forEach((key, index) => {
+      appendVisibleTreeRows(
+        rows,
+        value[key],
+        `${path}/${escapeTreePathSegment(key)}`,
+        depth + 1,
+        key,
+        index === keys.length - 1,
+        defaultExpanded,
+        overrides
+      );
+    });
+  }
+
+  rows.push({
+    depth,
+    isArray,
+    isLast,
+    kind: 'closing',
+    path: `${path}/~close`,
+  });
+}
+
+function buildVisibleTreeRows(data, defaultExpanded, overrides) {
+  const rows = [];
+  appendVisibleTreeRows(
+    rows,
+    data,
+    '$',
+    0,
+    undefined,
+    true,
+    defaultExpanded,
+    overrides
+  );
+  return rows;
+}
+
+function JsonTreeKey({ name }) {
+  if (name === undefined || name === null) return null;
+  return <span className="json-tree-key">{JSON.stringify(name)}: </span>;
+}
+
+function JsonTreeComma({ isLast }) {
+  if (isLast) return null;
+  return <span className="json-tree-comma">,</span>;
+}
+
+function JsonTreePrimitive({ value }) {
+  if (value === null) {
+    return <span className="json-tree-value json-tree-null">null</span>;
   }
 
   const type = typeof value;
-
   if (type === 'boolean') {
     return (
-      <div className="json-tree-node">
-        {renderKey()}
-        <span className="json-tree-value json-tree-boolean">{value.toString()}</span>
-        {renderComma()}
-      </div>
+      <span className="json-tree-value json-tree-boolean">
+        {value.toString()}
+      </span>
     );
   }
-
   if (type === 'number') {
+    return <span className="json-tree-value json-tree-number">{value}</span>;
+  }
+  return (
+    <span className="json-tree-value json-tree-string">
+      {JSON.stringify(value)}
+    </span>
+  );
+}
+
+function JsonTreeRow({ row, onToggle }) {
+  const rowStyle = { paddingLeft: `${row.depth * TREE_INDENT_SIZE + 4}px` };
+  const endBracket = row.isArray ? ']' : '}';
+
+  if (row.kind === 'closing') {
     return (
-      <div className="json-tree-node">
-        {renderKey()}
-        <span className="json-tree-value json-tree-number">{value}</span>
-        {renderComma()}
+      <div className="json-tree-row json-tree-closing-row" style={rowStyle}>
+        <span className="json-tree-toggle-spacer" />
+        <span className="json-tree-bracket">{endBracket}</span>
+        <JsonTreeComma isLast={row.isLast} />
       </div>
     );
   }
 
-  if (type === 'string') {
-    return (
-      <div className="json-tree-node">
-        {renderKey()}
-        <span className="json-tree-value json-tree-string">"{value}"</span>
-        {renderComma()}
-      </div>
-    );
-  }
-
-  // Handle Object or Array
-  const isArray = Array.isArray(value);
-  const keys = isArray ? value : Object.keys(value);
-  const isEmpty = keys.length === 0;
-
-  const startBracket = isArray ? '[' : '{';
-  const endBracket = isArray ? ']' : '}';
-
-  if (isEmpty) {
-    return (
-      <div className="json-tree-node">
-        {renderKey()}
-        <span className="json-tree-bracket">{startBracket + endBracket}</span>
-        {renderComma()}
-      </div>
-    );
-  }
+  const isObject = row.value !== null && typeof row.value === 'object';
+  const startBracket = row.isArray ? '[' : '{';
+  const nodeLabel = row.name === undefined ? 'root' : String(row.name);
 
   return (
-    <div className="json-tree-node json-tree-expandable">
-      <span 
-        className={`json-tree-toggle ${expanded ? 'expanded' : 'collapsed'}`} 
-        onClick={toggleExpand}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            toggleExpand(e);
-          }
-        }}
-        aria-label={expanded ? 'Collapse node' : 'Expand node'}
-      >
-        ▶
-      </span>
-      {renderKey()}
-      <span className="json-tree-bracket">{startBracket}</span>
-      
-      {!expanded && (
-        <span 
-          className="json-tree-summary" 
-          onClick={toggleExpand}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              toggleExpand(e);
-            }
-          }}
+    <div
+      className="json-tree-row"
+      style={rowStyle}
+      role="treeitem"
+      aria-level={row.depth + 1}
+      aria-expanded={row.isExpandable ? row.expanded : undefined}
+    >
+      {row.isExpandable ? (
+        <button
+          type="button"
+          className={`json-tree-toggle ${row.expanded ? 'expanded' : 'collapsed'}`}
+          onClick={() => onToggle(row.path)}
+          aria-label={`${row.expanded ? 'Collapse' : 'Expand'} ${nodeLabel} node`}
         >
-          {isArray ? ` ... ${value.length} items ` : ` ... ${keys.length} keys `}
-        </span>
+          ▶
+        </button>
+      ) : (
+        <span className="json-tree-toggle-spacer" />
       )}
-      
-      {expanded && (
-        <div className="json-tree-children">
-          {isArray
-            ? value.map((item, idx) => (
-                <JsonNode
-                  key={idx}
-                  value={item}
-                  isLast={idx === value.length - 1}
-                  defaultExpanded={defaultExpanded}
-                />
-              ))
-            : keys.map((key, idx) => (
-                <JsonNode
-                  key={key}
-                  name={key}
-                  value={value[key]}
-                  isLast={idx === keys.length - 1}
-                  defaultExpanded={defaultExpanded}
-                />
-              ))}
-        </div>
+      <JsonTreeKey name={row.name} />
+      {isObject ? (
+        <>
+          <span className="json-tree-bracket">{startBracket}</span>
+          {!row.expanded && row.isExpandable && (
+            <span className="json-tree-summary">
+              {row.isArray
+                ? ` ... ${row.childCount} items `
+                : ` ... ${row.childCount} keys `}
+            </span>
+          )}
+          {!row.expanded && <span className="json-tree-bracket">{endBracket}</span>}
+        </>
+      ) : (
+        <JsonTreePrimitive value={row.value} />
       )}
-      
-      <span className="json-tree-bracket">{endBracket}</span>
-      {renderComma()}
+      {(!row.expanded || !row.isExpandable) && (
+        <JsonTreeComma isLast={row.isLast} />
+      )}
     </div>
   );
 }
 
 /**
- * Root Tree View component.
+ * Virtualized JSON tree with path-specific expansion overrides.
  */
-function JsonTreeView({ data, defaultExpanded = true }) {
+const JsonTreeView = memo(function JsonTreeView({ data, expansionCommand }) {
+  const containerRef = useRef(null);
+  const [expansionState, setExpansionState] = useState({
+    commandRevision: expansionCommand.revision,
+    defaultExpanded: expansionCommand.expanded,
+    overrides: new Map(),
+  });
+  const commandIsCurrent =
+    expansionState.commandRevision === expansionCommand.revision;
+  const defaultExpanded = commandIsCurrent
+    ? expansionState.defaultExpanded
+    : expansionCommand.expanded;
+  const overrides = commandIsCurrent
+    ? expansionState.overrides
+    : EMPTY_EXPANSION_OVERRIDES;
+  const rows = useMemo(
+    () => buildVisibleTreeRows(data, defaultExpanded, overrides),
+    [data, defaultExpanded, overrides]
+  );
+  const {
+    height,
+    scrollTop,
+    handleScroll,
+  } = useVirtualViewport(containerRef);
+  const { start, end } = getVirtualRange(
+    rows.length,
+    scrollTop,
+    height,
+    TREE_ROW_HEIGHT
+  );
+  const visibleRows = rows.slice(start, end);
+
+  const togglePath = useCallback((path) => {
+    setExpansionState((current) => {
+      const isCurrent = current.commandRevision === expansionCommand.revision;
+      const baseDefault = isCurrent
+        ? current.defaultExpanded
+        : expansionCommand.expanded;
+      const baseOverrides = isCurrent
+        ? current.overrides
+        : EMPTY_EXPANSION_OVERRIDES;
+      const nextOverrides = new Map(baseOverrides);
+      const currentValue = getStoredExpansion(path, baseDefault, baseOverrides);
+      nextOverrides.set(path, !currentValue);
+
+      return {
+        commandRevision: expansionCommand.revision,
+        defaultExpanded: baseDefault,
+        overrides: nextOverrides,
+      };
+    });
+  }, [expansionCommand]);
+
   return (
-    <div className="json-tree-container">
-      <JsonNode value={data} isLast={true} defaultExpanded={defaultExpanded} />
+    <div
+      ref={containerRef}
+      className="json-tree-container"
+      onScroll={handleScroll}
+      role="tree"
+      aria-label="JSON tree"
+    >
+      <div
+        className="json-tree-virtual-spacer"
+        style={{ height: `${rows.length * TREE_ROW_HEIGHT}px` }}
+      >
+        <div
+          className="json-tree-window"
+          style={{ transform: `translateY(${start * TREE_ROW_HEIGHT}px)` }}
+        >
+          {visibleRows.map((row) => (
+            <JsonTreeRow key={row.path} row={row} onToggle={togglePath} />
+          ))}
+        </div>
+      </div>
     </div>
   );
-}
+});
 
 /**
  * Main JSON Formatter and Validator Tool Component.
@@ -189,18 +444,10 @@ export default function JsonTool({ onBack }) {
   const [viewMode, setViewMode] = useState('text');
   const [validation, setValidation] = useState({ isValid: true, message: '', snippet: '' });
   const [toast, setToast] = useState('');
-  const [treeExpanded, setTreeExpanded] = useState(true);
-  const [treeKey, setTreeKey] = useState(0);
-
-  const textareaRef = useRef(null);
-  const lineNumbersRef = useRef(null);
-
-  // Sync scroll between line numbers side-bar and textarea
-  const handleScroll = () => {
-    if (textareaRef.current && lineNumbersRef.current) {
-      lineNumbersRef.current.scrollTop = textareaRef.current.scrollTop;
-    }
-  };
+  const [treeExpansionCommand, setTreeExpansionCommand] = useState({
+    expanded: true,
+    revision: 0,
+  });
 
   // Perform real-time validation
   useEffect(() => {
@@ -212,10 +459,10 @@ export default function JsonTool({ onBack }) {
     setValidation(result);
   }, [input]);
 
-  const handleInputChange = (e) => {
+  const handleInputChange = useCallback((e) => {
     setInput(e.target.value);
     setOutput('');
-  };
+  }, []);
 
   const handleFormat = () => {
     const result = validateJson(input);
@@ -297,21 +544,30 @@ export default function JsonTool({ onBack }) {
   };
 
   const toggleTreeExpansion = (expand) => {
-    setTreeExpanded(expand);
-    setTreeKey(prev => prev + 1);
+    setTreeExpansionCommand((current) => ({
+      expanded: expand,
+      revision: current.revision + 1,
+    }));
   };
 
-  // Generate line numbers array
-  const lines = input.split('\n');
-  const lineCount = Math.max(lines.length, 1);
+  const parsedData = useMemo(() => {
+    if (!validation.isValid || !input.trim()) return null;
 
-  // Parse JSON data for tree-view safely
-  let parsedData = null;
-  if (validation.isValid && input.trim()) {
     try {
-      parsedData = JSON.parse(input);
+      return JSON.parse(input);
+    } catch {
+      return null;
+    }
+  }, [input, validation.isValid]);
+
+  // Guards against the render that happens after input changes but before the
+  // validation effect catches up, where validation.isValid can still be stale.
+  let formattedOutputText = output;
+  if (!formattedOutputText && input.trim()) {
+    try {
+      formattedOutputText = formatJson(input, indent);
     } catch (e) {
-      // Fail silently since validation state covers this
+      formattedOutputText = '';
     }
   }
 
@@ -394,23 +650,7 @@ export default function JsonTool({ onBack }) {
             </div>
           </div>
 
-          <div className="editor-container">
-            <div className="line-numbers" ref={lineNumbersRef} aria-hidden="true">
-              {Array.from({ length: lineCount }).map((_, i) => (
-                <div key={i} className="line-number-item">{i + 1}</div>
-              ))}
-            </div>
-            <textarea
-              ref={textareaRef}
-              className="editor-textarea"
-              placeholder="Paste or type your JSON here..."
-              value={input}
-              onChange={handleInputChange}
-              onScroll={handleScroll}
-              aria-label="JSON Input Area"
-              spellCheck="false"
-            />
-          </div>
+          <VirtualizedJsonEditor value={input} onChange={handleInputChange} />
         </div>
 
         {/* Output Panel */}
@@ -474,9 +714,12 @@ export default function JsonTool({ onBack }) {
                   ➖ Collapse All
                 </button>
               </div>
-              <div className="output-container">
+              <div className="output-container tree-output-container">
                 <div className="json-tree-wrapper">
-                  <JsonTreeView key={treeKey} data={parsedData} defaultExpanded={treeExpanded} />
+                  <JsonTreeView
+                    data={parsedData}
+                    expansionCommand={treeExpansionCommand}
+                  />
                 </div>
               </div>
             </>
@@ -491,7 +734,7 @@ export default function JsonTool({ onBack }) {
                   whiteSpace: 'pre-wrap', 
                   wordBreak: 'break-all' 
                 }}>
-                  {output || (input.trim() ? formatJson(input, indent) : '')}
+                  {formattedOutputText}
                 </pre>
               ) : (
                 <div className="error-snippet-container" role="alert">

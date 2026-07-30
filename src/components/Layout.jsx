@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Sidebar from './Sidebar.jsx';
+import LoadingSpinner from './LoadingSpinner.jsx';
 import './Layout.css';
 
 function getFallbackToolId(tools, defaultToolId) {
@@ -189,10 +190,12 @@ export default function Layout({ tools, defaultToolId }) {
           </header>
 
           <main id="main-content" className="layout__main" tabIndex="-1">
-            <ActiveToolComponent
-              tool={activeTool}
-              onBack={() => handleSelectTool(defaultToolId)}
-            />
+            <React.Suspense fallback={<LoadingSpinner />}>
+              <ActiveToolComponent
+                tool={activeTool}
+                onBack={() => handleSelectTool(defaultToolId)}
+              />
+            </React.Suspense>
           </main>
 
           <footer className="layout__footer">

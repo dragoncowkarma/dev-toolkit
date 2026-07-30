@@ -3,6 +3,7 @@
 import importlib.util
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -20,8 +21,16 @@ class FakeTracker:
     def __init__(self, dispatched=None):
         self.dispatched = set(dispatched or [])
 
-    def should_dispatch(self, task_ref, role):
+    def should_dispatch(
+        self,
+        task_ref,
+        role,
+        completion_confirmed=True,
+        ai_name=None,
+    ):
         if (task_ref, role) in self.dispatched:
+            if not completion_confirmed:
+                return False, swarm.DISPATCH_UNCONFIRMED
             return False, swarm.DISPATCH_COMPLETED
         return True, "new event"
 
@@ -34,8 +43,24 @@ def make_tracker(history):
     return tracker
 
 
-def record(task_ref, role, status, pid=1234):
-    return SimpleNamespace(task_ref=task_ref, role=role, status=status, pid=pid)
+def record(
+    task_ref,
+    role,
+    status,
+    pid=1234,
+    retry_after=None,
+    ai_name="codex",
+    defer_scope=None,
+):
+    return SimpleNamespace(
+        task_ref=task_ref,
+        role=role,
+        status=status,
+        pid=pid,
+        retry_after=retry_after,
+        ai_name=ai_name,
+        defer_scope=defer_scope,
+    )
 
 
 class DispatchDecisionTests(unittest.TestCase):
@@ -46,6 +71,20 @@ class DispatchDecisionTests(unittest.TestCase):
 
         self.assertFalse(tracker.should_dispatch("review#12-abc123", "reviewer")[0])
         self.assertTrue(tracker.should_dispatch("review#12-def456", "reviewer")[0])
+
+    def test_completed_process_is_retried_when_transition_is_unconfirmed(self):
+        tracker = make_tracker([
+            record("review#12-abc123", "reviewer", swarm.ProcessStatus.COMPLETED),
+        ])
+
+        allowed, reason = tracker.should_dispatch(
+            "review#12-abc123",
+            "reviewer",
+            completion_confirmed=False,
+        )
+
+        self.assertTrue(allowed)
+        self.assertIn("retry after unconfirmed completion", reason)
 
     def test_running_event_is_not_dispatched_again(self):
         tracker = make_tracker([
@@ -78,6 +117,100 @@ class DispatchDecisionTests(unittest.TestCase):
         self.assertFalse(allowed)
         self.assertIn("exhausted", reason)
 
+    def test_provider_cooldown_does_not_consume_crash_attempt_budget(self):
+        retry_after = (
+            datetime.now(timezone.utc) + timedelta(minutes=30)
+        ).isoformat()
+        tracker = make_tracker([
+            record(
+                "review#12-abc123",
+                "reviewer",
+                swarm.ProcessStatus.DEFERRED,
+                retry_after=retry_after,
+            )
+            for _ in range(swarm.MAX_DISPATCH_ATTEMPTS)
+        ])
+
+        allowed, reason = tracker.should_dispatch(
+            "review#12-abc123",
+            "reviewer",
+            completion_confirmed=False,
+        )
+
+        self.assertFalse(allowed)
+        self.assertIn(swarm.DISPATCH_PROVIDER_COOLDOWN, reason)
+
+    def test_expired_provider_cooldown_is_retryable(self):
+        retry_after = (
+            datetime.now(timezone.utc) - timedelta(seconds=1)
+        ).isoformat()
+        tracker = make_tracker([
+            record(
+                "issue#7:initial",
+                "worker",
+                swarm.ProcessStatus.DEFERRED,
+                retry_after=retry_after,
+            ),
+        ])
+
+        allowed, reason = tracker.should_dispatch("issue#7:initial", "worker")
+
+        self.assertTrue(allowed)
+        self.assertIn("provider cooldown", reason)
+
+    def test_provider_cooldown_blocks_other_events_for_same_ai(self):
+        retry_after = (
+            datetime.now(timezone.utc) + timedelta(minutes=30)
+        ).isoformat()
+        tracker = make_tracker([
+            record(
+                "maintain#39-comment",
+                "maintainer",
+                swarm.ProcessStatus.DEFERRED,
+                retry_after=retry_after,
+                ai_name="antigravity",
+                defer_scope="provider",
+            ),
+        ])
+
+        allowed, reason = tracker.should_dispatch(
+            "issue#28:initial",
+            "worker",
+            ai_name="antigravity",
+        )
+        other_ai_allowed, _ = tracker.should_dispatch(
+            "issue#28:initial",
+            "worker",
+            ai_name="codex",
+        )
+
+        self.assertFalse(allowed)
+        self.assertIn(swarm.DISPATCH_PROVIDER_COOLDOWN, reason)
+        self.assertTrue(other_ai_allowed)
+
+    def test_event_timeout_does_not_pause_other_events_for_same_ai(self):
+        retry_after = (
+            datetime.now(timezone.utc) + timedelta(minutes=30)
+        ).isoformat()
+        tracker = make_tracker([
+            record(
+                "review#30-abc123",
+                "reviewer",
+                swarm.ProcessStatus.DEFERRED,
+                retry_after=retry_after,
+                ai_name="antigravity",
+                defer_scope="event",
+            ),
+        ])
+
+        allowed, _ = tracker.should_dispatch(
+            "issue#28:initial",
+            "worker",
+            ai_name="antigravity",
+        )
+
+        self.assertTrue(allowed)
+
     def test_orphaned_running_record_becomes_retryable(self):
         orphan = swarm.TrackedProcess(
             pid=999999, role="worker", ai_name="codex", model="5.6 sol",
@@ -104,6 +237,164 @@ class DispatchDecisionTests(unittest.TestCase):
             tracker._save_registry()
 
         self.assertEqual(swarm.MAX_HISTORY_RECORDS, len(tracker._history))
+
+
+class ProviderFailureTests(unittest.TestCase):
+    def test_provider_reset_duration_becomes_retry_timestamp(self):
+        ended_at = "2026-07-30T02:45:26+00:00"
+
+        retry_after = swarm.ProcessTracker._provider_retry_after(
+            "Error: Individual quota reached. Resets in 1h30m21s.",
+            ended_at,
+        )
+
+        self.assertEqual("2026-07-30T04:16:47+00:00", retry_after)
+
+    def test_monthly_spend_limit_uses_default_cooldown(self):
+        ended_at = "2026-07-30T02:37:57+00:00"
+
+        retry_after = swarm.ProcessTracker._provider_retry_after(
+            "You've hit your monthly spend limit",
+            ended_at,
+        )
+
+        self.assertEqual("2026-07-30T03:37:57+00:00", retry_after)
+
+    def test_cli_timeout_uses_default_cooldown(self):
+        ended_at = "2026-07-30T02:19:35+00:00"
+
+        retry_after = swarm.ProcessTracker._provider_retry_after(
+            "Error: timeout waiting for response",
+            ended_at,
+        )
+
+        self.assertEqual("2026-07-30T03:19:35+00:00", retry_after)
+
+    def test_regular_failure_has_no_provider_cooldown(self):
+        self.assertIsNone(
+            swarm.ProcessTracker._provider_retry_after(
+                "Error: invalid command line option",
+            )
+        )
+
+    def test_historical_no_tool_completion_is_reclassified(self):
+        temp_dir = Path(tempfile.mkdtemp())
+        log_file = temp_dir / "process.log"
+        log_file.write_text("NO_TOOL_WITHDRAWN\n", encoding="utf-8")
+        tracked = swarm.TrackedProcess(
+            pid=1234,
+            role="reviewer",
+            ai_name="antigravity",
+            model="gemini 3.1 pro",
+            reasoning="high",
+            task_ref="review#33-abc123",
+            branch="worker/23-codex-hash",
+            command="agy -p",
+            cwd="/repo",
+            log_file=str(log_file),
+            started_at="2026-07-30T02:13:30+00:00",
+            ended_at="2026-07-30T02:17:23+00:00",
+            exit_code=0,
+            status=swarm.ProcessStatus.COMPLETED,
+        )
+        tracker = make_tracker([tracked])
+
+        tracker._reclassify_deferred_failures()
+
+        self.assertEqual(swarm.ProcessStatus.DEFERRED, tracked.status)
+        self.assertEqual("NO_TOOL_WITHDRAWN", tracked.failure_reason)
+        self.assertEqual("2026-07-30T03:17:23+00:00", tracked.retry_after)
+        self.assertEqual("event", tracked.defer_scope)
+
+    def test_log_tail_reads_combined_redirected_output(self):
+        temp_dir = Path(tempfile.mkdtemp())
+        log_file = temp_dir / "process.log"
+        log_file.write_text(
+            "header\nYou've hit your monthly spend limit\n",
+            encoding="utf-8",
+        )
+
+        output = swarm.ProcessTracker._read_log_tail(str(log_file), 2000)
+
+        self.assertIn("monthly spend limit", output)
+
+    def test_poll_records_visible_quota_reason_as_deferred(self):
+        temp_dir = Path(tempfile.mkdtemp())
+        log_file = temp_dir / "process.log"
+        log_file.write_text(
+            "Error: Individual quota reached. Resets in 5m.\n",
+            encoding="utf-8",
+        )
+        tracked = swarm.TrackedProcess(
+            pid=1234,
+            role="maintainer",
+            ai_name="antigravity",
+            model="gemini 3.1 pro",
+            reasoning="high",
+            task_ref="maintain#39-comment",
+            branch="",
+            command="agy -p",
+            cwd="/repo",
+            log_file=str(log_file),
+            started_at=datetime.now(timezone.utc).isoformat(),
+        )
+        tracker = make_tracker([])
+        tracker._active[1234] = (
+            SimpleNamespace(poll=lambda: 1),
+            tracked,
+        )
+
+        with patch.object(tracker, "_save_registry"):
+            tracker.poll_all()
+
+        self.assertEqual(swarm.ProcessStatus.DEFERRED, tracked.status)
+        self.assertIn("Individual quota reached", tracked.failure_reason)
+        self.assertIsNotNone(tracked.retry_after)
+        self.assertEqual("provider", tracked.defer_scope)
+
+
+class AiArgvTests(unittest.TestCase):
+    def setUp(self):
+        temp_dir = Path(tempfile.mkdtemp())
+        self.prompt_file = temp_dir / "prompt.md"
+        self.prompt_file.write_text("Do the task.", encoding="utf-8")
+
+    def test_codex_preserves_fully_qualified_model(self):
+        argv = swarm.build_ai_argv(
+            "codex", "gpt-5.6-sol", "높음", self.prompt_file, "/repo",
+        )
+
+        self.assertEqual("gpt-5.6-sol", argv[argv.index("-m") + 1])
+
+    def test_codex_maps_agent_metadata_to_supported_cli_model(self):
+        argv = swarm.build_ai_argv(
+            "codex", "5.6", "높음", self.prompt_file, "/repo",
+        )
+
+        self.assertEqual("gpt-5.6", argv[argv.index("-m") + 1])
+
+    def test_codex_does_not_silently_replace_unknown_model(self):
+        argv = swarm.build_ai_argv(
+            "codex", "custom-provider-model", "높음", self.prompt_file, "/repo",
+        )
+
+        self.assertEqual("custom-provider-model", argv[argv.index("-m") + 1])
+
+    def test_antigravity_embeds_effort_in_resolved_model(self):
+        argv = swarm.build_ai_argv(
+            "antigravity", "gemini 3.1 pro", "높음", self.prompt_file, "/repo",
+        )
+
+        self.assertEqual("Gemini 3.6 Flash (High)", argv[argv.index("--model") + 1])
+        self.assertNotIn("--effort", argv)
+
+    def test_claude_resolves_model_and_effort(self):
+        argv = swarm.build_ai_argv(
+            "claude", "sonnet 5", "중간", self.prompt_file, "/repo",
+        )
+
+        self.assertEqual("claude-sonnet-5", argv[argv.index("--model") + 1])
+        self.assertEqual("medium", argv[argv.index("--effort") + 1])
 
 
 class LifecycleSignalTests(unittest.TestCase):
@@ -142,6 +433,20 @@ class LifecycleSignalTests(unittest.TestCase):
         self.assertEqual("maintain", action)
         self.assertEqual("approval-1", comment["id"])
 
+    def test_reviewer_instruction_does_not_become_worker_signal(self):
+        comments = [{
+            "id": "review-2",
+            "body": (
+                "Fix the issue, then post [Worker] Revision complete.\n"
+                "[Reviewer: codex | Model: 5.6 | Reasoning: 높음]"
+            ),
+        }]
+
+        action, comment, _ = swarm.determine_pr_action(comments)
+
+        self.assertEqual("revise", action)
+        self.assertEqual("review-2", comment["id"])
+
     def test_lone_maintainer_tag_is_informational(self):
         comments = [{
             "id": "human-1",
@@ -164,6 +469,106 @@ class LifecycleSignalTests(unittest.TestCase):
         self.assertIn("both use AI 'codex'", reason)
 
 
+class StartupScanTests(unittest.TestCase):
+    def test_open_issue_fetch_keeps_non_task_items_visible(self):
+        payload = (
+            '[{"number": 7, "title": "[Task] JSON", "body": "worker"}, '
+            '{"number": 8, "title": "Bug report", "body": ""}]'
+        )
+        with patch.object(swarm, "gh", return_value=payload):
+            issues = swarm.fetch_open_issues()
+
+        self.assertEqual([7, 8], [issue["number"] for issue in issues])
+
+    def test_open_pr_fetch_keeps_nonstandard_items_visible(self):
+        payload = (
+            '[{"number": 12, "title": "[PR] 7 - JSON"}, '
+            '{"number": 13, "title": "Draft fix"}]'
+        )
+        with patch.object(swarm, "gh", return_value=payload):
+            prs = swarm.fetch_open_prs()
+
+        self.assertEqual([12, 13], [pr["number"] for pr in prs])
+
+    def test_initial_cycle_scans_both_collections_before_processing(self):
+        issues = [{"number": 7, "title": "[Task] JSON"}]
+        prs = [{"number": 12, "title": "[PR] 7 - JSON"}]
+        with (
+            patch.object(swarm, "fetch_open_issues", return_value=issues),
+            patch.object(swarm, "fetch_open_prs", return_value=prs),
+            patch.object(swarm, "log_open_items") as log_open_items,
+            patch.object(swarm, "process_issues") as process_issues,
+            patch.object(swarm, "process_prs") as process_prs,
+            patch.object(swarm, "cleanup_merged_prs") as cleanup_merged_prs,
+        ):
+            swarm.process_polling_cycle(initial=True)
+
+        log_open_items.assert_called_once_with(issues, prs)
+        process_issues.assert_called_once_with(
+            False,
+            open_issues=issues,
+            open_prs=prs,
+        )
+        process_prs.assert_called_once_with(False, prs)
+        cleanup_merged_prs.assert_called_once_with(False)
+
+    def test_critical_gh_failure_is_reported_and_raised(self):
+        result = SimpleNamespace(returncode=1, stdout="", stderr="auth failed")
+        with (
+            patch.object(swarm.subprocess, "run", return_value=result),
+            self.assertLogs("swarm", level="ERROR") as captured,
+            self.assertRaises(swarm.subprocess.CalledProcessError),
+        ):
+            swarm.gh(["issue", "list"])
+
+        self.assertIn("auth failed", "\n".join(captured.output))
+
+
+class DispatchSafetyTests(unittest.TestCase):
+    def test_worker_dry_run_does_not_create_worktree(self):
+        issue = swarm.TaskIssue(
+            number=7,
+            title="[Task] JSON - formatter",
+            body="Implement it.",
+            worker=swarm.RoleAssignment("codex", "5.6 sol", "높음"),
+        )
+        with (
+            patch.object(swarm, "create_worktree") as create_worktree,
+            patch.object(swarm, "write_prompt_file", return_value=Path("prompt")),
+            patch.object(swarm, "build_ai_argv", return_value=["codex", "exec"]),
+        ):
+            swarm.dispatch_worker(issue, dry_run=True)
+
+        create_worktree.assert_not_called()
+
+    def test_worker_revision_dry_run_does_not_create_worktree(self):
+        issue = swarm.TaskIssue(
+            number=7,
+            title="[Task] JSON - formatter",
+            body="Implement it.",
+            worker=swarm.RoleAssignment("codex", "5.6 sol", "높음"),
+        )
+        pr = swarm.TaskPR(
+            number=12,
+            title="[PR] 7 - formatter",
+            body="",
+            head_branch="worker/7-codex-formatter",
+        )
+        with (
+            patch.object(swarm, "create_worktree") as create_worktree,
+            patch.object(swarm, "write_prompt_file", return_value=Path("prompt")),
+            patch.object(swarm, "build_ai_argv", return_value=["codex", "exec"]),
+        ):
+            swarm.dispatch_worker_revision(
+                pr,
+                issue,
+                "Fix it.",
+                dry_run=True,
+            )
+
+        create_worktree.assert_not_called()
+
+
 class PollingLifecycleTests(unittest.TestCase):
     def setUp(self):
         self.issue = {
@@ -182,7 +587,7 @@ class PollingLifecycleTests(unittest.TestCase):
             "headRefOid": "abc123",
         }
 
-    def test_initial_worker_event_is_not_dispatched_twice(self):
+    def test_successful_worker_is_not_retried_when_pr_signal_is_missing(self):
         tracker = FakeTracker({("issue#7:initial", "worker")})
         with (
             patch.object(swarm, "tracker", tracker),
@@ -190,6 +595,17 @@ class PollingLifecycleTests(unittest.TestCase):
             patch.object(swarm, "dispatch_worker") as dispatch_worker,
         ):
             swarm.process_issues(open_prs=[])
+
+        dispatch_worker.assert_not_called()
+
+    def test_worker_is_not_retried_after_pr_appears(self):
+        tracker = FakeTracker({("issue#7:initial", "worker")})
+        with (
+            patch.object(swarm, "tracker", tracker),
+            patch.object(swarm, "fetch_open_issues", return_value=[self.issue]),
+            patch.object(swarm, "dispatch_worker") as dispatch_worker,
+        ):
+            swarm.process_issues(open_prs=[self.pr])
 
         dispatch_worker.assert_not_called()
 
@@ -208,7 +624,7 @@ class PollingLifecycleTests(unittest.TestCase):
             dispatch_reviewer.call_args.kwargs["task_ref"],
         )
 
-    def test_completed_review_event_is_not_dispatched_again(self):
+    def test_successful_reviewer_is_not_retried_without_new_signal(self):
         tracker = FakeTracker({("review#12-abc123", "reviewer")})
         with (
             patch.object(swarm, "tracker", tracker),
@@ -390,6 +806,41 @@ class CleanupTests(unittest.TestCase):
             swarm.cleanup_merged_prs(dry_run=False)
 
         cleanup_worktree.assert_called_once_with(7, "worker/7-codex-json")
+
+
+class RuntimeLifecycleTests(unittest.TestCase):
+    def test_reset_process_history_clears_registry_and_memory(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            registry = Path(tmp_dir) / "registry.json"
+            registry.write_text("{}", encoding="utf-8")
+
+            tracker = swarm.tracker
+            original_active = dict(tracker._active)
+            original_history = list(tracker._history)
+            try:
+                tracker._active["123"] = (None, SimpleNamespace())
+                tracker._history.append(SimpleNamespace())
+                with patch.object(swarm, "PROCESS_REGISTRY_FILE", registry):
+                    swarm.reset_process_history()
+
+                self.assertFalse(registry.exists())
+                self.assertEqual({}, tracker._active)
+                self.assertEqual([], tracker._history)
+            finally:
+                tracker._active = original_active
+                tracker._history = original_history
+
+    def test_run_loop_exits_after_one_idle_cycle(self):
+        tracker = SimpleNamespace(active_count=0, poll_all=lambda: None)
+        with (
+            patch.object(swarm, "tracker", tracker),
+            patch.object(swarm, "process_polling_cycle") as process_polling_cycle,
+            patch.object(swarm.time, "sleep") as sleep,
+        ):
+            swarm.run_loop(interval=1, dry_run=True)
+
+        process_polling_cycle.assert_called_once_with(True, initial=True)
+        sleep.assert_not_called()
 
 
 if __name__ == "__main__":
