@@ -274,7 +274,9 @@ export default function ColorTool({ onBack }) {
             <div className="color-tool__format-item">
               <div className="color-tool__format-info">
                 <span className="color-tool__format-label">HEX</span>
-                <span className="color-tool__format-value">{parsed.isValid ? parsed.hex : '—'}</span>
+                <span className="color-tool__format-value">
+                  {parsed.isValid ? parsed.hex : '—'}
+                </span>
               </div>
               <button
                 type="button"

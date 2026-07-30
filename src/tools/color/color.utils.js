@@ -220,7 +220,7 @@ export function hslToHex(h, s, l) {
 export function detectFormat(input) {
   if (typeof input !== 'string') return 'unknown';
   const trimmed = input.trim();
-  if (/^#/i.test(trimmed) || /^([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/i.test(trimmed)) return 'hex';
+  if (/^#/i.test(trimmed) || /^[0-9a-fA-F]{1,8}$/i.test(trimmed)) return 'hex';
   if (/^rgb\s*\(/i.test(trimmed)) return 'rgb';
   if (/^hsl\s*\(/i.test(trimmed)) return 'hsl';
   return 'unknown';
