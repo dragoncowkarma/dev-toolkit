@@ -3,6 +3,7 @@ import Layout from './components/Layout.jsx';
 const Base64Tool = React.lazy(() => import('./tools/base64/Base64Tool.jsx'));
 const HashTool = React.lazy(() => import('./tools/hash/HashTool.jsx'));
 const JsonTool = React.lazy(() => import('./tools/json/JsonTool.jsx'));
+const TimestampTool = React.lazy(() => import('./tools/timestamp/TimestampTool.jsx'));
 const UrlTool = React.lazy(() => import('./tools/url/UrlTool.jsx'));
 
 const TOOLS = [
@@ -29,6 +30,14 @@ const TOOLS = [
     icon: '↗',
     category: 'Encoder',
     component: UrlTool,
+  },
+  {
+    id: 'timestamp',
+    name: 'Timestamp Converter',
+    description: 'Convert Unix timestamps and human-readable dates in real time.',
+    icon: '⏱',
+    category: 'Converter',
+    component: TimestampTool,
   },
   {
     id: 'hash',
