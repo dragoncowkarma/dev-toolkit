@@ -230,7 +230,7 @@ describe('Sidebar keyboard navigation', () => {
 });
 
 describe('Sidebar Mobile Focus Trap', () => {
-  it('traps focus inside the mobile drawer when opened', () => {
+  it('traps focus inside the mobile drawer when opened and wraps at boundaries', () => {
     const handleClose = vi.fn();
     const { container } = render(
       <Sidebar
@@ -254,6 +254,54 @@ describe('Sidebar Mobile Focus Trap', () => {
 
     fireEvent.keyDown(document.activeElement, { key: 'Tab', shiftKey: false });
     expect(document.activeElement).toBe(closeButton);
+  });
+
+  it('keeps focus inside the drawer when tabbing from mid-list elements', () => {
+    render(
+      <Sidebar
+        tools={TOOLS}
+        activeToolId="base64"
+        isCollapsed={false}
+        isMobileOpen={true}
+        onSelectTool={() => {}}
+        onToggleCollapse={() => {}}
+        onCloseMobile={() => {}}
+      />,
+    );
+
+    const jsonButton = screen.getByRole('button', { name: 'JSON Formatter' });
+    jsonButton.focus();
+    expect(document.activeElement).toBe(jsonButton);
+
+    fireEvent.keyDown(document.activeElement, { key: 'Tab', shiftKey: false });
+    expect(document.activeElement).toBe(jsonButton);
+  });
+
+  it('restores focus to previously focused element when drawer closes', () => {
+    const triggerButton = document.createElement('button');
+    triggerButton.textContent = 'Open Navigation';
+    document.body.appendChild(triggerButton);
+    triggerButton.focus();
+    expect(document.activeElement).toBe(triggerButton);
+
+    const { container, unmount } = render(
+      <Sidebar
+        tools={TOOLS}
+        activeToolId="base64"
+        isCollapsed={false}
+        isMobileOpen={true}
+        onSelectTool={() => {}}
+        onToggleCollapse={() => {}}
+        onCloseMobile={() => {}}
+      />,
+    );
+
+    const closeButton = container.querySelector('.sidebar__mobile-close');
+    expect(document.activeElement).toBe(closeButton);
+
+    unmount();
+    expect(document.activeElement).toBe(triggerButton);
+    document.body.removeChild(triggerButton);
   });
 
   it('closes mobile drawer on Escape key press', () => {

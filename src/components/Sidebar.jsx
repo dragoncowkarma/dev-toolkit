@@ -16,6 +16,15 @@ function isEditableTarget(target) {
   return EDITABLE_TAGS.has(target.tagName);
 }
 
+const FOCUSABLE_SELECTOR = [
+  'button:not([disabled])',
+  '[href]:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(', ');
+
 /**
  * Renders the tool navigation for desktop and mobile layouts.
  *
@@ -41,6 +50,11 @@ export default function Sidebar({
   const [query, setQuery] = useState('');
   const searchInputRef = useRef(null);
   const sidebarRef = useRef(null);
+  const onCloseMobileRef = useRef(onCloseMobile);
+
+  useEffect(() => {
+    onCloseMobileRef.current = onCloseMobile;
+  });
 
   useEffect(() => {
     if (!isMobileOpen) return undefined;
@@ -49,11 +63,7 @@ export default function Sidebar({
 
     const getFocusableElements = () => {
       if (!sidebarRef.current) return [];
-      return Array.from(
-        sidebarRef.current.querySelectorAll(
-          'button:not([disabled]), [href]:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-        )
-      );
+      return Array.from(sidebarRef.current.querySelectorAll(FOCUSABLE_SELECTOR));
     };
 
     const focusableElements = getFocusableElements();
@@ -67,7 +77,7 @@ export default function Sidebar({
         if (search && document.activeElement === search && search.value !== '') {
           return;
         }
-        onCloseMobile();
+        onCloseMobileRef.current();
         return;
       }
 
@@ -103,7 +113,7 @@ export default function Sidebar({
         previousFocus.focus();
       }
     };
-  }, [isMobileOpen, onCloseMobile]);
+  }, [isMobileOpen]);
 
   const sidebarClassName = [
     'sidebar',

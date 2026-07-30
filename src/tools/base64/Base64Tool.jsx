@@ -199,10 +199,12 @@ export default function Base64Tool() {
               className="btn copy-btn"
               onClick={handleCopy}
               disabled={!output}
-              aria-live="polite"
             >
               {copied ? '✓ Copied' : 'Copy'}
             </button>
+            <div className="sr-only" role="status">
+              {copied ? 'Copied to clipboard' : ''}
+            </div>
           </div>
           <textarea
             id="base64-output"

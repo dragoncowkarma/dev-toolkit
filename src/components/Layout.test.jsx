@@ -225,7 +225,7 @@ describe('Layout dynamic page title', () => {
   });
 });
 
-describe('Layout ARIA Live Announcement', () => {
+describe('Layout Integration & Focus Trap', () => {
   it('announces active tool changes to screen readers via status element', () => {
     render(<Layout tools={TEST_TOOLS} defaultToolId="base64" />);
 
@@ -236,6 +236,24 @@ describe('Layout ARIA Live Announcement', () => {
     fireEvent.click(jsonToolButton);
 
     expect(statusElement).toHaveTextContent('Active tool: JSON Formatter');
+  });
+
+  it('does not steal focus back to top of drawer when Layout re-renders', () => {
+    const { container } = render(<Layout tools={TEST_TOOLS} defaultToolId="base64" />);
+
+    const openMenuButton = screen.getByRole('button', { name: 'Open tool navigation' });
+    fireEvent.click(openMenuButton);
+
+    const closeButton = container.querySelector('.sidebar__mobile-close');
+    expect(document.activeElement).toBe(closeButton);
+
+    const collapseButton = screen.getByRole('button', { name: 'Collapse sidebar' });
+    collapseButton.focus();
+    expect(document.activeElement).toBe(collapseButton);
+
+    fireEvent.click(collapseButton);
+
+    expect(document.activeElement).toBe(collapseButton);
   });
 });
 
