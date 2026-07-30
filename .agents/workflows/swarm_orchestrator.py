@@ -970,19 +970,25 @@ def write_prompt_file(prompt: str, role: str, task_ref: str) -> Path:
 # AI Agent Dispatch — builds argv lists (NOT shell strings)
 # ---------------------------------------------------------------------------
 
-# Maps AGENTS.md model names (case-insensitive) to actual CLI model IDs.
-# The orchestrator receives model names from GitHub Issue/PR metadata tags;
-# these may use human-friendly names that differ from CLI identifiers.
-_AGY_MODEL_MAP: dict[str, str] = {
-    "gemini 3.6 flash": "gemini 3.6 flash",
-    "gemini 3.5 flash": "gemini 3.6 flash",   # 3.5 not available; upgrade
-    "gemini 3.1 pro":   "gemini 3.6 flash",   # 3.1 pro not available; fallback
+# Maps AGENTS.md model names + reasoning level to actual agy CLI model IDs.
+# agy embeds the effort level in the model name itself, e.g.:
+#   "Gemini 3.6 Flash (High)", "Gemini 3.6 Flash (Medium)", "Gemini 3.6 Flash (Low)"
+# There is NO separate --effort flag for agy.
+
+_AGY_EFFORT_LABEL: dict[str, str] = {
+    "high": "High", "높음": "High", "울트라": "High",
+    "매우 높음": "High",
+    "medium": "Medium", "중간": "Medium",
+    "low": "Low", "낮음": "Low", "light": "Low",
+    "thinking": "High",
+    "엑스트라": "High", "최대": "High", "ultracode": "High",
 }
 
-# Models where agy supports the --effort flag.
-_AGY_EFFORT_MODELS: set[str] = {
-    "gemini 3.6 flash",
-}
+def _resolve_agy_model(model: str, reasoning: str) -> str:
+    """Build the full agy model string like 'Gemini 3.6 Flash (High)'."""
+    effort = _AGY_EFFORT_LABEL.get(reasoning.lower().strip(), "High")
+    # All AGENTS.md antigravity models map to Gemini 3.6 Flash
+    return f"Gemini 3.6 Flash ({effort})"
 
 _CLAUDE_MODEL_MAP: dict[str, str] = {
     "sonnet 5":     "claude-sonnet-5",
@@ -1006,14 +1012,16 @@ _CLAUDE_EFFORT_MAP: dict[str, str] = {
     "엑스트라": "xhigh", "최대": "max", "ultracode": "max",
 }
 
+# Codex with ChatGPT accounts only supports reasoning models (o3, o4-mini).
+# Enterprise model names from AGENTS.md (5.6, 5.5, etc.) are not available.
 _CODEX_MODEL_MAP: dict[str, str] = {
-    "5.6 (sol, terra, luna)": "gpt-4o",
-    "5.6":                    "gpt-4o",
-    "5.5":                    "gpt-4o",
-    "5.4":                    "gpt-4o",
-    "5.4 mini":               "gpt-4o-mini",
-    "gpt-4o":                 "gpt-4o",
-    "gpt-4o-mini":            "gpt-4o-mini",
+    "5.6 (sol, terra, luna)": "o4-mini",
+    "5.6":                    "o4-mini",
+    "5.5":                    "o4-mini",
+    "5.4":                    "o4-mini",
+    "5.4 mini":               "o4-mini",
+    "o3":                     "o3",
+    "o4-mini":                "o4-mini",
 }
 
 
@@ -1021,15 +1029,15 @@ def build_ai_argv(ai_name: str, model: str, reasoning: str,
                   prompt_file: Path, cwd: str) -> list[str]:
     """Build an argv list for a specific AI CLI tool.
 
-    Each tool's actual flags (verified via --help):
-      codex exec -m <model> -C <dir> -s workspace-write --dangerously-bypass-approvals-and-sandbox <prompt_from_stdin>
-      agy -p --model <model> [--effort <level>] --print-timeout <dur> --dangerously-skip-permissions <prompt_from_file>
-      claude -p --model <model> --effort <level> --dangerously-skip-permissions <prompt_from_file>
+    Each tool's actual flags (verified via CLI):
+      codex exec -m <model> -C <dir> -s workspace-write --dangerously-bypass-approvals-and-sandbox <prompt>
+      agy --model "Gemini 3.6 Flash (High)" --print-timeout <dur> --dangerously-skip-permissions -p <prompt>
+      claude -p --model <model> --effort <level> --dangerously-skip-permissions <prompt>
     """
     prompt_text = prompt_file.read_text(encoding="utf-8")
 
     if ai_name == "codex":
-        resolved_model = _CODEX_MODEL_MAP.get(model.lower().strip(), model)
+        resolved_model = _CODEX_MODEL_MAP.get(model.lower().strip(), "o4-mini")
         if resolved_model != model:
             log.info(
                 "Model alias: '%s' → '%s' (codex)",
@@ -1048,21 +1056,16 @@ def build_ai_argv(ai_name: str, model: str, reasoning: str,
         ]
 
     elif ai_name == "antigravity":
-        resolved_model = _AGY_MODEL_MAP.get(model.lower().strip(), model)
-        if resolved_model != model:
-            log.info(
-                "Model alias: '%s' → '%s' (antigravity)",
-                model, resolved_model,
-            )
+        resolved_model = _resolve_agy_model(model, reasoning)
+        log.info(
+            "Model alias: '%s' (reasoning=%s) → '%s' (antigravity)",
+            model, reasoning, resolved_model,
+        )
+        # agy does NOT use a separate --effort flag; effort is part of model name.
         argv = [
             "agy",
             "--dangerously-skip-permissions",
             "--model", resolved_model,
-        ]
-        # Only pass --effort when the resolved model supports it.
-        if resolved_model.lower() in _AGY_EFFORT_MODELS:
-            argv += ["--effort", _map_reasoning_to_effort(reasoning)]
-        argv += [
             "--print-timeout", ANTIGRAVITY_PRINT_TIMEOUT,
             "-p", prompt_text,
         ]
