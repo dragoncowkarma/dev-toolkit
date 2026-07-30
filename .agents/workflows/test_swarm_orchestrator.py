@@ -72,7 +72,7 @@ class DispatchDecisionTests(unittest.TestCase):
         self.assertFalse(tracker.should_dispatch("review#12-abc123", "reviewer")[0])
         self.assertTrue(tracker.should_dispatch("review#12-def456", "reviewer")[0])
 
-    def test_completed_process_is_not_retried_when_transition_is_unconfirmed(self):
+    def test_completed_process_is_retried_when_transition_is_unconfirmed(self):
         tracker = make_tracker([
             record("review#12-abc123", "reviewer", swarm.ProcessStatus.COMPLETED),
         ])
@@ -83,8 +83,8 @@ class DispatchDecisionTests(unittest.TestCase):
             completion_confirmed=False,
         )
 
-        self.assertFalse(allowed)
-        self.assertEqual(swarm.DISPATCH_UNCONFIRMED, reason)
+        self.assertTrue(allowed)
+        self.assertIn("retry after unconfirmed completion", reason)
 
     def test_running_event_is_not_dispatched_again(self):
         tracker = make_tracker([
@@ -806,6 +806,41 @@ class CleanupTests(unittest.TestCase):
             swarm.cleanup_merged_prs(dry_run=False)
 
         cleanup_worktree.assert_called_once_with(7, "worker/7-codex-json")
+
+
+class RuntimeLifecycleTests(unittest.TestCase):
+    def test_reset_process_history_clears_registry_and_memory(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            registry = Path(tmp_dir) / "registry.json"
+            registry.write_text("{}", encoding="utf-8")
+
+            tracker = swarm.tracker
+            original_active = dict(tracker._active)
+            original_history = list(tracker._history)
+            try:
+                tracker._active["123"] = (None, SimpleNamespace())
+                tracker._history.append(SimpleNamespace())
+                with patch.object(swarm, "PROCESS_REGISTRY_FILE", registry):
+                    swarm.reset_process_history()
+
+                self.assertFalse(registry.exists())
+                self.assertEqual({}, tracker._active)
+                self.assertEqual([], tracker._history)
+            finally:
+                tracker._active = original_active
+                tracker._history = original_history
+
+    def test_run_loop_exits_after_one_idle_cycle(self):
+        tracker = SimpleNamespace(active_count=0, poll_all=lambda: None)
+        with (
+            patch.object(swarm, "tracker", tracker),
+            patch.object(swarm, "process_polling_cycle") as process_polling_cycle,
+            patch.object(swarm.time, "sleep") as sleep,
+        ):
+            swarm.run_loop(interval=1, dry_run=True)
+
+        process_polling_cycle.assert_called_once_with(True, initial=True)
+        sleep.assert_not_called()
 
 
 if __name__ == "__main__":

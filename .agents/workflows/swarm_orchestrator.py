@@ -76,6 +76,7 @@ DISPATCH_PROVIDER_COOLDOWN = "provider cooldown"
 
 # Upper bound on persisted history so the registry cannot grow without limit.
 MAX_HISTORY_RECORDS = 500
+IDLE_EXIT_CYCLES = 1
 
 # Metadata tag patterns
 WORKER_PATTERN = re.compile(
@@ -414,10 +415,6 @@ class ProcessTracker:
         ]
         if any(record.status == ProcessStatus.RUNNING for record in attempts):
             return False, DISPATCH_RUNNING
-        if any(record.status == ProcessStatus.COMPLETED for record in attempts):
-            reason = DISPATCH_COMPLETED if completion_confirmed else DISPATCH_UNCONFIRMED
-            return False, reason
-
         provider_cooldowns = []
         if ai_name:
             for record in self.all_records:
@@ -455,6 +452,19 @@ class ProcessTracker:
             record for record in attempts
             if record.status in (ProcessStatus.FAILED, ProcessStatus.UNKNOWN)
         ]
+        completed_attempts = [
+            record for record in attempts
+            if record.status == ProcessStatus.COMPLETED
+        ]
+        if completed_attempts:
+            if completion_confirmed:
+                return False, DISPATCH_COMPLETED
+            if len(crash_attempts) >= MAX_DISPATCH_ATTEMPTS:
+                return False, f"exhausted {len(crash_attempts)} failed attempts"
+            return (
+                True,
+                f"retry after unconfirmed completion ({len(crash_attempts) + 1}/{MAX_DISPATCH_ATTEMPTS})",
+            )
         if len(crash_attempts) >= MAX_DISPATCH_ATTEMPTS:
             return False, f"exhausted {len(crash_attempts)} failed attempts"
         if deferred:
@@ -638,6 +648,14 @@ class ProcessTracker:
 
 # Global tracker instance
 tracker = ProcessTracker()
+
+
+def reset_process_history():
+    """Start a fresh run with no persisted dispatch failures or active state."""
+    tracker._active.clear()
+    tracker._history.clear()
+    if PROCESS_REGISTRY_FILE.exists():
+        PROCESS_REGISTRY_FILE.unlink()
 
 
 # ---------------------------------------------------------------------------
@@ -1842,6 +1860,7 @@ def run_loop(interval: int, dry_run: bool = False):
     signal.signal(signal.SIGINT, handle_signal)
 
     initial = True
+    idle_cycles = 0
     while True:
         try:
             log.info("--- Polling cycle (active: %d) ---", tracker.active_count)
@@ -1852,6 +1871,17 @@ def run_loop(interval: int, dry_run: bool = False):
             # 2. Poll every open item immediately on startup and every interval
             process_polling_cycle(dry_run, initial=initial)
             initial = False
+
+            if tracker.active_count == 0:
+                idle_cycles += 1
+                if idle_cycles >= IDLE_EXIT_CYCLES:
+                    log.info(
+                        "No active tasks remain after %d idle cycle(s); exiting.",
+                        idle_cycles,
+                    )
+                    break
+            else:
+                idle_cycles = 0
 
         except KeyboardInterrupt:
             log.info("Shutting down gracefully...")
@@ -1894,10 +1924,13 @@ def main():
         print(tracker.get_summary())
         return
 
+    reset_process_history()
+
     if args.once:
         log.info("Running single polling cycle...")
         process_polling_cycle(args.dry_run, initial=True)
         tracker.poll_all()
+        cleanup_merged_prs(args.dry_run)
         log.info("Done.")
     else:
         run_loop(args.interval, args.dry_run)
