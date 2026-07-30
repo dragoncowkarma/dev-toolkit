@@ -4,6 +4,7 @@ const Base64Tool = React.lazy(() => import('./tools/base64/Base64Tool.jsx'));
 const HashTool = React.lazy(() => import('./tools/hash/HashTool.jsx'));
 const HtmlEntityTool = React.lazy(() => import('./tools/html-entity/HtmlEntityTool.jsx'));
 const JsonTool = React.lazy(() => import('./tools/json/JsonTool.jsx'));
+const JwtTool = React.lazy(() => import('./tools/jwt/JwtTool.jsx'));
 const UrlTool = React.lazy(() => import('./tools/url/UrlTool.jsx'));
 const UuidTool = React.lazy(() => import('./tools/uuid/UuidTool.jsx'));
 const DiffTool = React.lazy(() => import('./tools/diff/DiffTool.jsx'));
@@ -24,6 +25,14 @@ const TOOLS = [
     icon: '{ }',
     category: 'Formatter',
     component: JsonTool,
+  },
+  {
+    id: 'jwt',
+    name: 'JWT Decoder',
+    description: 'Decode JWT claims and inspect expiration details locally.',
+    icon: '◈',
+    category: 'Decoder',
+    component: JwtTool,
   },
   {
     id: 'url',
