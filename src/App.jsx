@@ -2,6 +2,7 @@ import React from 'react';
 import Layout from './components/Layout.jsx';
 const Base64Tool = React.lazy(() => import('./tools/base64/Base64Tool.jsx'));
 const HashTool = React.lazy(() => import('./tools/hash/HashTool.jsx'));
+const HtmlEntityTool = React.lazy(() => import('./tools/html-entity/HtmlEntityTool.jsx'));
 const JsonTool = React.lazy(() => import('./tools/json/JsonTool.jsx'));
 const UrlTool = React.lazy(() => import('./tools/url/UrlTool.jsx'));
 const UuidTool = React.lazy(() => import('./tools/uuid/UuidTool.jsx'));
@@ -31,6 +32,14 @@ const TOOLS = [
     icon: '↗',
     category: 'Encoder',
     component: UrlTool,
+  },
+  {
+    id: 'html-entity',
+    name: 'HTML Entity',
+    description: 'Encode and decode HTML entities, including Unicode characters.',
+    icon: '&;',
+    category: 'Encoder',
+    component: HtmlEntityTool,
   },
   {
     id: 'hash',
