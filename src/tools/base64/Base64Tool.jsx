@@ -199,6 +199,7 @@ export default function Base64Tool() {
               className="btn copy-btn"
               onClick={handleCopy}
               disabled={!output}
+              aria-live="polite"
             >
               {copied ? '✓ Copied' : 'Copy'}
             </button>

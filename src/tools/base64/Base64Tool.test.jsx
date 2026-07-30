@@ -48,6 +48,12 @@ describe('Base64Tool file/mode transition', () => {
 });
 
 describe('Base64Tool clipboard error handling', () => {
+  it('has aria-live=polite on the copy button for screen reader status announcement', () => {
+    render(<Base64Tool />);
+    const copyBtn = screen.getByRole('button', { name: 'Copy' });
+    expect(copyBtn).toHaveAttribute('aria-live', 'polite');
+  });
+
   it('reports a copy failure without disabling a valid Swap', async () => {
     Object.assign(navigator, {
       clipboard: { writeText: vi.fn().mockRejectedValue(new Error('denied')) },

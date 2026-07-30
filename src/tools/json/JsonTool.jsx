@@ -523,6 +523,8 @@ export default function JsonTool({ onBack }) {
       })
       .catch((err) => {
         console.error('Failed to copy: ', err);
+        setToast('Failed to copy to clipboard.');
+        setTimeout(() => setToast(''), 3000);
       });
   };
 
@@ -574,8 +576,8 @@ export default function JsonTool({ onBack }) {
   return (
     <section className="json-tool-container" aria-label="JSON Utility Tool">
       {toast && (
-        <div className="toast" role="alert">
-          <span>✅</span> {toast}
+        <div className="toast" role="alert" aria-live="polite">
+          <span>{toast.includes('Failed') ? '❌' : '✅'}</span> {toast}
         </div>
       )}
 

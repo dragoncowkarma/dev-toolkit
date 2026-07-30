@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Layout from './Layout.jsx';
@@ -124,7 +124,7 @@ describe('Layout Component', () => {
 
     render(<Layout tools={tools} defaultToolId="lazy" />);
 
-    expect(screen.getByRole('status')).toBeInTheDocument();
+    expect(within(screen.getByRole('main')).getByRole('status')).toBeInTheDocument();
     expect(screen.getByText('Loading tool...')).toBeInTheDocument();
 
     await waitFor(() => {
@@ -222,6 +222,20 @@ describe('Layout dynamic page title', () => {
 
     expect(screen.getByRole('heading', { level: 1, name: 'Tool B' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { level: 1, name: 'Tool A' })).not.toBeInTheDocument();
+  });
+});
+
+describe('Layout ARIA Live Announcement', () => {
+  it('announces active tool changes to screen readers via status element', () => {
+    render(<Layout tools={TEST_TOOLS} defaultToolId="base64" />);
+
+    const statusElement = screen.getByText(/^Active tool:/);
+    expect(statusElement).toHaveTextContent('Active tool: Base64');
+
+    const jsonToolButton = screen.getByRole('button', { name: 'JSON Formatter' });
+    fireEvent.click(jsonToolButton);
+
+    expect(statusElement).toHaveTextContent('Active tool: JSON Formatter');
   });
 });
 

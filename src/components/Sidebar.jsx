@@ -40,6 +40,70 @@ export default function Sidebar({
 }) {
   const [query, setQuery] = useState('');
   const searchInputRef = useRef(null);
+  const sidebarRef = useRef(null);
+
+  useEffect(() => {
+    if (!isMobileOpen) return undefined;
+
+    const previousFocus = document.activeElement;
+
+    const getFocusableElements = () => {
+      if (!sidebarRef.current) return [];
+      return Array.from(
+        sidebarRef.current.querySelectorAll(
+          'button:not([disabled]), [href]:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )
+      );
+    };
+
+    const focusableElements = getFocusableElements();
+    if (focusableElements.length > 0) {
+      focusableElements[0].focus();
+    }
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        const search = searchInputRef.current;
+        if (search && document.activeElement === search && search.value !== '') {
+          return;
+        }
+        onCloseMobile();
+        return;
+      }
+
+      if (event.key === 'Tab') {
+        const elements = getFocusableElements();
+        if (elements.length === 0) return;
+
+        const firstElement = elements[0];
+        const lastElement = elements[elements.length - 1];
+
+        if (event.shiftKey) {
+          if (
+            document.activeElement === firstElement ||
+            !sidebarRef.current.contains(document.activeElement)
+          ) {
+            lastElement.focus();
+            event.preventDefault();
+          }
+        } else {
+          if (document.activeElement === lastElement) {
+            firstElement.focus();
+            event.preventDefault();
+          }
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      if (previousFocus && typeof previousFocus.focus === 'function') {
+        previousFocus.focus();
+      }
+    };
+  }, [isMobileOpen, onCloseMobile]);
 
   const sidebarClassName = [
     'sidebar',
@@ -84,6 +148,7 @@ export default function Sidebar({
   return (
     <>
       <aside
+        ref={sidebarRef}
         id="tool-navigation"
         className={sidebarClassName}
         aria-label="Developer tools"

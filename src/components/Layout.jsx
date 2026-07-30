@@ -143,6 +143,10 @@ export default function Layout({ tools, defaultToolId }) {
         Skip to main content
       </a>
 
+      <div className="sr-only" aria-live="polite" aria-atomic="true" role="status">
+        {`Active tool: ${activeTool.name}`}
+      </div>
+
       <Sidebar
         tools={tools}
         activeToolId={activeTool.id}
