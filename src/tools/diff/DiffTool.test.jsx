@@ -1,10 +1,20 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import DiffTool from './DiffTool.jsx';
 
 function selectFile(input, file) {
   Object.defineProperty(input, 'files', { value: [file], configurable: true });
   fireEvent.change(input);
+}
+
+// jsdom's Blob shim has no text()/arrayBuffer(), so read it via FileReader instead.
+function readBlobAsText(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsText(blob);
+  });
 }
 
 afterEach(() => {
@@ -48,6 +58,20 @@ describe('DiffTool view mode toggle', () => {
 
     expect(screen.queryByLabelText('Side-by-side diff')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Unified diff')).toBeInTheDocument();
+  });
+
+  it('gives every unified-view row at least one owned cell', () => {
+    render(<DiffTool />);
+    fireEvent.change(screen.getByLabelText('Original'), { target: { value: 'a\nb\nc' } });
+    fireEvent.change(screen.getByLabelText('Modified'), { target: { value: 'a\nx\nc\nd' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Unified' }));
+
+    const table = screen.getByLabelText('Unified diff');
+    const rows = within(table).getAllByRole('row');
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(within(row).getAllByRole('cell').length).toBeGreaterThan(0);
+    }
   });
 });
 
@@ -120,11 +144,20 @@ describe('DiffTool copy and download', () => {
     expect(screen.getByRole('button', { name: 'Download' })).toBeDisabled();
   });
 
-  it('triggers a download of the diff as a file', () => {
+  it('triggers a download of the diff with the expected filename and blob contents', async () => {
     const createObjectURL = vi.fn().mockReturnValue('blob:mock');
     const revokeObjectURL = vi.fn();
     global.URL.createObjectURL = createObjectURL;
     global.URL.revokeObjectURL = revokeObjectURL;
+
+    let clickedAnchor = null;
+    const clickSpy = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(function stubClick() {
+        // Stand in for the real navigation jsdom can't perform, and capture
+        // the anchor so its `download`/`href` can still be asserted on.
+        clickedAnchor = this;
+      });
 
     render(<DiffTool />);
     fireEvent.change(screen.getByLabelText('Original'), { target: { value: 'a' } });
@@ -132,8 +165,25 @@ describe('DiffTool copy and download', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Download' }));
 
-    expect(createObjectURL).toHaveBeenCalled();
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    const blob = createObjectURL.mock.calls[0][0];
+    expect(blob.type).toBe('text/plain');
+    await expect(readBlobAsText(blob)).resolves.toBe(
+      `${[
+        '--- original',
+        '+++ modified',
+        '@@ -1,1 +1,1 @@',
+        '-a',
+        '\\ No newline at end of file',
+        '+b',
+        '\\ No newline at end of file',
+      ].join('\n')}\n`,
+    );
+    expect(clickedAnchor.download).toBe('diff.patch');
+    expect(clickedAnchor.href).toBe('blob:mock');
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:mock');
+
+    clickSpy.mockRestore();
   });
 });
 

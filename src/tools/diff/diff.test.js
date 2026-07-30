@@ -1,7 +1,12 @@
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import {
   buildDiffRows,
   computeLineOps,
+  computeTextDiff,
   diffLines,
   diffTokens,
   generateUnifiedDiff,
@@ -9,6 +14,27 @@ import {
   splitLines,
   tokenizeLine,
 } from './diff.utils.js';
+
+/**
+ * Applies a unified diff with the real `git apply` and returns the
+ * resulting file contents, so patch validity is verified the same way the
+ * reviewer's reproduction did rather than by a hand-rolled parser.
+ * @param {string} oldText
+ * @param {string} patch
+ * @returns {string}
+ */
+function applyPatchWithGit(oldText, patch) {
+  const dir = mkdtempSync(join(tmpdir(), 'diff-tool-patch-'));
+  try {
+    writeFileSync(join(dir, 'b'), oldText);
+    writeFileSync(join(dir, 'patch.diff'), patch);
+    execFileSync('git', ['apply', '--check', 'patch.diff'], { cwd: dir });
+    execFileSync('git', ['apply', 'patch.diff'], { cwd: dir });
+    return readFileSync(join(dir, 'b'), 'utf8');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
 
 describe('splitLines', () => {
   it('returns an empty array for an empty string', () => {
@@ -170,7 +196,16 @@ describe('generateUnifiedDiff', () => {
     });
 
     expect(result).toBe(
-      ['--- original', '+++ modified', '@@ -1,3 +1,3 @@', ' a', '-b', '+x', ' c'].join('\n'),
+      `${[
+        '--- original',
+        '+++ modified',
+        '@@ -1,3 +1,3 @@',
+        ' a',
+        '-b',
+        '+x',
+        ' c',
+        '\\ No newline at end of file',
+      ].join('\n')}\n`,
     );
   });
 
@@ -200,7 +235,107 @@ describe('generateUnifiedDiff', () => {
 
   it('produces a zero-count old range for a pure insertion at the start', () => {
     const result = generateUnifiedDiff('a', 'new\na', { context: 0 });
-    expect(result).toBe(['--- a', '+++ b', '@@ -0,0 +1,1 @@', '+new'].join('\n'));
+    expect(result).toBe(`${['--- a', '+++ b', '@@ -0,0 +1,1 @@', '+new'].join('\n')}\n`);
+  });
+});
+
+describe('generateUnifiedDiff patch validity (round-trip via git apply)', () => {
+  it('reproduces the exact reviewer repro: newline-terminated files applying cleanly', () => {
+    const oldText = 'a\nb\n';
+    const newText = 'a\nc\n';
+    const patch = generateUnifiedDiff(oldText, newText);
+
+    expect(applyPatchWithGit(oldText, patch)).toBe(newText);
+  });
+
+  it('round-trips when both files end without a trailing newline', () => {
+    const oldText = 'line one\nline two';
+    const newText = 'line one\nchanged two';
+    const patch = generateUnifiedDiff(oldText, newText);
+
+    expect(patch).toContain('\\ No newline at end of file');
+    expect(applyPatchWithGit(oldText, patch)).toBe(newText);
+  });
+
+  it('round-trips when the old file lacks a trailing newline but the new one has one', () => {
+    const oldText = 'a\nb';
+    const newText = 'a\nb\n';
+    const patch = generateUnifiedDiff(oldText, newText);
+
+    expect(applyPatchWithGit(oldText, patch)).toBe(newText);
+  });
+
+  it('round-trips when the new file lacks a trailing newline but the old one has one', () => {
+    const oldText = 'a\nb\n';
+    const newText = 'a\nb';
+    const patch = generateUnifiedDiff(oldText, newText);
+
+    expect(applyPatchWithGit(oldText, patch)).toBe(newText);
+  });
+
+  it('round-trips a pure append after an unchanged, newline-less final line', () => {
+    const oldText = 'a\nb\nc';
+    const newText = 'a\nx\nc\nd';
+    const patch = generateUnifiedDiff(oldText, newText);
+
+    expect(applyPatchWithGit(oldText, patch)).toBe(newText);
+  });
+
+  it('round-trips a multi-hunk diff over many lines', () => {
+    const oldText = Array.from({ length: 30 }, (_, i) => `line ${i}`).join('\n');
+    const lines = oldText.split('\n');
+    lines[1] = 'CHANGED-1';
+    lines[28] = 'CHANGED-28';
+    const newText = lines.join('\n');
+    const patch = generateUnifiedDiff(oldText, newText, { context: 2 });
+
+    expect(applyPatchWithGit(oldText, patch)).toBe(newText);
+  });
+});
+
+describe('computeLineOps memory bound for large dissimilar inputs', () => {
+  it('bounds worst-case time for two large, completely disjoint inputs', () => {
+    const oldLines = Array.from({ length: 2000 }, (_, i) => `old-only-${i}`);
+    const newLines = Array.from({ length: 2000 }, (_, i) => `new-only-${i}`);
+
+    const start = performance.now();
+    const ops = computeLineOps(oldLines, newLines);
+    const elapsedMs = performance.now() - start;
+
+    expect(ops).toHaveLength(oldLines.length + newLines.length);
+    expect(ops.every((op) => op.type !== 'equal')).toBe(true);
+    expect(elapsedMs).toBeLessThan(2000);
+  });
+});
+
+describe('computeTextDiff', () => {
+  it('returns rows/stats matching diffLines and a patch matching generateUnifiedDiff', () => {
+    const oldText = 'a\nb\nc';
+    const newText = 'a\nx\nc';
+
+    const combined = computeTextDiff(oldText, newText, {
+      oldLabel: 'original',
+      newLabel: 'modified',
+    });
+    const { rows, stats } = diffLines(oldText, newText);
+    const unifiedDiff = generateUnifiedDiff(oldText, newText, {
+      oldLabel: 'original',
+      newLabel: 'modified',
+    });
+
+    expect(combined.rows).toEqual(rows);
+    expect(combined.stats).toEqual(stats);
+    expect(combined.unifiedDiff).toBe(unifiedDiff);
+  });
+
+  it('does not let a trailing-newline mismatch leak into the displayed rows/stats', () => {
+    const oldText = 'a\nb\nc';
+    const newText = 'a\nx\nc\nd';
+
+    const { rows, stats } = computeTextDiff(oldText, newText);
+
+    expect(stats).toEqual({ added: 1, removed: 0, modified: 1, unchanged: 2 });
+    expect(rows.map((row) => row.type)).toEqual(['unchanged', 'modified', 'unchanged', 'added']);
   });
 });
 
