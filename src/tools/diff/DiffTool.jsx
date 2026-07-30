@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { diffLines, generateUnifiedDiff, readFileAsText } from './diff.utils.js';
+import { computeTextDiff, readFileAsText } from './diff.utils.js';
 import './diff.css';
 
 const VIEW_MODES = {
@@ -37,29 +37,64 @@ function InlineTokens({ tokens, side }) {
 }
 
 /**
+ * Renders one side-by-side column's content: inline token highlighting for
+ * modified rows, plain text otherwise.
+ * @param {{line: {number: number, content: string}|null, row: object, side: 'left'|'right'}} props
+ * @returns {React.JSX.Element|string}
+ */
+function SideBySideCellContent({ line, row, side }) {
+  if (!line) return '';
+  if (row.type === 'modified') return <InlineTokens tokens={row.tokens} side={side} />;
+  return line.content;
+}
+
+/**
  * Renders the two-column side-by-side diff view.
  * @param {{rows: Array<object>}} props
  * @returns {React.JSX.Element}
  */
 function SideBySideView({ rows }) {
   return (
-    <div className="diff-table diff-table--side-by-side" role="table" aria-label="Side-by-side diff">
+    <div
+      className="diff-table diff-table--side-by-side"
+      role="table"
+      aria-label="Side-by-side diff"
+    >
       {rows.map((row, index) => (
         <div className={`diff-row diff-row--${row.type}`} role="row" key={index}>
           <div className={`diff-cell ${row.left ? '' : 'diff-cell--empty'}`} role="cell">
             <span className="diff-line-number">{row.left ? row.left.number : ''}</span>
             <span className="diff-line-content">
-              {row.left ? (row.type === 'modified' ? <InlineTokens tokens={row.tokens} side="left" /> : row.left.content) : ''}
+              <SideBySideCellContent line={row.left} row={row} side="left" />
             </span>
           </div>
           <div className={`diff-cell ${row.right ? '' : 'diff-cell--empty'}`} role="cell">
             <span className="diff-line-number">{row.right ? row.right.number : ''}</span>
             <span className="diff-line-content">
-              {row.right ? (row.type === 'modified' ? <InlineTokens tokens={row.tokens} side="right" /> : row.right.content) : ''}
+              <SideBySideCellContent line={row.right} row={row} side="right" />
             </span>
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+/**
+ * Renders one row of the unified diff view as an ARIA row owning two cells
+ * (the +/-/space marker and the line content).
+ * @param {{variant: string, marker: string, children: React.ReactNode}} props
+ * @returns {React.JSX.Element}
+ */
+function UnifiedRow({ variant, marker, children }) {
+  return (
+    <div className={`diff-row diff-row--${variant}`} role="row">
+      <span className="diff-line-marker" role="cell">
+        {marker}
+      </span>
+      <span className="diff-line-content" role="cell">
+        {children}
+      </span>
     </div>
   );
 }
@@ -75,43 +110,34 @@ function UnifiedView({ rows }) {
       {rows.map((row, index) => {
         if (row.type === 'unchanged') {
           return (
-            <div className="diff-row diff-row--unchanged" role="row" key={index}>
-              <span className="diff-line-marker"> </span>
-              <span className="diff-line-content">{row.left.content}</span>
-            </div>
+            <UnifiedRow variant="unchanged" marker=" " key={index}>
+              {row.left.content}
+            </UnifiedRow>
           );
         }
         if (row.type === 'modified') {
           return (
-            <div className="diff-row-pair" key={index}>
-              <div className="diff-row diff-row--removed" role="row">
-                <span className="diff-line-marker">-</span>
-                <span className="diff-line-content">
-                  <InlineTokens tokens={row.tokens} side="left" />
-                </span>
-              </div>
-              <div className="diff-row diff-row--added" role="row">
-                <span className="diff-line-marker">+</span>
-                <span className="diff-line-content">
-                  <InlineTokens tokens={row.tokens} side="right" />
-                </span>
-              </div>
+            <div className="diff-row-pair" role="rowgroup" key={index}>
+              <UnifiedRow variant="removed" marker="-">
+                <InlineTokens tokens={row.tokens} side="left" />
+              </UnifiedRow>
+              <UnifiedRow variant="added" marker="+">
+                <InlineTokens tokens={row.tokens} side="right" />
+              </UnifiedRow>
             </div>
           );
         }
         if (row.type === 'removed') {
           return (
-            <div className="diff-row diff-row--removed" role="row" key={index}>
-              <span className="diff-line-marker">-</span>
-              <span className="diff-line-content">{row.left.content}</span>
-            </div>
+            <UnifiedRow variant="removed" marker="-" key={index}>
+              {row.left.content}
+            </UnifiedRow>
           );
         }
         return (
-          <div className="diff-row diff-row--added" role="row" key={index}>
-            <span className="diff-line-marker">+</span>
-            <span className="diff-line-content">{row.right.content}</span>
-          </div>
+          <UnifiedRow variant="added" marker="+" key={index}>
+            {row.right.content}
+          </UnifiedRow>
         );
       })}
     </div>
@@ -135,9 +161,8 @@ export default function DiffTool({ onBack }) {
   const leftFileInputRef = useRef(null);
   const rightFileInputRef = useRef(null);
 
-  const { rows, stats } = useMemo(() => diffLines(leftText, rightText), [leftText, rightText]);
-  const unifiedDiffText = useMemo(
-    () => generateUnifiedDiff(leftText, rightText, { oldLabel: 'original', newLabel: 'modified' }),
+  const { rows, stats, unifiedDiff: unifiedDiffText } = useMemo(
+    () => computeTextDiff(leftText, rightText, { oldLabel: 'original', newLabel: 'modified' }),
     [leftText, rightText],
   );
 
@@ -315,7 +340,9 @@ export default function DiffTool({ onBack }) {
       <div className="diff-view">
         {!hasChanges ? (
           <p className="diff-empty-state">
-            {leftText || rightText ? 'No differences found.' : 'Paste text on both sides to see a diff.'}
+            {leftText || rightText
+              ? 'No differences found.'
+              : 'Paste text on both sides to see a diff.'}
           </p>
         ) : viewMode === VIEW_MODES.SIDE_BY_SIDE ? (
           <SideBySideView rows={rows} />
