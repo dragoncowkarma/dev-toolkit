@@ -79,6 +79,22 @@ describe('TimestampTool actions', () => {
     });
   });
 
+  it('populates current timestamp in milliseconds when unitMode is forced to Milliseconds', async () => {
+    const mockNow = 1785412800000;
+    vi.spyOn(Date, 'now').mockReturnValue(mockNow);
+
+    render(<TimestampTool />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Milliseconds (ms)' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Now' }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Unix Timestamp or Date String')).toHaveValue('1785412800000');
+      expect(screen.getByLabelText('ISO 8601')).toHaveValue('2026-07-30T12:00:00.000Z');
+      expect(screen.getByLabelText('Unix Timestamp (Milliseconds)')).toHaveValue('1785412800000');
+    });
+  });
+
   it('clears input and output fields when clicking "Clear"', async () => {
     render(<TimestampTool />);
 

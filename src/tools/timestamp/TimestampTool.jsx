@@ -29,8 +29,12 @@ export default function TimestampTool() {
   const result = convertTimestamp(input, unitMode, nowDate);
 
   function handleNow() {
-    const nowSec = String(Math.floor(Date.now() / 1000));
-    setInput(nowSec);
+    const nowMs = Date.now();
+    const value =
+      unitMode === UNIT_MODES.MILLISECONDS
+        ? String(nowMs)
+        : String(Math.floor(nowMs / 1000));
+    setInput(value);
     setCopyError('');
   }
 
