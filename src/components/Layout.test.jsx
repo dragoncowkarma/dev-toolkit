@@ -98,4 +98,24 @@ describe('Layout URL hash routing', () => {
     expect(screen.getByTestId('tool-json')).toBeInTheDocument();
     expect(document.title).toBe('JSON Formatter - Dev Toolkit');
   });
+
+  it('updates URL hash when selecting a tool from sidebar after a non-tool hash (#main-content) is active', () => {
+    render(<Layout tools={TEST_TOOLS} defaultToolId="base64" />);
+
+    expect(screen.getByTestId('tool-base64')).toBeInTheDocument();
+    expect(window.location.hash).toBe('#/base64');
+
+    window.location.hash = '#main-content';
+    fireEvent(window, new Event('hashchange'));
+
+    expect(screen.getByTestId('tool-base64')).toBeInTheDocument();
+    expect(window.location.hash).toBe('#main-content');
+
+    const jsonBtn = screen.getByRole('button', { name: /JSON Formatter/i });
+    fireEvent.click(jsonBtn);
+
+    expect(screen.getByTestId('tool-json')).toBeInTheDocument();
+    expect(window.location.hash).toBe('#/json');
+    expect(document.title).toBe('JSON Formatter - Dev Toolkit');
+  });
 });
