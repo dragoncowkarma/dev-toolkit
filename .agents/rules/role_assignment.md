@@ -29,12 +29,16 @@ The orchestrator assigns roles using this priority:
 | New PR or Worker revision | Reviewer | PR number + head SHA |
 | Tagged Reviewer feedback | Original Worker | PR number + feedback comment ID |
 | Tagged Reviewer approval | Maintainer | PR number + approval comment ID |
+| Tagged Maintainer block | Reviewer | PR number + block comment ID |
 
 Informational comments do not advance the lifecycle, and an approval is
 recognized only when one comment carries BOTH the Reviewer and the Maintainer
-tag. The Worker and Reviewer can alternate repeatedly, but only after the other
-role emits a new signal. Polling and orchestrator restarts must never repeat an
-event that is running or already succeeded.
+tag. A Maintainer block requires both its `[Maintainer: ...]` metadata and an
+exact `[Maintainer Blocked]` line; it returns the PR to the assigned Reviewer
+rather than sending the Worker directly. The Worker and Reviewer can alternate
+repeatedly, but only after the other role emits a new signal. Polling and
+orchestrator restarts must never repeat an event that is running or already
+succeeded.
 
 An event whose process crashed is retried, because abandoning it after one
 failure stalls the swarm permanently. Retries stop after 3 failed attempts, and

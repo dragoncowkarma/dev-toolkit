@@ -91,6 +91,7 @@ MAINTAINER_PATTERN = re.compile(
     r"\[Maintainer:\s*(?P<ai>\w+)\s*\|\s*Model:\s*(?P<model>[^|]+?)\s*\|\s*Reasoning:\s*(?P<reasoning>[^\]]+?)\]",
     re.IGNORECASE,
 )
+MAINTAINER_BLOCKED_PATTERN = re.compile(r"\[Maintainer Blocked\]", re.IGNORECASE)
 
 # Default reviewer/maintainer rotation
 DEFAULT_ROTATION = {
@@ -403,8 +404,9 @@ class ProcessTracker:
 
         A running or completed attempt always blocks another dispatch for the
         same lifecycle event. In particular, a successful process without its
-        required GitHub signal is surfaced as a blocker instead of being run
-        again, preserving the one-successful-dispatch invariant.
+        required GitHub signal is surfaced as an unconfirmed-completion blocker
+        instead of being run again, preserving the one-successful-dispatch
+        invariant.
 
         Provider quota failures pause until their cooldown expires and do not
         consume the bounded crash retry budget.
@@ -459,12 +461,7 @@ class ProcessTracker:
         if completed_attempts:
             if completion_confirmed:
                 return False, DISPATCH_COMPLETED
-            if len(crash_attempts) >= MAX_DISPATCH_ATTEMPTS:
-                return False, f"exhausted {len(crash_attempts)} failed attempts"
-            return (
-                True,
-                f"retry after unconfirmed completion ({len(crash_attempts) + 1}/{MAX_DISPATCH_ATTEMPTS})",
-            )
+            return False, DISPATCH_UNCONFIRMED
         if len(crash_attempts) >= MAX_DISPATCH_ATTEMPTS:
             return False, f"exhausted {len(crash_attempts)} failed attempts"
         if deferred:
@@ -799,9 +796,9 @@ def validate_distinct_roles(
 def determine_pr_action(comments: list[dict]) -> tuple[str, Optional[dict], int]:
     """Return the next action from the newest recognized lifecycle signal.
 
-    Recognized signals are Reviewer feedback, Worker revision completion, and
-    Reviewer approval containing a Maintainer assignment. Informational comments
-    do not change state.
+    Recognized signals are Reviewer feedback, Worker revision completion,
+    Reviewer approval containing a Maintainer assignment, and a Maintainer
+    block. Informational comments do not change state.
 
     An approval must carry BOTH a Reviewer and a Maintainer tag. A lone
     Maintainer tag — a human quoting the rules, or another agent naming a
@@ -817,7 +814,11 @@ def determine_pr_action(comments: list[dict]) -> tuple[str, Optional[dict], int]
         maintainer = parse_role(MAINTAINER_PATTERN, body)
         reviewer = parse_role(REVIEWER_PATTERN, body)
 
-        if maintainer and reviewer:
+        if maintainer and MAINTAINER_BLOCKED_PATTERN.search(body):
+            latest_action = "review_after_maintainer_block"
+            latest_comment = comment
+            latest_index = index
+        elif maintainer and reviewer:
             latest_action = "maintain"
             latest_comment = comment
             latest_index = index
@@ -1234,6 +1235,7 @@ def dispatch_reviewer(
     worker: RoleAssignment,
     dry_run: bool = False,
     task_ref: Optional[str] = None,
+    trigger: Optional[str] = None,
 ):
     """Dispatch a Reviewer AI to review a PR."""
     reviewer = pr.reviewer
@@ -1241,9 +1243,18 @@ def dispatch_reviewer(
         log.warning("PR #%d has no Reviewer tag, skipping.", pr.number)
         return
 
+    trigger_context = ""
+    if trigger == "maintainer_block":
+        trigger_context = (
+            "A Maintainer blocked the previously approved PR. Re-evaluate the "
+            "block evidence and either request the required Worker changes or "
+            "issue a new approval.\n\n"
+        )
+
     prompt = (
         f"You are the Reviewer for PR #{pr.number}: {pr.title}.\n"
         f"Read AGENTS.md and .agents/rules/review_checklist.md for review rules.\n"
+        f"{trigger_context}"
         f"Review the PR diff, check code quality, and leave review comments.\n\n"
         f"When your review is complete, you MUST post exactly ONE final summary comment "
         f"on the PR containing your [Reviewer: ...] metadata tag. The tag format is:\n"
@@ -1326,8 +1337,15 @@ def dispatch_maintainer(
         f"   [Maintainer: {maintainer.ai} | Model: {maintainer.model} | "
         f"Reasoning: {maintainer.reasoning}]\n"
         f"   Include the merge rationale and verification evidence.\n"
-        f"5. Analyze the updated project and all open Issues after the merge.\n"
-        f"6. Create exactly ONE non-duplicate follow-up Issue titled "
+        f"   If you cannot merge, do not request or perform a retry. Instead, "
+        f"post the metadata above plus an exact '[Maintainer Blocked]' line, "
+        f"the blocker classification, and reproducible evidence. The "
+        f"orchestrator will return the PR to the assigned Reviewer; do not "
+        f"close the Issue or create a follow-up Issue.\n"
+        f"5. Only after a successful merge, analyze the updated project and all "
+        f"open Issues.\n"
+        f"6. Only after a successful merge, create exactly ONE non-duplicate "
+        f"follow-up Issue titled "
         f"'[Task] <Tool Name> - <Summary>'. Include requirements, acceptance criteria, "
         f"and a valid [Worker: <ai> | Model: <model> | Reasoning: <level>] tag.\n"
         f"7. Do not implement the follow-up Issue yourself. The orchestrator will "
@@ -1680,8 +1698,30 @@ def process_prs(
             )
             continue
 
-        if action == "review":
-            review_version = head_sha or signal_id
+        if action in ("review", "review_after_maintainer_block"):
+            review_trigger = None
+            if action == "review_after_maintainer_block":
+                blocked_maintainer = parse_role(
+                    MAINTAINER_PATTERN,
+                    signal_comment.get("body", ""),
+                )
+                valid, why = validate_distinct_roles(
+                    worker,
+                    reviewer,
+                    blocked_maintainer,
+                )
+                if not valid:
+                    log_blocker(
+                        f"maintainer-block-roles:{pr_num}:{signal_id}",
+                        "PR #%d Maintainer block rejected: %s.",
+                        pr_num,
+                        why,
+                    )
+                    continue
+                review_version = f"maintainer-block-{signal_id}"
+                review_trigger = "maintainer_block"
+            else:
+                review_version = head_sha or signal_id
             task_ref = f"review#{pr_num}-{review_version}"
             allowed, reason = tracker.should_dispatch(
                 task_ref,
@@ -1718,6 +1758,7 @@ def process_prs(
                 worker,
                 dry_run,
                 task_ref=task_ref,
+                trigger=review_trigger,
             )
             continue
 

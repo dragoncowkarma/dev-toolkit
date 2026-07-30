@@ -72,7 +72,7 @@ class DispatchDecisionTests(unittest.TestCase):
         self.assertFalse(tracker.should_dispatch("review#12-abc123", "reviewer")[0])
         self.assertTrue(tracker.should_dispatch("review#12-def456", "reviewer")[0])
 
-    def test_completed_process_is_retried_when_transition_is_unconfirmed(self):
+    def test_completed_process_blocks_when_transition_is_unconfirmed(self):
         tracker = make_tracker([
             record("review#12-abc123", "reviewer", swarm.ProcessStatus.COMPLETED),
         ])
@@ -83,8 +83,8 @@ class DispatchDecisionTests(unittest.TestCase):
             completion_confirmed=False,
         )
 
-        self.assertTrue(allowed)
-        self.assertIn("retry after unconfirmed completion", reason)
+        self.assertFalse(allowed)
+        self.assertEqual(swarm.DISPATCH_UNCONFIRMED, reason)
 
     def test_running_event_is_not_dispatched_again(self):
         tracker = make_tracker([
@@ -440,6 +440,21 @@ class LifecycleSignalTests(unittest.TestCase):
         self.assertEqual("maintain", action)
         self.assertEqual("approval-1", comment["id"])
 
+    def test_maintainer_block_is_a_reviewer_signal(self):
+        comments = [{
+            "id": "maintainer-block-1",
+            "body": (
+                "[Maintainer: claude | Model: sonnet 5 | Reasoning: 높음]\n"
+                "[Maintainer Blocked]\n"
+                "Classification: test. Evidence: npm test fails."
+            ),
+        }]
+
+        action, comment, _ = swarm.determine_pr_action(comments)
+
+        self.assertEqual("review_after_maintainer_block", action)
+        self.assertEqual("maintainer-block-1", comment["id"])
+
     def test_reviewer_instruction_does_not_become_worker_signal(self):
         comments = [{
             "id": "review-2",
@@ -713,6 +728,87 @@ class PollingLifecycleTests(unittest.TestCase):
             "maintain#12-approval-9",
             dispatch_maintainer.call_args.kwargs["task_ref"],
         )
+
+    def test_completed_maintainer_is_not_retried_when_pr_remains_open(self):
+        approval = {
+            "id": "approval-9",
+            "body": (
+                "[Reviewer: antigravity | Model: gemini 3.6 flash | "
+                "Reasoning: high]\n"
+                "[Maintainer: claude | Model: sonnet 5 | Reasoning: 높음]"
+            ),
+        }
+        tracker = make_tracker([
+            record(
+                "maintain#12-approval-9",
+                "maintainer",
+                swarm.ProcessStatus.COMPLETED,
+                ai_name="claude",
+            ),
+        ])
+        with (
+            patch.object(swarm, "tracker", tracker),
+            patch.object(swarm, "fetch_pr_comments", return_value=[approval]),
+            patch.object(swarm, "fetch_issue", return_value=self.issue),
+            patch.object(swarm, "dispatch_maintainer") as dispatch_maintainer,
+        ):
+            swarm.process_prs(open_prs=[self.pr])
+
+        dispatch_maintainer.assert_not_called()
+
+    def test_maintainer_block_dispatches_reviewer_with_a_comment_key(self):
+        maintainer_block = {
+            "id": "maintainer-block-9",
+            "body": (
+                "[Maintainer: claude | Model: sonnet 5 | Reasoning: 높음]\n"
+                "[Maintainer Blocked]\n"
+                "Classification: test. Evidence: npm test fails."
+            ),
+        }
+        tracker = FakeTracker({("review#12-abc123", "reviewer")})
+        with (
+            patch.object(swarm, "tracker", tracker),
+            patch.object(swarm, "fetch_pr_comments", return_value=[maintainer_block]),
+            patch.object(swarm, "fetch_issue", return_value=self.issue),
+            patch.object(swarm, "dispatch_reviewer") as dispatch_reviewer,
+        ):
+            swarm.process_prs(open_prs=[self.pr])
+
+        self.assertEqual(
+            "review#12-maintainer-block-maintainer-block-9",
+            dispatch_reviewer.call_args.kwargs["task_ref"],
+        )
+        self.assertEqual(
+            "maintainer_block",
+            dispatch_reviewer.call_args.kwargs["trigger"],
+        )
+
+    def test_completed_maintainer_block_review_is_not_retried(self):
+        maintainer_block = {
+            "id": "maintainer-block-9",
+            "body": (
+                "[Maintainer: claude | Model: sonnet 5 | Reasoning: 높음]\n"
+                "[Maintainer Blocked]\n"
+                "Classification: test. Evidence: npm test fails."
+            ),
+        }
+        tracker = make_tracker([
+            record(
+                "review#12-maintainer-block-maintainer-block-9",
+                "reviewer",
+                swarm.ProcessStatus.COMPLETED,
+                ai_name="antigravity",
+            ),
+        ])
+        with (
+            patch.object(swarm, "tracker", tracker),
+            patch.object(swarm, "fetch_pr_comments", return_value=[maintainer_block]),
+            patch.object(swarm, "fetch_issue", return_value=self.issue),
+            patch.object(swarm, "dispatch_reviewer") as dispatch_reviewer,
+        ):
+            swarm.process_prs(open_prs=[self.pr])
+
+        dispatch_reviewer.assert_not_called()
 
     def test_same_ai_worker_and_reviewer_blocks_dispatch(self):
         invalid_pr = {
