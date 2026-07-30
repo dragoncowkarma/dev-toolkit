@@ -161,4 +161,15 @@ describe('UrlTool query string parsing', () => {
     render(<UrlTool />);
     expect(screen.getByText('No query parameters detected in the input.')).toBeInTheDocument();
   });
+
+  it('keeps the empty state for plain text containing "&" but no "?" or "="', () => {
+    render(<UrlTool />);
+
+    fireEvent.change(screen.getByLabelText('Text / URL'), {
+      target: { value: 'hello world&more' },
+    });
+
+    expect(screen.getByText('No query parameters detected in the input.')).toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+  });
 });

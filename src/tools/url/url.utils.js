@@ -48,8 +48,20 @@ export function isValidUrl(value) {
 }
 
 /**
+ * Checks whether every `&`-separated segment of a string contains a `=`, the shape of a
+ * deliberately supported bare "key=value" query string (as opposed to arbitrary plain text).
+ * @param {string} value
+ * @returns {boolean}
+ */
+function looksLikeBareQueryString(value) {
+  return value.split('&').every((segment) => segment.includes('='));
+}
+
+/**
  * Parses the query string of a URL (or a bare/`?`-prefixed query string) into an ordered
- * list of decoded key/value pairs, suitable for table display.
+ * list of decoded key/value pairs, suitable for table display. Plain text or relative-path
+ * input with no unambiguous query marker (no `?` and not shaped like `key=value` pairs)
+ * yields an empty array instead of being misread as a query string.
  * @param {string} input - A full URL, a "?"-prefixed query string, or a bare query string.
  * @returns {Array<{key: string, value: string}>}
  */
@@ -62,9 +74,17 @@ export function parseQueryParams(input) {
   try {
     search = new URL(input).search;
   } catch {
-    // Not a full, absolute URL — treat the input as a bare query string instead.
+    // Not a full, absolute URL. Only fall back to query parsing when the input is
+    // unambiguously a query source: it contains a "?" marker, or it is shaped like a
+    // bare "key=value[&key=value...]" string.
     const queryIndex = input.indexOf('?');
-    search = queryIndex >= 0 ? input.slice(queryIndex) : input;
+    if (queryIndex >= 0) {
+      search = input.slice(queryIndex);
+    } else if (looksLikeBareQueryString(input)) {
+      search = input;
+    } else {
+      return [];
+    }
   }
 
   const params = new URLSearchParams(search);

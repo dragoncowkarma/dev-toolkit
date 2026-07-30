@@ -97,4 +97,20 @@ describe('parseQueryParams', () => {
     expect(parseQueryParams('')).toEqual([]);
     expect(parseQueryParams(undefined)).toEqual([]);
   });
+
+  it('returns an empty array for plain text containing "&" but no "?" or "="', () => {
+    expect(parseQueryParams('hello world&more')).toEqual([]);
+  });
+
+  it('returns an empty array for a relative path with no "?"', () => {
+    expect(parseQueryParams('/just/a/path')).toEqual([]);
+    expect(parseQueryParams('some/relative/path')).toEqual([]);
+  });
+
+  it('parses a relative path that has a "?" query section', () => {
+    expect(parseQueryParams('relative/path?query=1&other=2')).toEqual([
+      { key: 'query', value: '1' },
+      { key: 'other', value: '2' },
+    ]);
+  });
 });
