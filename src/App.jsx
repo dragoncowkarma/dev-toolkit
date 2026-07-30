@@ -3,6 +3,7 @@ import Layout from './components/Layout.jsx';
 import Base64Tool from './tools/base64/Base64Tool.jsx';
 import HashTool from './tools/hash/HashTool.jsx';
 import JsonTool from './tools/json/JsonTool.jsx';
+import JwtTool from './tools/jwt/JwtTool.jsx';
 
 const TOOLS = [
   {
@@ -20,6 +21,14 @@ const TOOLS = [
     icon: '{ }',
     category: 'Formatter',
     component: JsonTool,
+  },
+  {
+    id: 'jwt',
+    name: 'JWT Decoder',
+    description: 'Decode JWT claims and inspect expiration details locally.',
+    icon: '◈',
+    category: 'Decoder',
+    component: JwtTool,
   },
   {
     id: 'url',
