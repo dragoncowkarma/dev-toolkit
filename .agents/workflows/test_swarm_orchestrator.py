@@ -371,7 +371,14 @@ class AiArgvTests(unittest.TestCase):
             "codex", "5.6", "높음", self.prompt_file, "/repo",
         )
 
-        self.assertEqual("gpt-5.6", argv[argv.index("-m") + 1])
+        self.assertEqual("gpt-5.6-terra", argv[argv.index("-m") + 1])
+
+    def test_codex_maps_parenthesized_role_model(self):
+        argv = swarm.build_ai_argv(
+            "codex", "5.6 (sol)", "높음", self.prompt_file, "/repo",
+        )
+
+        self.assertEqual("gpt-5.6-sol", argv[argv.index("-m") + 1])
 
     def test_codex_does_not_silently_replace_unknown_model(self):
         argv = swarm.build_ai_argv(

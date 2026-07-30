@@ -4,6 +4,8 @@ const Base64Tool = React.lazy(() => import('./tools/base64/Base64Tool.jsx'));
 const HashTool = React.lazy(() => import('./tools/hash/HashTool.jsx'));
 const JsonTool = React.lazy(() => import('./tools/json/JsonTool.jsx'));
 const UrlTool = React.lazy(() => import('./tools/url/UrlTool.jsx'));
+const UuidTool = React.lazy(() => import('./tools/uuid/UuidTool.jsx'));
+const DiffTool = React.lazy(() => import('./tools/diff/DiffTool.jsx'));
 
 const TOOLS = [
   {
@@ -39,6 +41,14 @@ const TOOLS = [
     component: HashTool,
   },
   {
+    id: 'uuid',
+    name: 'UUID Generator',
+    description: 'Generate and format random UUID v4 or time-ordered UUID v7 batches.',
+    icon: '⌗',
+    category: 'Generator',
+    component: UuidTool,
+  },
+  {
     id: 'regex',
     name: 'Regex Tester',
     description: 'Test regular expressions and inspect matches as you type.',
@@ -52,7 +62,7 @@ const TOOLS = [
     description: 'Compare two text blocks and quickly spot every change.',
     icon: '±',
     category: 'Comparison',
-    component: ToolPlaceholder,
+    component: DiffTool,
   },
 ];
 
