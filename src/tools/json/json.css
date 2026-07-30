@@ -239,21 +239,27 @@
 }
 
 .line-numbers {
-  width: 48px;
-  padding: 12px 8px 12px 0;
+  flex: 0 0 48px;
+  position: relative;
   text-align: right;
   color: rgba(136, 136, 160, 0.4);
   font-family: 'Fira Code', 'Courier New', Courier, monospace;
   font-size: 0.85rem;
-  line-height: 1.5;
   user-select: none;
   border-right: 1px solid var(--color-border);
   background: rgba(6, 6, 10, 0.5);
-  overflow-y: hidden;
+  overflow: hidden;
+}
+
+.line-numbers-window {
+  position: absolute;
+  inset: 0 8px auto 0;
+  will-change: transform;
 }
 
 .line-number-item {
-  height: 1.5em;
+  height: 20px;
+  line-height: 20px;
   padding-right: 4px;
 }
 
@@ -265,7 +271,7 @@
   color: var(--color-text);
   font-family: 'Fira Code', 'Courier New', Courier, monospace;
   font-size: 0.85rem;
-  line-height: 1.5;
+  line-height: 20px;
   padding: 12px;
   resize: none;
   overflow-y: auto;
@@ -309,7 +315,12 @@
 
 /* Tree-view Container */
 .json-tree-wrapper {
-  padding: 4px;
+  height: 100%;
+  min-height: 376px;
+}
+
+.tree-output-container {
+  overflow: hidden;
 }
 
 .tree-actions-toolbar {
@@ -323,41 +334,65 @@
 
 /* Interactive JSON Tree View elements */
 .json-tree-container {
+  position: relative;
+  height: 100%;
+  min-height: 376px;
   font-family: 'Fira Code', 'Courier New', Courier, monospace;
   font-size: 0.85rem;
-  line-height: 1.5;
+  line-height: 22px;
   color: var(--color-text);
-  overflow-x: auto;
+  overflow: auto;
 }
 
-.json-tree-node {
+.json-tree-virtual-spacer {
   position: relative;
-  padding-left: 14px;
+  min-width: 100%;
+}
+
+.json-tree-window {
+  position: absolute;
+  inset: 0 auto auto 0;
+  min-width: 100%;
+  will-change: transform;
+}
+
+.json-tree-row {
+  box-sizing: border-box;
+  width: max-content;
+  min-width: 100%;
+  height: 22px;
   white-space: nowrap;
 }
 
-.json-tree-expandable {
-  padding-left: 14px;
-}
-
 .json-tree-toggle {
-  position: absolute;
-  left: 0px;
-  top: 3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  background: transparent;
   cursor: pointer;
   font-size: 0.6rem;
   color: var(--color-text-muted);
   user-select: none;
   transition: transform var(--transition);
-  display: inline-block;
+  vertical-align: top;
 }
 
 .json-tree-toggle.expanded {
   transform: rotate(90deg);
 }
 
-.json-tree-toggle:hover {
+.json-tree-toggle:hover,
+.json-tree-toggle:focus-visible {
   color: var(--color-primary-light);
+}
+
+.json-tree-toggle-spacer {
+  display: inline-block;
+  width: 14px;
 }
 
 .json-tree-key {
@@ -381,19 +416,11 @@
   padding: 0 4px;
   font-size: 0.75rem;
   margin: 0 4px;
-  cursor: pointer;
   user-select: none;
 }
 
-.json-tree-summary:hover {
-  background: var(--color-border);
-  color: var(--color-text);
-}
-
-.json-tree-children {
-  margin-left: 10px;
-  border-left: 1px dashed rgba(136, 136, 160, 0.2);
-  padding-left: 10px;
+.json-tree-closing-row {
+  color: var(--color-text-muted);
 }
 
 .json-tree-value.json-tree-null {

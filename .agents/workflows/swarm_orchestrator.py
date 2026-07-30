@@ -76,6 +76,7 @@ DISPATCH_PROVIDER_COOLDOWN = "provider cooldown"
 
 # Upper bound on persisted history so the registry cannot grow without limit.
 MAX_HISTORY_RECORDS = 500
+IDLE_EXIT_CYCLES = 1
 
 # Metadata tag patterns
 WORKER_PATTERN = re.compile(
@@ -414,10 +415,6 @@ class ProcessTracker:
         ]
         if any(record.status == ProcessStatus.RUNNING for record in attempts):
             return False, DISPATCH_RUNNING
-        if any(record.status == ProcessStatus.COMPLETED for record in attempts):
-            reason = DISPATCH_COMPLETED if completion_confirmed else DISPATCH_UNCONFIRMED
-            return False, reason
-
         provider_cooldowns = []
         if ai_name:
             for record in self.all_records:
@@ -455,6 +452,19 @@ class ProcessTracker:
             record for record in attempts
             if record.status in (ProcessStatus.FAILED, ProcessStatus.UNKNOWN)
         ]
+        completed_attempts = [
+            record for record in attempts
+            if record.status == ProcessStatus.COMPLETED
+        ]
+        if completed_attempts:
+            if completion_confirmed:
+                return False, DISPATCH_COMPLETED
+            if len(crash_attempts) >= MAX_DISPATCH_ATTEMPTS:
+                return False, f"exhausted {len(crash_attempts)} failed attempts"
+            return (
+                True,
+                f"retry after unconfirmed completion ({len(crash_attempts) + 1}/{MAX_DISPATCH_ATTEMPTS})",
+            )
         if len(crash_attempts) >= MAX_DISPATCH_ATTEMPTS:
             return False, f"exhausted {len(crash_attempts)} failed attempts"
         if deferred:
@@ -638,6 +648,14 @@ class ProcessTracker:
 
 # Global tracker instance
 tracker = ProcessTracker()
+
+
+def reset_process_history():
+    """Start a fresh run with no persisted dispatch failures or active state."""
+    tracker._active.clear()
+    tracker._history.clear()
+    if PROCESS_REGISTRY_FILE.exists():
+        PROCESS_REGISTRY_FILE.unlink()
 
 
 # ---------------------------------------------------------------------------
@@ -917,11 +935,17 @@ def cleanup_worktree(issue_number: int, branch_name: str):
                 return
             log.info("Removed worktree: %s", worktree_path)
 
-    # Delete branch if it was merged
-    subprocess.run(
-        ["git", "branch", "-d", branch_name],
-        cwd=REPO_ROOT, check=False,
+    # Force-delete the local branch. We already confirmed the PR is merged on
+    # GitHub, so the local merge check (`-d`) is unreliable when the PR was
+    # squash- or rebase-merged (the original commits never appear on HEAD).
+    result = subprocess.run(
+        ["git", "branch", "-D", branch_name],
+        cwd=REPO_ROOT, capture_output=True, text=True, check=False,
     )
+    if result.returncode != 0:
+        stderr = result.stderr.strip()
+        if stderr:
+            log.warning("Failed to delete branch '%s': %s", branch_name, stderr)
 
 
 # ---------------------------------------------------------------------------
@@ -1012,16 +1036,22 @@ _CLAUDE_EFFORT_MAP: dict[str, str] = {
     "엑스트라": "xhigh", "최대": "max", "ultracode": "max",
 }
 
-# Codex with ChatGPT accounts only supports reasoning models (o3, o4-mini).
-# Enterprise model names from AGENTS.md (5.6, 5.5, etc.) are not available.
+# Map the human-friendly model names used in AGENTS.md to Codex CLI model IDs.
+# The ChatGPT-authenticated Codex CLI exposes the reasoning variants, but not
+# the bare `gpt-5.6` ID.  Keep the generic aliases on the configured default
+# variant so a valid Issue/PR tag cannot be turned into a deterministic 400.
 _CODEX_MODEL_MAP: dict[str, str] = {
-    "5.6 (sol, terra, luna)": "o4-mini",
-    "5.6":                    "o4-mini",
-    "5.5":                    "o4-mini",
-    "5.4":                    "o4-mini",
-    "5.4 mini":               "o4-mini",
-    "o3":                     "o3",
-    "o4-mini":                "o4-mini",
+    "5.6 (sol, terra, luna)": "gpt-5.6-terra",
+    "5.6":                    "gpt-5.6-terra",
+    "5.6 (sol)":              "gpt-5.6-sol",
+    "5.6 (terra)":            "gpt-5.6-terra",
+    "5.6 (luna)":             "gpt-5.6-luna",
+    "5.6 sol":                "gpt-5.6-sol",
+    "5.6 terra":              "gpt-5.6-terra",
+    "5.6 luna":               "gpt-5.6-luna",
+    "5.5":                    "gpt-5.6-terra",
+    "5.4":                    "gpt-5.6-terra",
+    "5.4 mini":               "gpt-5.6-terra",
 }
 
 
@@ -1037,7 +1067,8 @@ def build_ai_argv(ai_name: str, model: str, reasoning: str,
     prompt_text = prompt_file.read_text(encoding="utf-8")
 
     if ai_name == "codex":
-        resolved_model = _CODEX_MODEL_MAP.get(model.lower().strip(), "o4-mini")
+        model_key = model.lower().strip()
+        resolved_model = _CODEX_MODEL_MAP.get(model_key, model)
         if resolved_model != model:
             log.info(
                 "Model alias: '%s' → '%s' (codex)",
@@ -1839,6 +1870,7 @@ def run_loop(interval: int, dry_run: bool = False):
     signal.signal(signal.SIGINT, handle_signal)
 
     initial = True
+    idle_cycles = 0
     while True:
         try:
             log.info("--- Polling cycle (active: %d) ---", tracker.active_count)
@@ -1849,6 +1881,17 @@ def run_loop(interval: int, dry_run: bool = False):
             # 2. Poll every open item immediately on startup and every interval
             process_polling_cycle(dry_run, initial=initial)
             initial = False
+
+            if tracker.active_count == 0:
+                idle_cycles += 1
+                if idle_cycles >= IDLE_EXIT_CYCLES:
+                    log.info(
+                        "No active tasks remain after %d idle cycle(s); exiting.",
+                        idle_cycles,
+                    )
+                    break
+            else:
+                idle_cycles = 0
 
         except KeyboardInterrupt:
             log.info("Shutting down gracefully...")
@@ -1891,10 +1934,13 @@ def main():
         print(tracker.get_summary())
         return
 
+    reset_process_history()
+
     if args.once:
         log.info("Running single polling cycle...")
         process_polling_cycle(args.dry_run, initial=True)
         tracker.poll_all()
+        cleanup_merged_prs(args.dry_run)
         log.info("Done.")
     else:
         run_loop(args.interval, args.dry_run)

@@ -1,9 +1,12 @@
 import React from 'react';
 import Layout from './components/Layout.jsx';
-import Base64Tool from './tools/base64/Base64Tool.jsx';
-import HashTool from './tools/hash/HashTool.jsx';
-import JsonTool from './tools/json/JsonTool.jsx';
-import JwtTool from './tools/jwt/JwtTool.jsx';
+const Base64Tool = React.lazy(() => import('./tools/base64/Base64Tool.jsx'));
+const HashTool = React.lazy(() => import('./tools/hash/HashTool.jsx'));
+const JsonTool = React.lazy(() => import('./tools/json/JsonTool.jsx'));
+const JwtTool = React.lazy(() => import('./tools/jwt/JwtTool.jsx'));
+const UrlTool = React.lazy(() => import('./tools/url/UrlTool.jsx'));
+const UuidTool = React.lazy(() => import('./tools/uuid/UuidTool.jsx'));
+const DiffTool = React.lazy(() => import('./tools/diff/DiffTool.jsx'));
 
 const TOOLS = [
   {
@@ -36,7 +39,7 @@ const TOOLS = [
     description: 'Safely encode or decode URL components for requests and redirects.',
     icon: '↗',
     category: 'Encoder',
-    component: ToolPlaceholder,
+    component: UrlTool,
   },
   {
     id: 'hash',
@@ -45,6 +48,14 @@ const TOOLS = [
     icon: '#',
     category: 'Generator',
     component: HashTool,
+  },
+  {
+    id: 'uuid',
+    name: 'UUID Generator',
+    description: 'Generate and format random UUID v4 or time-ordered UUID v7 batches.',
+    icon: '⌗',
+    category: 'Generator',
+    component: UuidTool,
   },
   {
     id: 'regex',
@@ -60,7 +71,7 @@ const TOOLS = [
     description: 'Compare two text blocks and quickly spot every change.',
     icon: '±',
     category: 'Comparison',
-    component: ToolPlaceholder,
+    component: DiffTool,
   },
 ];
 
