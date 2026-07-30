@@ -79,6 +79,11 @@ const TOOLS = [
   },
 ];
 
+afterEach(() => {
+  cleanup();
+  window.location.hash = '';
+});
+
 describe('Layout Component', () => {
   let consoleErrorSpy;
 
@@ -87,7 +92,6 @@ describe('Layout Component', () => {
   });
 
   afterEach(() => {
-    cleanup();
     consoleErrorSpy.mockRestore();
   });
 
@@ -152,10 +156,6 @@ describe('Layout Component', () => {
 });
 
 describe('Layout tool switching', () => {
-  afterEach(() => {
-    cleanup();
-  });
-
   it('renders the default tool component on initial mount', () => {
     render(<Layout tools={TOOLS} defaultToolId="tool-a" />);
 
@@ -181,10 +181,6 @@ describe('Layout tool switching', () => {
 });
 
 describe('Layout empty tools handling', () => {
-  afterEach(() => {
-    cleanup();
-  });
-
   it('renders a fallback message instead of crashing when tools is empty', () => {
     render(<Layout tools={[]} defaultToolId="tool-a" />);
 
@@ -194,10 +190,6 @@ describe('Layout empty tools handling', () => {
 });
 
 describe('Layout breadcrumb', () => {
-  afterEach(() => {
-    cleanup();
-  });
-
   it('shows the active tool category in the breadcrumb', () => {
     render(<Layout tools={TOOLS} defaultToolId="tool-a" />);
 
@@ -216,10 +208,6 @@ describe('Layout breadcrumb', () => {
 });
 
 describe('Layout dynamic page title', () => {
-  afterEach(() => {
-    cleanup();
-  });
-
   it('shows the active tool name as the page heading', () => {
     render(<Layout tools={TOOLS} defaultToolId="tool-a" />);
 
