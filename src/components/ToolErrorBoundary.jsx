@@ -48,7 +48,7 @@ export default class ToolErrorBoundary extends React.Component {
           </p>
           <button
             type="button"
-            className="btn btn-primary tool-error-boundary__refresh"
+            className="tool-error-boundary__refresh"
             onClick={this.handleRefresh}
           >
             Refresh page
