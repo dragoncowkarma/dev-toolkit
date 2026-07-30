@@ -27,7 +27,6 @@ describe('App tool catalog wiring', () => {
 
     const props = Layout.mock.calls[0][0];
     expect(props.defaultToolId).toBe('base64');
-
     // Tools are auto-discovered from src/tools/*/meta.js and sorted by id, so
     // this can't hardcode the full id list without going stale every time a
     // tool is added — assert the sort invariant plus the known core set.
