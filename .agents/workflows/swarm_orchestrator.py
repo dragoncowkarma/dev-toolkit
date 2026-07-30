@@ -55,6 +55,8 @@ PROVIDER_LIMIT_PATTERNS = (
     "rate limit exceeded",
     "resource_exhausted",
     "too many requests",
+)
+EVENT_DEFER_PATTERNS = (
     "timeout waiting for response",
     "no_tool_withdrawn",
 )
@@ -194,6 +196,7 @@ class TrackedProcess:
     status: str = ProcessStatus.RUNNING
     failure_reason: Optional[str] = None
     retry_after: Optional[str] = None
+    defer_scope: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -238,6 +241,7 @@ class ProcessTracker:
             record.status = ProcessStatus.DEFERRED
             record.failure_reason = self._failure_summary(output_tail)
             record.retry_after = retry_after
+            record.defer_scope = self._defer_scope(output_tail)
 
     def _reconcile_orphans(self):
         """Demote records left RUNNING by a crashed orchestrator.
@@ -328,6 +332,7 @@ class ProcessTracker:
                 if tracked.retry_after:
                     tracked.status = ProcessStatus.DEFERRED
                     tracked.failure_reason = self._failure_summary(output_tail)
+                    tracked.defer_scope = self._defer_scope(output_tail)
                     log.warning(
                         "⏸️ [PID %d] %s %s — provider unavailable "
                         "(exit %d, %s); retry after %s\n  output: %s",
@@ -386,6 +391,7 @@ class ProcessTracker:
         task_ref: str,
         role: str,
         completion_confirmed: bool = True,
+        ai_name: Optional[str] = None,
     ) -> tuple[bool, str]:
         """Decide whether a lifecycle event still needs a process, with a reason.
 
@@ -406,13 +412,30 @@ class ProcessTracker:
             record for record in self.all_records
             if record.task_ref == task_ref and record.role == role
         ]
-        if not attempts:
-            return True, "new event"
         if any(record.status == ProcessStatus.RUNNING for record in attempts):
             return False, DISPATCH_RUNNING
         if any(record.status == ProcessStatus.COMPLETED for record in attempts):
             reason = DISPATCH_COMPLETED if completion_confirmed else DISPATCH_UNCONFIRMED
             return False, reason
+
+        provider_cooldowns = []
+        if ai_name:
+            for record in self.all_records:
+                if (
+                    record.status != ProcessStatus.DEFERRED
+                    or record.ai_name != ai_name
+                    or record.defer_scope != "provider"
+                    or not record.retry_after
+                ):
+                    continue
+                retry_at = datetime.fromisoformat(record.retry_after)
+                if datetime.now(timezone.utc) < retry_at:
+                    provider_cooldowns.append(retry_at)
+        if provider_cooldowns:
+            retry_at = max(provider_cooldowns).isoformat()
+            return False, f"{DISPATCH_PROVIDER_COOLDOWN} until {retry_at}"
+        if not attempts:
+            return True, "new event"
 
         deferred = [
             record for record in attempts
@@ -576,7 +599,8 @@ class ProcessTracker:
         ended_at: Optional[str] = None,
     ) -> Optional[str]:
         lowered = output.lower()
-        if not any(pattern in lowered for pattern in PROVIDER_LIMIT_PATTERNS):
+        deferred_patterns = PROVIDER_LIMIT_PATTERNS + EVENT_DEFER_PATTERNS
+        if not any(pattern in lowered for pattern in deferred_patterns):
             return None
 
         reset_match = re.search(
@@ -601,6 +625,15 @@ class ProcessTracker:
             else datetime.now(timezone.utc)
         )
         return (base + timedelta(seconds=delay)).isoformat()
+
+    @staticmethod
+    def _defer_scope(output: str) -> Optional[str]:
+        lowered = output.lower()
+        if any(pattern in lowered for pattern in PROVIDER_LIMIT_PATTERNS):
+            return "provider"
+        if any(pattern in lowered for pattern in EVENT_DEFER_PATTERNS):
+            return "event"
+        return None
 
 
 # Global tracker instance
@@ -770,12 +803,12 @@ def determine_pr_action(comments: list[dict]) -> tuple[str, Optional[dict], int]
             latest_action = "maintain"
             latest_comment = comment
             latest_index = index
-        elif "[Worker] Revision complete." in body:
-            latest_action = "review"
-            latest_comment = comment
-            latest_index = index
         elif reviewer:
             latest_action = "revise"
+            latest_comment = comment
+            latest_index = index
+        elif "[Worker] Revision complete." in body:
+            latest_action = "review"
             latest_comment = comment
             latest_index = index
 
@@ -1371,6 +1404,11 @@ def process_issues(
         if num in pr_issue_numbers:
             continue
 
+        worker = parse_role(WORKER_PATTERN, raw.get("body", ""))
+        if not worker:
+            log.debug("Issue #%d has no Worker metadata, skipping.", num)
+            continue
+
         # 2. A persistent event key prevents repeat dispatch after completion.
         # The still-open Issue and missing PR prove that a prior zero exit code
         # did not complete the required GitHub transition.
@@ -1379,6 +1417,7 @@ def process_issues(
             task_ref,
             role="worker",
             completion_confirmed=False,
+            ai_name=worker.ai,
         )
         if not allowed:
             log_dispatch_blocker(
@@ -1390,11 +1429,6 @@ def process_issues(
             continue
 
         # 3. Dispatch Worker
-        worker = parse_role(WORKER_PATTERN, raw.get("body", ""))
-        if not worker:
-            log.debug("Issue #%d has no Worker metadata, skipping.", num)
-            continue
-
         issue = TaskIssue(
             number=num,
             title=raw["title"],
@@ -1514,6 +1548,7 @@ def process_prs(
                 task_ref,
                 role="maintainer",
                 completion_confirmed=False,
+                ai_name=maintainer.ai,
             )
             if not allowed:
                 log_dispatch_blocker(
@@ -1551,6 +1586,7 @@ def process_prs(
                 task_ref,
                 role="reviewer",
                 completion_confirmed=False,
+                ai_name=reviewer.ai,
             )
             if not allowed:
                 log_dispatch_blocker(
@@ -1589,6 +1625,7 @@ def process_prs(
             task_ref,
             role="worker_revise",
             completion_confirmed=False,
+            ai_name=worker.ai,
         )
         if not allowed:
             log_dispatch_blocker(

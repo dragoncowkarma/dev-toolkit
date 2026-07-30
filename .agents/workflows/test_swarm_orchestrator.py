@@ -21,7 +21,13 @@ class FakeTracker:
     def __init__(self, dispatched=None):
         self.dispatched = set(dispatched or [])
 
-    def should_dispatch(self, task_ref, role, completion_confirmed=True):
+    def should_dispatch(
+        self,
+        task_ref,
+        role,
+        completion_confirmed=True,
+        ai_name=None,
+    ):
         if (task_ref, role) in self.dispatched:
             if not completion_confirmed:
                 return False, swarm.DISPATCH_UNCONFIRMED
@@ -37,13 +43,23 @@ def make_tracker(history):
     return tracker
 
 
-def record(task_ref, role, status, pid=1234, retry_after=None):
+def record(
+    task_ref,
+    role,
+    status,
+    pid=1234,
+    retry_after=None,
+    ai_name="codex",
+    defer_scope=None,
+):
     return SimpleNamespace(
         task_ref=task_ref,
         role=role,
         status=status,
         pid=pid,
         retry_after=retry_after,
+        ai_name=ai_name,
+        defer_scope=defer_scope,
     )
 
 
@@ -142,6 +158,59 @@ class DispatchDecisionTests(unittest.TestCase):
         self.assertTrue(allowed)
         self.assertIn("provider cooldown", reason)
 
+    def test_provider_cooldown_blocks_other_events_for_same_ai(self):
+        retry_after = (
+            datetime.now(timezone.utc) + timedelta(minutes=30)
+        ).isoformat()
+        tracker = make_tracker([
+            record(
+                "maintain#39-comment",
+                "maintainer",
+                swarm.ProcessStatus.DEFERRED,
+                retry_after=retry_after,
+                ai_name="antigravity",
+                defer_scope="provider",
+            ),
+        ])
+
+        allowed, reason = tracker.should_dispatch(
+            "issue#28:initial",
+            "worker",
+            ai_name="antigravity",
+        )
+        other_ai_allowed, _ = tracker.should_dispatch(
+            "issue#28:initial",
+            "worker",
+            ai_name="codex",
+        )
+
+        self.assertFalse(allowed)
+        self.assertIn(swarm.DISPATCH_PROVIDER_COOLDOWN, reason)
+        self.assertTrue(other_ai_allowed)
+
+    def test_event_timeout_does_not_pause_other_events_for_same_ai(self):
+        retry_after = (
+            datetime.now(timezone.utc) + timedelta(minutes=30)
+        ).isoformat()
+        tracker = make_tracker([
+            record(
+                "review#30-abc123",
+                "reviewer",
+                swarm.ProcessStatus.DEFERRED,
+                retry_after=retry_after,
+                ai_name="antigravity",
+                defer_scope="event",
+            ),
+        ])
+
+        allowed, _ = tracker.should_dispatch(
+            "issue#28:initial",
+            "worker",
+            ai_name="antigravity",
+        )
+
+        self.assertTrue(allowed)
+
     def test_orphaned_running_record_becomes_retryable(self):
         orphan = swarm.TrackedProcess(
             pid=999999, role="worker", ai_name="codex", model="5.6 sol",
@@ -235,6 +304,7 @@ class ProviderFailureTests(unittest.TestCase):
         self.assertEqual(swarm.ProcessStatus.DEFERRED, tracked.status)
         self.assertEqual("NO_TOOL_WITHDRAWN", tracked.failure_reason)
         self.assertEqual("2026-07-30T03:17:23+00:00", tracked.retry_after)
+        self.assertEqual("event", tracked.defer_scope)
 
     def test_log_tail_reads_combined_redirected_output(self):
         temp_dir = Path(tempfile.mkdtemp())
@@ -280,6 +350,7 @@ class ProviderFailureTests(unittest.TestCase):
         self.assertEqual(swarm.ProcessStatus.DEFERRED, tracked.status)
         self.assertIn("Individual quota reached", tracked.failure_reason)
         self.assertIsNotNone(tracked.retry_after)
+        self.assertEqual("provider", tracked.defer_scope)
 
 
 class AiArgvTests(unittest.TestCase):
@@ -347,6 +418,20 @@ class LifecycleSignalTests(unittest.TestCase):
 
         self.assertEqual("maintain", action)
         self.assertEqual("approval-1", comment["id"])
+
+    def test_reviewer_instruction_does_not_become_worker_signal(self):
+        comments = [{
+            "id": "review-2",
+            "body": (
+                "Fix the issue, then post [Worker] Revision complete.\n"
+                "[Reviewer: codex | Model: 5.6 | Reasoning: 높음]"
+            ),
+        }]
+
+        action, comment, _ = swarm.determine_pr_action(comments)
+
+        self.assertEqual("revise", action)
+        self.assertEqual("review-2", comment["id"])
 
     def test_lone_maintainer_tag_is_informational(self):
         comments = [{
