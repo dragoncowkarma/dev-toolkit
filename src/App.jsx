@@ -1,88 +1,31 @@
 import React from 'react';
 import Layout from './components/Layout.jsx';
-const Base64Tool = React.lazy(() => import('./tools/base64/Base64Tool.jsx'));
-const HashTool = React.lazy(() => import('./tools/hash/HashTool.jsx'));
-const HtmlEntityTool = React.lazy(() => import('./tools/html-entity/HtmlEntityTool.jsx'));
-const JsonTool = React.lazy(() => import('./tools/json/JsonTool.jsx'));
-const JwtTool = React.lazy(() => import('./tools/jwt/JwtTool.jsx'));
-const UrlTool = React.lazy(() => import('./tools/url/UrlTool.jsx'));
-const UuidTool = React.lazy(() => import('./tools/uuid/UuidTool.jsx'));
-const DiffTool = React.lazy(() => import('./tools/diff/DiffTool.jsx'));
 
-const TOOLS = [
-  {
-    id: 'base64',
-    name: 'Base64',
-    description: 'Encode and decode Base64 strings without leaving your browser.',
-    icon: '⌁',
-    category: 'Encoder',
-    component: Base64Tool,
-  },
-  {
-    id: 'json',
-    name: 'JSON Formatter',
-    description: 'Format, validate, and minify JSON with a clear structured view.',
-    icon: '{ }',
-    category: 'Formatter',
-    component: JsonTool,
-  },
-  {
-    id: 'jwt',
-    name: 'JWT Decoder',
-    description: 'Decode JWT claims and inspect expiration details locally.',
-    icon: '◈',
-    category: 'Decoder',
-    component: JwtTool,
-  },
-  {
-    id: 'url',
-    name: 'URL Encoder',
-    description: 'Safely encode or decode URL components for requests and redirects.',
-    icon: '↗',
-    category: 'Encoder',
-    component: UrlTool,
-  },
-  {
-    id: 'html-entity',
-    name: 'HTML Entity',
-    description: 'Encode and decode HTML entities, including Unicode characters.',
-    icon: '&;',
-    category: 'Encoder',
-    component: HtmlEntityTool,
-  },
-  {
-    id: 'hash',
-    name: 'Hash Generator',
-    description: 'Generate common hashes for content checks and development workflows.',
-    icon: '#',
-    category: 'Generator',
-    component: HashTool,
-  },
-  {
-    id: 'uuid',
-    name: 'UUID Generator',
-    description: 'Generate and format random UUID v4 or time-ordered UUID v7 batches.',
-    icon: '⌗',
-    category: 'Generator',
-    component: UuidTool,
-  },
-  {
-    id: 'regex',
-    name: 'Regex Tester',
-    description: 'Test regular expressions and inspect matches as you type.',
-    icon: '.*',
-    category: 'Tester',
-    component: ToolPlaceholder,
-  },
-  {
-    id: 'diff',
-    name: 'Text Diff',
-    description: 'Compare two text blocks and quickly spot every change.',
-    icon: '±',
-    category: 'Comparison',
-    component: DiffTool,
-  },
-];
+// Tools are discovered from disk, not registered by hand. Adding a tool means
+// adding `src/tools/<slug>/meta.js` (+ `<Name>Tool.jsx` once implemented) —
+// nothing here ever needs editing, so parallel tool PRs stop colliding on a
+// shared registration line.
+const metaModules = import.meta.glob('./tools/*/meta.js', { eager: true });
+const componentLoaders = import.meta.glob('./tools/*/*Tool.jsx');
+
+function toolDirOf(globPath) {
+  return globPath.split('/')[2];
+}
+
+const TOOLS = Object.entries(metaModules)
+  .map(([path, mod]) => {
+    const dir = toolDirOf(path);
+    const componentPath = Object.keys(componentLoaders).find(
+      (p) => toolDirOf(p) === dir,
+    );
+    return {
+      ...mod.default,
+      component: componentPath
+        ? React.lazy(componentLoaders[componentPath])
+        : ToolPlaceholder,
+    };
+  })
+  .sort((a, b) => a.id.localeCompare(b.id));
 
 function ToolPlaceholder({ tool }) {
   return (
