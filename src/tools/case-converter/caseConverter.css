@@ -1,0 +1,136 @@
+.case-converter-tool {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.case-converter-tool__toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.case-converter-tool__panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.case-converter-tool__panel label,
+.case-converter-tool__result-header label {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.case-converter-tool__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.case-converter-tool__button {
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: calc(var(--radius) - 4px);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition);
+}
+
+.case-converter-tool__button:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.case-converter-tool__button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.case-converter-tool textarea {
+  resize: vertical;
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.case-converter-tool__toolbar textarea {
+  min-height: 140px;
+}
+
+.case-converter-tool textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.case-converter-tool textarea[readonly] {
+  background: var(--color-bg);
+}
+
+.case-converter-tool__results {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: 1fr;
+}
+
+.case-converter-tool__result {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.case-converter-tool__result textarea {
+  min-height: 100px;
+}
+
+.case-converter-tool__result-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.case-converter-tool__notice {
+  min-height: 1.3rem;
+  color: var(--color-text-muted);
+  font-size: 0.825rem;
+}
+
+@media (min-width: 640px) {
+  .case-converter-tool__results {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (min-width: 768px) {
+  .case-converter-tool {
+    padding: 0 2rem 3rem;
+  }
+
+  .case-converter-tool__toolbar {
+    flex-direction: row;
+    align-items: flex-end;
+  }
+
+  .case-converter-tool__panel {
+    flex: 1;
+  }
+}
+
+@media (min-width: 1024px) {
+  .case-converter-tool__results {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+}
