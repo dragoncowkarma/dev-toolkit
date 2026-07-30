@@ -11,10 +11,29 @@ import './Layout.css';
  * @returns {React.JSX.Element} The main application layout.
  */
 export default function Layout({ tools, defaultToolId }) {
-  const initialToolId = tools.some((tool) => tool.id === defaultToolId)
-    ? defaultToolId
-    : tools[0]?.id;
-  const [activeToolId, setActiveToolId] = useState(initialToolId);
+  const getToolIdFromHash = () => {
+    const hash = window.location.hash;
+    let rawId = '';
+    if (hash.startsWith('#/')) {
+      rawId = hash.substring(2);
+    } else if (hash.startsWith('#')) {
+      rawId = hash.substring(1);
+    }
+    if (tools.some((tool) => tool.id === rawId)) {
+      return rawId;
+    }
+    return null;
+  };
+
+  const [activeToolId, setActiveToolId] = useState(() => {
+    const hashId = getToolIdFromHash();
+    if (hashId) {
+      return hashId;
+    }
+    return tools.some((tool) => tool.id === defaultToolId)
+      ? defaultToolId
+      : tools[0]?.id;
+  });
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
 
@@ -22,6 +41,38 @@ export default function Layout({ tools, defaultToolId }) {
     () => tools.find((tool) => tool.id === activeToolId) ?? tools[0],
     [activeToolId, tools],
   );
+
+  useEffect(() => {
+    if (activeTool) {
+      document.title = `${activeTool.name} - Dev Toolkit`;
+    } else {
+      document.title = 'Dev Toolkit';
+    }
+  }, [activeTool]);
+
+  useEffect(() => {
+    const expectedHash = `#/${activeToolId}`;
+    if (window.location.hash !== expectedHash) {
+      window.location.hash = expectedHash;
+    }
+  }, [activeToolId]);
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hashId = getToolIdFromHash();
+      if (hashId) {
+        setActiveToolId(hashId);
+      } else {
+        const fallbackId = tools.some((tool) => tool.id === defaultToolId)
+          ? defaultToolId
+          : tools[0]?.id;
+        setActiveToolId(fallbackId);
+      }
+    };
+
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, [tools, defaultToolId]);
 
   useEffect(() => {
     if (!isMobileOpen) {
