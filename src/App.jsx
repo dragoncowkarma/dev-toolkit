@@ -3,6 +3,7 @@ import Layout from './components/Layout.jsx';
 import Base64Tool from './tools/base64/Base64Tool.jsx';
 import HashTool from './tools/hash/HashTool.jsx';
 import JsonTool from './tools/json/JsonTool.jsx';
+import UuidTool from './tools/uuid/UuidTool.jsx';
 
 const TOOLS = [
   {
@@ -36,6 +37,14 @@ const TOOLS = [
     icon: '#',
     category: 'Generator',
     component: HashTool,
+  },
+  {
+    id: 'uuid',
+    name: 'UUID Generator',
+    description: 'Generate and format random UUID v4 or time-ordered UUID v7 batches.',
+    icon: '⌗',
+    category: 'Generator',
+    component: UuidTool,
   },
   {
     id: 'regex',
