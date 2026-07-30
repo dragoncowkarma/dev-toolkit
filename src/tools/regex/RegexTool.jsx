@@ -70,10 +70,13 @@ export default function RegexTool() {
             value={selectedPreset}
             onChange={handlePresetChange}
             aria-label="Regex Presets"
+            title={
+              REGEX_PRESETS.find((p) => p.id === selectedPreset)?.description || 'Select a preset...'
+            }
           >
             <option value="">Select a preset...</option>
             {REGEX_PRESETS.map((preset) => (
-              <option key={preset.id} value={preset.id}>
+              <option key={preset.id} value={preset.id} title={preset.description}>
                 {preset.name}
               </option>
             ))}

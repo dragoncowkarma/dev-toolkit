@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { runRegex } from './regex.utils';
+import { runRegex, REGEX_PRESETS } from './regex.utils';
 
 describe('Regex Utilities - runRegex', () => {
   it('should return empty matches when pattern is empty', () => {
@@ -100,5 +100,18 @@ describe('Regex Utilities - runRegex', () => {
       length: 5
     });
     expect(result.segments[2]).toEqual({ type: 'text', text: ' test' });
+  });
+
+  it('should resolve HTML Tag preset quickly on adversarial input without ReDoS', () => {
+    const htmlPreset = REGEX_PRESETS.find((p) => p.id === 'html_tag');
+    expect(htmlPreset).toBeDefined();
+
+    const adversarialInput = '<div ' + 'a'.repeat(30) + 'X';
+    const start = performance.now();
+    const result = runRegex(htmlPreset.pattern, htmlPreset.flags, adversarialInput);
+    const duration = performance.now() - start;
+
+    expect(result.isValid).toBe(true);
+    expect(duration).toBeLessThan(100);
   });
 });

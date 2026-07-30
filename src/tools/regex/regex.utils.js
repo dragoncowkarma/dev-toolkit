@@ -45,7 +45,7 @@ export const REGEX_PRESETS = [
   {
     id: 'html_tag',
     name: 'HTML Tag',
-    pattern: '<([a-zA-Z1-6]+)([^<]*)*(?:>(.*?)<\\/\\1>|\\s*\\/>)',
+    pattern: '<([a-zA-Z1-6]+)([^>]*)(?:>(.*?)<\\/\\1>|\\s*\\/>)',
     flags: 'g',
     description: 'Matches basic HTML tags and captures tag name, attributes, and content.',
     testText: '<div>Hello <b>World</b>!</div> <img src="image.png" />'
