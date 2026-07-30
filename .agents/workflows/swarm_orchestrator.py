@@ -1031,18 +1031,21 @@ _CLAUDE_EFFORT_MAP: dict[str, str] = {
 }
 
 # Map the human-friendly model names used in AGENTS.md to Codex CLI model IDs.
-# `gpt-5.6` is supported by Codex CLI when it is authenticated with ChatGPT.
-# Do not substitute unknown model names: passing them through gives the operator
-# a truthful CLI error instead of silently dispatching a different model.
+# The ChatGPT-authenticated Codex CLI exposes the reasoning variants, but not
+# the bare `gpt-5.6` ID.  Keep the generic aliases on the configured default
+# variant so a valid Issue/PR tag cannot be turned into a deterministic 400.
 _CODEX_MODEL_MAP: dict[str, str] = {
-    "5.6 (sol, terra, luna)": "gpt-5.6",
-    "5.6":                    "gpt-5.6",
+    "5.6 (sol, terra, luna)": "gpt-5.6-terra",
+    "5.6":                    "gpt-5.6-terra",
+    "5.6 (sol)":              "gpt-5.6-sol",
+    "5.6 (terra)":            "gpt-5.6-terra",
+    "5.6 (luna)":             "gpt-5.6-luna",
     "5.6 sol":                "gpt-5.6-sol",
     "5.6 terra":              "gpt-5.6-terra",
     "5.6 luna":               "gpt-5.6-luna",
-    "5.5":                    "gpt-5.6",
-    "5.4":                    "gpt-5.6",
-    "5.4 mini":               "gpt-5.6",
+    "5.5":                    "gpt-5.6-terra",
+    "5.4":                    "gpt-5.6-terra",
+    "5.4 mini":               "gpt-5.6-terra",
 }
 
 
@@ -1058,7 +1061,8 @@ def build_ai_argv(ai_name: str, model: str, reasoning: str,
     prompt_text = prompt_file.read_text(encoding="utf-8")
 
     if ai_name == "codex":
-        resolved_model = _CODEX_MODEL_MAP.get(model.lower().strip(), model)
+        model_key = model.lower().strip()
+        resolved_model = _CODEX_MODEL_MAP.get(model_key, model)
         if resolved_model != model:
             log.info(
                 "Model alias: '%s' → '%s' (codex)",
