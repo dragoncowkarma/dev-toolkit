@@ -1012,16 +1012,19 @@ _CLAUDE_EFFORT_MAP: dict[str, str] = {
     "엑스트라": "xhigh", "최대": "max", "ultracode": "max",
 }
 
-# Codex with ChatGPT accounts only supports reasoning models (o3, o4-mini).
-# Enterprise model names from AGENTS.md (5.6, 5.5, etc.) are not available.
+# Map the human-friendly model names used in AGENTS.md to Codex CLI model IDs.
+# `gpt-5.6` is supported by Codex CLI when it is authenticated with ChatGPT.
+# Do not substitute unknown model names: passing them through gives the operator
+# a truthful CLI error instead of silently dispatching a different model.
 _CODEX_MODEL_MAP: dict[str, str] = {
-    "5.6 (sol, terra, luna)": "o4-mini",
-    "5.6":                    "o4-mini",
-    "5.5":                    "o4-mini",
-    "5.4":                    "o4-mini",
-    "5.4 mini":               "o4-mini",
-    "o3":                     "o3",
-    "o4-mini":                "o4-mini",
+    "5.6 (sol, terra, luna)": "gpt-5.6",
+    "5.6":                    "gpt-5.6",
+    "5.6 sol":                "gpt-5.6-sol",
+    "5.6 terra":              "gpt-5.6-terra",
+    "5.6 luna":               "gpt-5.6-luna",
+    "5.5":                    "gpt-5.6",
+    "5.4":                    "gpt-5.6",
+    "5.4 mini":               "gpt-5.6",
 }
 
 
@@ -1037,7 +1040,7 @@ def build_ai_argv(ai_name: str, model: str, reasoning: str,
     prompt_text = prompt_file.read_text(encoding="utf-8")
 
     if ai_name == "codex":
-        resolved_model = _CODEX_MODEL_MAP.get(model.lower().strip(), "o4-mini")
+        resolved_model = _CODEX_MODEL_MAP.get(model.lower().strip(), model)
         if resolved_model != model:
             log.info(
                 "Model alias: '%s' → '%s' (codex)",

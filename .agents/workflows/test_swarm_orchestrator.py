@@ -359,27 +359,41 @@ class AiArgvTests(unittest.TestCase):
         self.prompt_file = temp_dir / "prompt.md"
         self.prompt_file.write_text("Do the task.", encoding="utf-8")
 
-    def test_codex_uses_requested_model(self):
+    def test_codex_preserves_fully_qualified_model(self):
         argv = swarm.build_ai_argv(
             "codex", "gpt-5.6-sol", "높음", self.prompt_file, "/repo",
         )
 
         self.assertEqual("gpt-5.6-sol", argv[argv.index("-m") + 1])
 
-    def test_antigravity_uses_requested_model_and_effort(self):
+    def test_codex_maps_agent_metadata_to_supported_cli_model(self):
+        argv = swarm.build_ai_argv(
+            "codex", "5.6", "높음", self.prompt_file, "/repo",
+        )
+
+        self.assertEqual("gpt-5.6", argv[argv.index("-m") + 1])
+
+    def test_codex_does_not_silently_replace_unknown_model(self):
+        argv = swarm.build_ai_argv(
+            "codex", "custom-provider-model", "높음", self.prompt_file, "/repo",
+        )
+
+        self.assertEqual("custom-provider-model", argv[argv.index("-m") + 1])
+
+    def test_antigravity_embeds_effort_in_resolved_model(self):
         argv = swarm.build_ai_argv(
             "antigravity", "gemini 3.1 pro", "높음", self.prompt_file, "/repo",
         )
 
-        self.assertEqual("gemini 3.1 pro", argv[argv.index("--model") + 1])
-        self.assertEqual("high", argv[argv.index("--effort") + 1])
+        self.assertEqual("Gemini 3.6 Flash (High)", argv[argv.index("--model") + 1])
+        self.assertNotIn("--effort", argv)
 
-    def test_claude_uses_requested_model_and_effort(self):
+    def test_claude_resolves_model_and_effort(self):
         argv = swarm.build_ai_argv(
             "claude", "sonnet 5", "중간", self.prompt_file, "/repo",
         )
 
-        self.assertEqual("sonnet 5", argv[argv.index("--model") + 1])
+        self.assertEqual("claude-sonnet-5", argv[argv.index("--model") + 1])
         self.assertEqual("medium", argv[argv.index("--effort") + 1])
 
 
