@@ -24,7 +24,7 @@ import sys
 import tempfile
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Optional
@@ -44,6 +44,21 @@ OPEN_ITEMS_LIMIT = 1000
 # retried so a transient AI CLI failure cannot deadlock the swarm forever.
 MAX_DISPATCH_ATTEMPTS = 3
 
+# Provider quota/tool/timeout failures are availability pauses, not crashed
+# task attempts. Keep them out of the bounded crash budget and retry after the
+# provider's advertised reset, or after a conservative fallback cooldown.
+PROVIDER_COOLDOWN_SECONDS = 60 * 60
+PROVIDER_COOLDOWN_BUFFER_SECONDS = 60
+PROVIDER_LIMIT_PATTERNS = (
+    "individual quota reached",
+    "monthly spend limit",
+    "rate limit exceeded",
+    "resource_exhausted",
+    "too many requests",
+    "timeout waiting for response",
+    "no_tool_withdrawn",
+)
+
 # `agy --print-timeout` defaults to 5m, which is shorter than a real Worker
 # task (exploration + npm install + implementation). Without an explicit
 # override, agy exits 1 with "Error: timeout waiting for response" well
@@ -54,6 +69,8 @@ ANTIGRAVITY_PRINT_TIMEOUT = "45m"
 # Stable reasons returned by ProcessTracker.should_dispatch().
 DISPATCH_RUNNING = "already running"
 DISPATCH_COMPLETED = "already completed"
+DISPATCH_UNCONFIRMED = "completed without confirmed lifecycle transition"
+DISPATCH_PROVIDER_COOLDOWN = "provider cooldown"
 
 # Upper bound on persisted history so the registry cannot grow without limit.
 MAX_HISTORY_RECORDS = 500
@@ -106,6 +123,20 @@ def log_blocker(key: str, message: str, *args, level: int = logging.ERROR):
     log.log(level, message, *args)
 
 
+def log_dispatch_blocker(key: str, subject: str, reason: str):
+    """Report terminal or deferred dispatch state without poll-cycle spam."""
+    if reason.startswith("exhausted") or reason == DISPATCH_UNCONFIRMED:
+        log_blocker(key, "%s dispatch blocked: %s.", subject, reason)
+    elif reason.startswith(DISPATCH_PROVIDER_COOLDOWN):
+        log_blocker(
+            key,
+            "%s dispatch deferred: %s.",
+            subject,
+            reason,
+            level=logging.WARNING,
+        )
+
+
 # ---------------------------------------------------------------------------
 # Data Classes
 # ---------------------------------------------------------------------------
@@ -114,6 +145,7 @@ class ProcessStatus(str, Enum):
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
+    DEFERRED = "deferred"
     UNKNOWN = "unknown"
 
 
@@ -160,6 +192,8 @@ class TrackedProcess:
     ended_at: Optional[str] = None
     exit_code: Optional[int] = None
     status: str = ProcessStatus.RUNNING
+    failure_reason: Optional[str] = None
+    retry_after: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -187,6 +221,23 @@ class ProcessTracker:
             except (json.JSONDecodeError, TypeError):
                 log.warning("Corrupted process registry, starting fresh.")
         self._reconcile_orphans()
+        self._reclassify_deferred_failures()
+
+    def _reclassify_deferred_failures(self):
+        """Upgrade historical transient failures so a restart can recover them."""
+        for record in self._history:
+            if record.status not in (
+                ProcessStatus.FAILED,
+                ProcessStatus.COMPLETED,
+            ):
+                continue
+            output_tail = self._read_log_tail(record.log_file, 2000)
+            retry_after = self._provider_retry_after(output_tail, record.ended_at)
+            if not retry_after:
+                continue
+            record.status = ProcessStatus.DEFERRED
+            record.failure_reason = self._failure_summary(output_tail)
+            record.retry_after = retry_after
 
     def _reconcile_orphans(self):
         """Demote records left RUNNING by a crashed orchestrator.
@@ -268,21 +319,37 @@ class ProcessTracker:
                 tracked.exit_code = retcode
                 tracked.ended_at = datetime.now(timezone.utc).isoformat()
                 elapsed = self._elapsed_str(tracked.started_at)
+                output_tail = self._read_log_tail(tracked.log_file, 2000)
+                tracked.retry_after = self._provider_retry_after(
+                    output_tail,
+                    tracked.ended_at,
+                )
 
-                if retcode == 0:
+                if tracked.retry_after:
+                    tracked.status = ProcessStatus.DEFERRED
+                    tracked.failure_reason = self._failure_summary(output_tail)
+                    log.warning(
+                        "⏸️ [PID %d] %s %s — provider unavailable "
+                        "(exit %d, %s); retry after %s\n  output: %s",
+                        pid, tracked.role.upper(), tracked.task_ref,
+                        retcode, elapsed, tracked.retry_after,
+                        tracked.failure_reason,
+                    )
+                elif retcode == 0:
                     tracked.status = ProcessStatus.COMPLETED
                     log.info(
                         "✅ [PID %d] %s %s — completed successfully (%s)",
                         pid, tracked.role.upper(), tracked.task_ref, elapsed,
                     )
                 else:
+                    tracked.failure_reason = self._failure_summary(output_tail)
                     tracked.status = ProcessStatus.FAILED
-                    # Capture last lines of stderr for diagnostics
-                    stderr_tail = self._read_tail(proc.stderr, 500)
                     log.error(
-                        "❌ [PID %d] %s %s — failed (exit %d, %s)\n  stderr: %s",
+                        "❌ [PID %d] %s %s — failed (exit %d, %s)\n"
+                        "  output: %s",
                         pid, tracked.role.upper(), tracked.task_ref,
-                        retcode, elapsed, stderr_tail or "(empty)",
+                        retcode, elapsed,
+                        tracked.failure_reason or "(empty)",
                     )
 
                 finished_pids.append(pid)
@@ -327,10 +394,13 @@ class ProcessTracker:
         restarts while the Worker/Reviewer loop can still advance when a new
         review comment or commit creates a new event.
 
-        A running attempt always blocks another dispatch. A completed process
-        blocks the event only after its required GitHub lifecycle transition is
-        visible. A zero exit code without that transition is retried up to
-        MAX_DISPATCH_ATTEMPTS times, just like a crashed process.
+        A running or completed attempt always blocks another dispatch for the
+        same lifecycle event. In particular, a successful process without its
+        required GitHub signal is surfaced as a blocker instead of being run
+        again, preserving the one-successful-dispatch invariant.
+
+        Provider quota failures pause until their cooldown expires and do not
+        consume the bounded crash retry budget.
         """
         attempts = [
             record for record in self.all_records
@@ -340,17 +410,35 @@ class ProcessTracker:
             return True, "new event"
         if any(record.status == ProcessStatus.RUNNING for record in attempts):
             return False, DISPATCH_RUNNING
-        completed = any(
-            record.status == ProcessStatus.COMPLETED for record in attempts
-        )
-        if completed and completion_confirmed:
-            return False, DISPATCH_COMPLETED
-        if len(attempts) >= MAX_DISPATCH_ATTEMPTS:
-            return False, f"exhausted {len(attempts)} unconfirmed attempts"
-        cause = "unconfirmed completion" if completed else "failure"
+        if any(record.status == ProcessStatus.COMPLETED for record in attempts):
+            reason = DISPATCH_COMPLETED if completion_confirmed else DISPATCH_UNCONFIRMED
+            return False, reason
+
+        deferred = [
+            record for record in attempts
+            if record.status == ProcessStatus.DEFERRED
+        ]
+        if deferred:
+            latest = deferred[-1]
+            if latest.retry_after:
+                retry_at = datetime.fromisoformat(latest.retry_after)
+                if datetime.now(timezone.utc) < retry_at:
+                    return (
+                        False,
+                        f"{DISPATCH_PROVIDER_COOLDOWN} until {latest.retry_after}",
+                    )
+
+        crash_attempts = [
+            record for record in attempts
+            if record.status in (ProcessStatus.FAILED, ProcessStatus.UNKNOWN)
+        ]
+        if len(crash_attempts) >= MAX_DISPATCH_ATTEMPTS:
+            return False, f"exhausted {len(crash_attempts)} failed attempts"
+        if deferred:
+            return True, "retry after provider cooldown"
         return (
             True,
-            f"retry {len(attempts) + 1}/{MAX_DISPATCH_ATTEMPTS} after {cause}",
+            f"retry {len(crash_attempts) + 1}/{MAX_DISPATCH_ATTEMPTS} after failure",
         )
 
     @property
@@ -390,7 +478,12 @@ class ProcessTracker:
         lines.append(f"\n📜 Recent History (last {len(recent)}):")
         if recent:
             for tp in recent:
-                icon = "✅" if tp.status == ProcessStatus.COMPLETED else "❌"
+                if tp.status == ProcessStatus.COMPLETED:
+                    icon = "✅"
+                elif tp.status == ProcessStatus.DEFERRED:
+                    icon = "⏸️"
+                else:
+                    icon = "❌"
                 duration = self._duration_str(tp.started_at, tp.ended_at)
                 lines.append(
                     f"  {icon} PID {tp.pid:>7}  │ {tp.role:<12} │ {tp.ai_name:<14} │ "
@@ -403,7 +496,14 @@ class ProcessTracker:
         total = len(self._history)
         succeeded = sum(1 for tp in self._history if tp.status == ProcessStatus.COMPLETED)
         failed = sum(1 for tp in self._history if tp.status == ProcessStatus.FAILED)
-        lines.append(f"\n📊 Totals: {total} finished ({succeeded} ✅, {failed} ❌), {len(active)} running")
+        deferred = sum(
+            1 for tp in self._history if tp.status == ProcessStatus.DEFERRED
+        )
+        lines.append(
+            f"\n📊 Totals: {total} finished "
+            f"({succeeded} ✅, {failed} ❌, {deferred} ⏸️), "
+            f"{len(active)} running"
+        )
         lines.append("=" * 72)
         return "\n".join(lines)
 
@@ -452,16 +552,55 @@ class ProcessTracker:
         return f"{secs // 3600}h {(secs % 3600) // 60}m"
 
     @staticmethod
-    def _read_tail(stream, max_bytes: int = 500) -> str:
-        if stream is None:
+    def _read_log_tail(log_file: str, max_bytes: int = 500) -> str:
+        if not log_file:
             return ""
         try:
-            data = stream.read()
-            if isinstance(data, bytes):
-                data = data.decode("utf-8", errors="replace")
-            return data[-max_bytes:] if data else ""
-        except Exception:
+            path = Path(log_file)
+            with path.open("rb") as stream:
+                stream.seek(0, os.SEEK_END)
+                size = stream.tell()
+                stream.seek(max(0, size - max_bytes))
+                return stream.read().decode("utf-8", errors="replace")
+        except OSError:
             return ""
+
+    @staticmethod
+    def _failure_summary(output: str) -> str:
+        lines = [line.strip() for line in output.splitlines() if line.strip()]
+        return lines[-1][-500:] if lines else ""
+
+    @staticmethod
+    def _provider_retry_after(
+        output: str,
+        ended_at: Optional[str] = None,
+    ) -> Optional[str]:
+        lowered = output.lower()
+        if not any(pattern in lowered for pattern in PROVIDER_LIMIT_PATTERNS):
+            return None
+
+        reset_match = re.search(
+            r"resets?\s+in\s+"
+            r"(?:(?P<hours>\d+)h)?"
+            r"(?:(?P<minutes>\d+)m)?"
+            r"(?:(?P<seconds>\d+)s)?",
+            lowered,
+        )
+        delay = PROVIDER_COOLDOWN_SECONDS
+        if reset_match and any(reset_match.groupdict().values()):
+            delay = (
+                int(reset_match.group("hours") or 0) * 3600
+                + int(reset_match.group("minutes") or 0) * 60
+                + int(reset_match.group("seconds") or 0)
+                + PROVIDER_COOLDOWN_BUFFER_SECONDS
+            )
+
+        base = (
+            datetime.fromisoformat(ended_at)
+            if ended_at
+            else datetime.now(timezone.utc)
+        )
+        return (base + timedelta(seconds=delay)).isoformat()
 
 
 # Global tracker instance
@@ -815,6 +954,7 @@ def build_ai_argv(ai_name: str, model: str, reasoning: str,
         # -s workspace-write to allow file edits
         return [
             "codex", "exec",
+            "-m", model,
             "-C", cwd,
             "-s", "workspace-write",
             "--dangerously-bypass-approvals-and-sandbox",
@@ -828,6 +968,8 @@ def build_ai_argv(ai_name: str, model: str, reasoning: str,
         return [
             "agy",
             "--dangerously-skip-permissions",
+            "--model", model,
+            "--effort", _map_reasoning_to_effort(reasoning),
             "--print-timeout", ANTIGRAVITY_PRINT_TIMEOUT,
             "-p", prompt_text,
         ]
@@ -839,6 +981,8 @@ def build_ai_argv(ai_name: str, model: str, reasoning: str,
         return [
             "claude",
             "-p",
+            "--model", model,
+            "--effort", _map_reasoning_to_effort(reasoning),
             "--dangerously-skip-permissions",
             prompt_text,
         ]
@@ -1237,13 +1381,11 @@ def process_issues(
             completion_confirmed=False,
         )
         if not allowed:
-            if reason.startswith("exhausted"):
-                log_blocker(
-                    f"dispatch-exhausted:{task_ref}",
-                    "Issue #%d Worker dispatch blocked: %s.",
-                    num,
-                    reason,
-                )
+            log_dispatch_blocker(
+                f"dispatch-blocked:{task_ref}",
+                f"Issue #{num} Worker",
+                reason,
+            )
             log.debug("Skipping Worker for Issue #%d: %s.", num, reason)
             continue
 
@@ -1374,13 +1516,11 @@ def process_prs(
                 completion_confirmed=False,
             )
             if not allowed:
-                if reason.startswith("exhausted"):
-                    log_blocker(
-                        f"dispatch-exhausted:{task_ref}",
-                        "PR #%d Maintainer dispatch blocked: %s.",
-                        pr_num,
-                        reason,
-                    )
+                log_dispatch_blocker(
+                    f"dispatch-blocked:{task_ref}",
+                    f"PR #{pr_num} Maintainer",
+                    reason,
+                )
                 log.debug("Skipping Maintainer for PR #%d: %s.", pr_num, reason)
                 continue
             log.info(
@@ -1413,13 +1553,11 @@ def process_prs(
                 completion_confirmed=False,
             )
             if not allowed:
-                if reason.startswith("exhausted"):
-                    log_blocker(
-                        f"dispatch-exhausted:{task_ref}",
-                        "PR #%d Reviewer dispatch blocked: %s.",
-                        pr_num,
-                        reason,
-                    )
+                log_dispatch_blocker(
+                    f"dispatch-blocked:{task_ref}",
+                    f"PR #{pr_num} Reviewer",
+                    reason,
+                )
                 # A finished review on an unchanged head SHA cannot produce a
                 # new event key, so the lifecycle would stall in silence: either
                 # the Worker never pushed, or the Reviewer posted no tagged
@@ -1453,13 +1591,11 @@ def process_prs(
             completion_confirmed=False,
         )
         if not allowed:
-            if reason.startswith("exhausted"):
-                log_blocker(
-                    f"dispatch-exhausted:{task_ref}",
-                    "PR #%d Worker revision dispatch blocked: %s.",
-                    pr_num,
-                    reason,
-                )
+            log_dispatch_blocker(
+                f"dispatch-blocked:{task_ref}",
+                f"PR #{pr_num} Worker revision",
+                reason,
+            )
             log.debug("Skipping Worker revision for PR #%d: %s.", pr_num, reason)
             continue
         feedback_reviewer = parse_role(
