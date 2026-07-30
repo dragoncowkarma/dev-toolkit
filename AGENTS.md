@@ -32,13 +32,26 @@ This project uses a **vendor-agnostic autonomous multi-agent swarm** where multi
 - **Process**: Reads the PR diff → leaves review comments → approves or requests changes.
 
 ### 2.3 Maintainer
-- **Responsibility**: Final approval and merge.
+- **Responsibility**: Final approval, merge, cleanup, post-merge project analysis,
+  and creation of exactly one non-duplicate follow-up Issue.
 - **Metadata location**: PR review completion comment.
 - **Format**: `[Maintainer: <ai_name> | Model: <model> | Reasoning: <level>]`
-- **Process**: Verifies CI passes → confirms review → merges PR → cleans up worktree.
+- **Process**: Verifies CI passes → confirms review → merges PR → closes the
+  associated Issue → analyzes the updated project → creates the next Issue.
 
 ### 2.4 Constraint
 > Within a single Issue→PR lifecycle, the Worker, Reviewer, and Maintainer MUST be **three different AIs**.
+
+### 2.5 Dispatch Idempotency
+- A lifecycle event MUST dispatch its assigned AI at most once successfully.
+- Event identity is based on the Issue, PR head SHA, or triggering comment ID.
+- The same Worker may run again only after new Reviewer feedback.
+- The same Reviewer may run again only after a new Worker commit and
+  `[Worker] Revision complete.` signal.
+- Polling or restarting the orchestrator MUST NOT duplicate an event that is
+  running or already succeeded.
+- An event whose AI process crashed IS retried, up to 3 attempts, so a single
+  transient CLI failure cannot deadlock the swarm.
 
 ---
 
@@ -112,12 +125,17 @@ git branch -d <branch_name>
 5. [Worker AI] Creates PR with [Reviewer: ...] tag in body
 6. [Orchestrator] Detects PR with [Reviewer: ...] tag
 7. [Orchestrator] Launches Reviewer AI
-8. [Reviewer AI] Reviews code, leaves comments, approves or requests changes
-9. [Reviewer AI] Adds [Maintainer: ...] tag in approval comment
-10. [Orchestrator] Detects Maintainer tag
-11. [Orchestrator] Launches Maintainer AI
-12. [Maintainer AI] Verifies and merges PR
-13. [Orchestrator] Cleans up worktree
+8. [Reviewer AI] Reviews code and posts one tagged final comment
+9. [If changes requested] Orchestrator launches the original Worker once for
+   that comment ID
+10. [Worker AI] Fixes, commits, pushes, and posts
+    `[Worker] Revision complete.`
+11. Steps 7–10 repeat only when a new signal exists
+12. [If approved] Reviewer adds a distinct [Maintainer: ...] tag
+13. [Orchestrator] Launches Maintainer AI once for that approval comment ID
+14. [Maintainer AI] Verifies CI, merges PR, closes Issue, analyzes the updated
+    project, and creates exactly one non-duplicate follow-up Issue
+15. [Orchestrator] Safely removes only the clean merged worktree
 ```
 
 ---
