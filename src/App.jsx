@@ -2,6 +2,7 @@ import React from 'react';
 import Layout from './components/Layout.jsx';
 import Base64Tool from './tools/base64/Base64Tool.jsx';
 import JsonTool from './tools/json/JsonTool.jsx';
+import UrlTool from './tools/url/UrlTool.jsx';
 
 const TOOLS = [
   {
@@ -26,7 +27,7 @@ const TOOLS = [
     description: 'Safely encode or decode URL components for requests and redirects.',
     icon: '↗',
     category: 'Encoder',
-    component: ToolPlaceholder,
+    component: UrlTool,
   },
   {
     id: 'hash',
