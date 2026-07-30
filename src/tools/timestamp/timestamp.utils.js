@@ -188,6 +188,7 @@ export function convertTimestamp(input, unitMode = 'auto', now = new Date()) {
       error: inputType === 'timestamp'
         ? '유효하지 않은 Unix 타임스탬프 숫자입니다.'
         : '유효하지 않은 날짜/시간 문자열 형식입니다.',
+      timezone: getLocalTimezoneInfo(now),
     };
   }
 

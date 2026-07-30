@@ -191,7 +191,7 @@ export default function TimestampTool() {
         <div className="output-card">
           <div className="card-header">
             <label className="card-label" htmlFor="out-local">
-              Local Timezone ({result.timezone.split(' ')[0]})
+              Local Timezone ({result.timezone ? result.timezone.split(' ')[0] : 'Local'})
             </label>
             <button
               type="button"
