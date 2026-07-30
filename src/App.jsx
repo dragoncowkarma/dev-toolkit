@@ -4,6 +4,7 @@ const Base64Tool = React.lazy(() => import('./tools/base64/Base64Tool.jsx'));
 const HashTool = React.lazy(() => import('./tools/hash/HashTool.jsx'));
 const JsonTool = React.lazy(() => import('./tools/json/JsonTool.jsx'));
 const UrlTool = React.lazy(() => import('./tools/url/UrlTool.jsx'));
+const ColorTool = React.lazy(() => import('./tools/color/ColorTool.jsx'));
 
 const TOOLS = [
   {
@@ -29,6 +30,14 @@ const TOOLS = [
     icon: '↗',
     category: 'Encoder',
     component: UrlTool,
+  },
+  {
+    id: 'color',
+    name: 'Color Converter',
+    description: 'Convert between HEX, RGB, and HSL color formats with real-time preview.',
+    icon: '🎨',
+    category: 'Converter',
+    component: ColorTool,
   },
   {
     id: 'hash',
