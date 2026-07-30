@@ -16,6 +16,7 @@
   --color-error-bg: rgba(239, 68, 68, 0.1);
   --color-error-border: rgba(239, 68, 68, 0.3);
   --color-info: #60a5fa;
+  --color-scheduler: #c084fc;
   --color-code-bg: #06060a;
   --font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   --radius: 12px;
