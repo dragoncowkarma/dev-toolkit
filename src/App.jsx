@@ -5,6 +5,7 @@ const HashTool = React.lazy(() => import('./tools/hash/HashTool.jsx'));
 const JsonTool = React.lazy(() => import('./tools/json/JsonTool.jsx'));
 const UrlTool = React.lazy(() => import('./tools/url/UrlTool.jsx'));
 const UuidTool = React.lazy(() => import('./tools/uuid/UuidTool.jsx'));
+const DiffTool = React.lazy(() => import('./tools/diff/DiffTool.jsx'));
 
 const TOOLS = [
   {
@@ -61,7 +62,7 @@ const TOOLS = [
     description: 'Compare two text blocks and quickly spot every change.',
     icon: '±',
     category: 'Comparison',
-    component: ToolPlaceholder,
+    component: DiffTool,
   },
 ];
 
