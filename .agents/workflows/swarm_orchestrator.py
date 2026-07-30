@@ -970,14 +970,51 @@ def write_prompt_file(prompt: str, role: str, task_ref: str) -> Path:
 # AI Agent Dispatch — builds argv lists (NOT shell strings)
 # ---------------------------------------------------------------------------
 
+# Maps AGENTS.md model names (case-insensitive) to actual CLI model IDs.
+# The orchestrator receives model names from GitHub Issue/PR metadata tags;
+# these may use human-friendly names that differ from CLI identifiers.
+_AGY_MODEL_MAP: dict[str, str] = {
+    "gemini 3.6 flash": "gemini 3.6 flash",
+    "gemini 3.5 flash": "gemini 3.6 flash",   # 3.5 not available; upgrade
+    "gemini 3.1 pro":   "gemini 3.6 flash",   # 3.1 pro not available; fallback
+}
+
+# Models where agy supports the --effort flag.
+_AGY_EFFORT_MODELS: set[str] = {
+    "gemini 3.6 flash",
+}
+
+_CLAUDE_MODEL_MAP: dict[str, str] = {
+    "sonnet 5":     "claude-sonnet-5",
+    "opus 5":       "claude-opus-5",
+    "fable 5":      "claude-fable-5",
+    "haiku 4.5":    "claude-haiku-4-5-20251001",
+    # Already fully-qualified names pass through.
+    "claude-sonnet-5":             "claude-sonnet-5",
+    "claude-opus-5":               "claude-opus-5",
+    "claude-fable-5":              "claude-fable-5",
+    "claude-haiku-4-5-20251001":   "claude-haiku-4-5-20251001",
+}
+
+# Claude CLI effort levels: low, medium, high, xhigh, max.
+_CLAUDE_EFFORT_MAP: dict[str, str] = {
+    "high": "high", "높음": "high", "울트라": "high",
+    "매우 높음": "high",
+    "medium": "medium", "중간": "medium",
+    "low": "low", "낮음": "low", "light": "low",
+    "thinking": "high",
+    "엑스트라": "xhigh", "최대": "max", "ultracode": "max",
+}
+
+
 def build_ai_argv(ai_name: str, model: str, reasoning: str,
                   prompt_file: Path, cwd: str) -> list[str]:
     """Build an argv list for a specific AI CLI tool.
 
     Each tool's actual flags (verified via --help):
       codex exec -m <model> -C <dir> -s workspace-write --dangerously-bypass-approvals-and-sandbox <prompt_from_stdin>
-      agy -p --model <model> --effort <level> --print-timeout <dur> --dangerously-skip-permissions <prompt_from_file>
-      claude -p --model <model> --dangerously-skip-permissions <prompt_from_file>
+      agy -p --model <model> [--effort <level>] --print-timeout <dur> --dangerously-skip-permissions <prompt_from_file>
+      claude -p --model <model> --effort <level> --dangerously-skip-permissions <prompt_from_file>
     """
     prompt_text = prompt_file.read_text(encoding="utf-8")
 
@@ -995,27 +1032,41 @@ def build_ai_argv(ai_name: str, model: str, reasoning: str,
         ]
 
     elif ai_name == "antigravity":
-        # agy: -p for non-interactive
-        # --dangerously-skip-permissions for autonomous mode
-        # cwd is set via subprocess cwd parameter
-        return [
+        resolved_model = _AGY_MODEL_MAP.get(model.lower().strip(), model)
+        if resolved_model != model:
+            log.info(
+                "Model alias: '%s' → '%s' (antigravity)",
+                model, resolved_model,
+            )
+        argv = [
             "agy",
             "--dangerously-skip-permissions",
-            "--model", model,
-            "--effort", _map_reasoning_to_effort(reasoning),
+            "--model", resolved_model,
+        ]
+        # Only pass --effort when the resolved model supports it.
+        if resolved_model.lower() in _AGY_EFFORT_MODELS:
+            argv += ["--effort", _map_reasoning_to_effort(reasoning)]
+        argv += [
             "--print-timeout", ANTIGRAVITY_PRINT_TIMEOUT,
             "-p", prompt_text,
         ]
+        return argv
 
     elif ai_name == "claude":
-        # claude: -p for print mode, prompt is positional
-        # --dangerously-skip-permissions for autonomous mode
-        # cwd is set via subprocess cwd parameter
+        resolved_model = _CLAUDE_MODEL_MAP.get(model.lower().strip(), model)
+        if resolved_model != model:
+            log.info(
+                "Model alias: '%s' → '%s' (claude)",
+                model, resolved_model,
+            )
+        effort = _CLAUDE_EFFORT_MAP.get(
+            reasoning.lower().strip(), "medium",
+        )
         return [
             "claude",
             "-p",
-            "--model", model,
-            "--effort", _map_reasoning_to_effort(reasoning),
+            "--model", resolved_model,
+            "--effort", effort,
             "--dangerously-skip-permissions",
             prompt_text,
         ]
@@ -1026,7 +1077,7 @@ def build_ai_argv(ai_name: str, model: str, reasoning: str,
 
 
 def _map_reasoning_to_effort(reasoning: str) -> str:
-    """Map AGENTS.md reasoning levels to agy --effort values."""
+    """Map AGENTS.md reasoning levels to agy --effort values (low/medium/high)."""
     mapping = {
         "high": "high", "높음": "high", "울트라": "high",
         "매우 높음": "high",
