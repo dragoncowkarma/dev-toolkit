@@ -3,6 +3,36 @@ import Sidebar from './Sidebar.jsx';
 import LoadingSpinner from './LoadingSpinner.jsx';
 import './Layout.css';
 
+function getFallbackToolId(tools, defaultToolId) {
+  return tools.some((tool) => tool.id === defaultToolId)
+    ? defaultToolId
+    : tools[0]?.id;
+}
+
+function isToolRouteHash(hash, tools) {
+  if (!hash || hash === '#' || hash === '#/') {
+    return true;
+  }
+  if (hash.startsWith('#/')) {
+    return true;
+  }
+  const rawId = hash.startsWith('#') ? hash.substring(1) : hash;
+  return tools.some((tool) => tool.id === rawId);
+}
+
+function getToolIdFromHash(hash = window.location.hash, tools = []) {
+  let rawId = '';
+  if (hash.startsWith('#/')) {
+    rawId = hash.substring(2);
+  } else if (hash.startsWith('#')) {
+    rawId = hash.substring(1);
+  }
+  if (tools.some((tool) => tool.id === rawId)) {
+    return rawId;
+  }
+  return null;
+}
+
 /**
  * Provides the responsive application shell and renders the active tool.
  *
@@ -12,10 +42,13 @@ import './Layout.css';
  * @returns {React.JSX.Element} The main application layout.
  */
 export default function Layout({ tools, defaultToolId }) {
-  const initialToolId = tools.some((tool) => tool.id === defaultToolId)
-    ? defaultToolId
-    : tools[0]?.id;
-  const [activeToolId, setActiveToolId] = useState(initialToolId);
+  const [activeToolId, setActiveToolId] = useState(() => {
+    const hashId = getToolIdFromHash(window.location.hash, tools);
+    if (hashId) {
+      return hashId;
+    }
+    return getFallbackToolId(tools, defaultToolId);
+  });
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
 
@@ -23,6 +56,53 @@ export default function Layout({ tools, defaultToolId }) {
     () => tools.find((tool) => tool.id === activeToolId) ?? tools[0],
     [activeToolId, tools],
   );
+
+  const handleSelectTool = (toolId) => {
+    setActiveToolId(toolId);
+    const expectedHash = `#/${toolId}`;
+    if (window.location.hash !== expectedHash) {
+      window.location.hash = expectedHash;
+    }
+  };
+
+  useEffect(() => {
+    if (activeTool) {
+      document.title = `${activeTool.name} - Dev Toolkit`;
+    } else {
+      document.title = 'Dev Toolkit';
+    }
+  }, [activeTool]);
+
+  useEffect(() => {
+    const expectedHash = `#/${activeToolId}`;
+    const currentHash = window.location.hash;
+
+    if (currentHash !== expectedHash) {
+      const isInvalidToolRoute =
+        isToolRouteHash(currentHash, tools) && !getToolIdFromHash(currentHash, tools);
+      if (isInvalidToolRoute && window.history?.replaceState) {
+        window.history.replaceState(null, '', expectedHash);
+      } else {
+        window.location.hash = expectedHash;
+      }
+    }
+  }, [activeToolId, tools]);
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash;
+      const hashId = getToolIdFromHash(hash, tools);
+      if (hashId) {
+        setActiveToolId(hashId);
+      } else if (isToolRouteHash(hash, tools)) {
+        const fallbackId = getFallbackToolId(tools, defaultToolId);
+        setActiveToolId(fallbackId);
+      }
+    };
+
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, [tools, defaultToolId]);
 
   useEffect(() => {
     if (!isMobileOpen) {
@@ -67,7 +147,7 @@ export default function Layout({ tools, defaultToolId }) {
         activeToolId={activeTool.id}
         isCollapsed={isSidebarCollapsed}
         isMobileOpen={isMobileOpen}
-        onSelectTool={setActiveToolId}
+        onSelectTool={handleSelectTool}
         onToggleCollapse={() => setIsSidebarCollapsed((isCollapsed) => !isCollapsed)}
         onCloseMobile={() => setIsMobileOpen(false)}
       />
@@ -113,7 +193,7 @@ export default function Layout({ tools, defaultToolId }) {
             <React.Suspense fallback={<LoadingSpinner />}>
               <ActiveToolComponent
                 tool={activeTool}
-                onBack={() => setActiveToolId(defaultToolId)}
+                onBack={() => handleSelectTool(defaultToolId)}
               />
             </React.Suspense>
           </main>

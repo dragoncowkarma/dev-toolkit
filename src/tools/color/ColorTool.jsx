@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   parseColor,
   rgbToHex,
   getContrastingTextColor,
 } from './color.utils.js';
 import './color.css';
+
+const TOAST_DURATION_MS = 2500;
 
 const PRESET_COLORS = [
   { name: 'Indigo', hex: '#6366F1' },
@@ -28,12 +30,17 @@ const PRESET_COLORS = [
  */
 export default function ColorTool({ onBack }) {
   const [input, setInput] = useState('#6366F1');
-  const [parsed, setParsed] = useState(() => parseColor('#6366F1'));
   const [toast, setToast] = useState('');
 
+  const parsed = useMemo(() => parseColor(input), [input]);
+
   useEffect(() => {
-    setParsed(parseColor(input));
-  }, [input]);
+    if (!toast) return;
+    const timer = setTimeout(() => {
+      setToast('');
+    }, TOAST_DURATION_MS);
+    return () => clearTimeout(timer);
+  }, [toast]);
 
   const handleInputChange = (e) => {
     setInput(e.target.value);
@@ -53,7 +60,10 @@ export default function ColorTool({ onBack }) {
 
   const handleRgbSliderChange = (channel, val) => {
     if (!parsed.isValid || !parsed.rgb) return;
-    const num = Math.min(255, Math.max(0, parseInt(val, 10) || 0));
+    if (val === '') return;
+    const parsedInt = parseInt(val, 10);
+    if (isNaN(parsedInt)) return;
+    const num = Math.min(255, Math.max(0, parsedInt));
     const nextRgb = { ...parsed.rgb, [channel]: num };
     const nextHex = rgbToHex(nextRgb.r, nextRgb.g, nextRgb.b);
     setInput(nextHex);
@@ -64,10 +74,8 @@ export default function ColorTool({ onBack }) {
     try {
       await navigator.clipboard.writeText(text);
       setToast(`${label} copied to clipboard!`);
-      setTimeout(() => setToast(''), 2500);
     } catch {
       setToast(`Failed to copy ${label}`);
-      setTimeout(() => setToast(''), 2500);
     }
   };
 
@@ -87,7 +95,7 @@ export default function ColorTool({ onBack }) {
         <div className="color-title-group">
           {onBack && (
             <button
-              className="back-button"
+              className="color-tool__back-button"
               onClick={onBack}
               aria-label="Go back to tool dashboard"
               type="button"
@@ -101,7 +109,7 @@ export default function ColorTool({ onBack }) {
 
       {/* Main Input Section */}
       <div className="color-input-card">
-        <label htmlFor="color-main-input" className="card-title">
+        <label htmlFor="color-main-input" className="color-tool__card-title">
           Color Code (HEX, RGB, HSL)
         </label>
         <div className="color-input-row">
@@ -139,7 +147,7 @@ export default function ColorTool({ onBack }) {
 
           <button
             type="button"
-            className="btn"
+            className="color-tool__btn"
             onClick={handleClear}
             aria-label="Clear input"
           >
@@ -158,9 +166,9 @@ export default function ColorTool({ onBack }) {
       <div className="color-grid">
         {/* Color Swatch Preview Card */}
         <div className="color-card">
-          <h3 className="card-title">Real-time Preview</h3>
+          <h3 className="color-tool__card-title">Real-time Preview</h3>
           <div
-            className="swatch-display"
+            className="color-tool__swatch-display"
             style={{
               backgroundColor: parsed.isValid ? parsed.hex : 'transparent',
               color: textColor,
@@ -170,12 +178,15 @@ export default function ColorTool({ onBack }) {
           >
             {parsed.isValid ? (
               <>
-                <span className="swatch-text-lg">{parsed.hex}</span>
-                <span className="swatch-text-sm">{parsed.rgbStr}</span>
-                <span className="swatch-text-sm">{parsed.hslStr}</span>
+                <span className="color-tool__swatch-text-lg">{parsed.hex}</span>
+                <span className="color-tool__swatch-text-sm">{parsed.rgbStr}</span>
+                <span className="color-tool__swatch-text-sm">{parsed.hslStr}</span>
               </>
             ) : (
-              <span className="swatch-text-sm" style={{ color: 'var(--color-text-muted)' }}>
+              <span
+                className="color-tool__swatch-text-sm"
+                style={{ color: 'var(--color-text-muted)' }}
+              >
                 Enter a valid color code to preview
               </span>
             )}
@@ -183,12 +194,12 @@ export default function ColorTool({ onBack }) {
 
           {/* RGB Sliders for interactive tweaking */}
           {parsed.isValid && parsed.rgb && (
-            <div className="sliders-group">
-              <span className="card-title" style={{ fontSize: '0.875rem' }}>
+            <div className="color-tool__sliders-group">
+              <span className="color-tool__card-title" style={{ fontSize: '0.875rem' }}>
                 RGB Adjuster
               </span>
-              <div className="slider-row">
-                <span className="slider-label red">R</span>
+              <div className="color-tool__slider-row">
+                <span className="color-tool__slider-label red">R</span>
                 <input
                   type="range"
                   min="0"
@@ -202,15 +213,15 @@ export default function ColorTool({ onBack }) {
                   type="number"
                   min="0"
                   max="255"
-                  className="slider-val-input"
+                  className="color-tool__slider-val-input"
                   value={parsed.rgb.r}
                   onChange={(e) => handleRgbSliderChange('r', e.target.value)}
                   aria-label="Red value"
                 />
               </div>
 
-              <div className="slider-row">
-                <span className="slider-label green">G</span>
+              <div className="color-tool__slider-row">
+                <span className="color-tool__slider-label green">G</span>
                 <input
                   type="range"
                   min="0"
@@ -224,15 +235,15 @@ export default function ColorTool({ onBack }) {
                   type="number"
                   min="0"
                   max="255"
-                  className="slider-val-input"
+                  className="color-tool__slider-val-input"
                   value={parsed.rgb.g}
                   onChange={(e) => handleRgbSliderChange('g', e.target.value)}
                   aria-label="Green value"
                 />
               </div>
 
-              <div className="slider-row">
-                <span className="slider-label blue">B</span>
+              <div className="color-tool__slider-row">
+                <span className="color-tool__slider-label blue">B</span>
                 <input
                   type="range"
                   min="0"
@@ -246,7 +257,7 @@ export default function ColorTool({ onBack }) {
                   type="number"
                   min="0"
                   max="255"
-                  className="slider-val-input"
+                  className="color-tool__slider-val-input"
                   value={parsed.rgb.b}
                   onChange={(e) => handleRgbSliderChange('b', e.target.value)}
                   aria-label="Blue value"
@@ -258,16 +269,16 @@ export default function ColorTool({ onBack }) {
 
         {/* Converted Formats & Presets Card */}
         <div className="color-card">
-          <h3 className="card-title">Converted Formats</h3>
-          <div className="format-list">
-            <div className="format-item">
-              <div className="format-info">
-                <span className="format-label">HEX</span>
-                <span className="format-value">{parsed.isValid ? parsed.hex : '—'}</span>
+          <h3 className="color-tool__card-title">Converted Formats</h3>
+          <div className="color-tool__format-list">
+            <div className="color-tool__format-item">
+              <div className="color-tool__format-info">
+                <span className="color-tool__format-label">HEX</span>
+                <span className="color-tool__format-value">{parsed.isValid ? parsed.hex : '—'}</span>
               </div>
               <button
                 type="button"
-                className="btn"
+                className="color-tool__btn"
                 onClick={() => handleCopy(parsed.hex, 'HEX')}
                 disabled={!parsed.isValid}
                 aria-label="Copy HEX value"
@@ -276,14 +287,16 @@ export default function ColorTool({ onBack }) {
               </button>
             </div>
 
-            <div className="format-item">
-              <div className="format-info">
-                <span className="format-label">RGB</span>
-                <span className="format-value">{parsed.isValid ? parsed.rgbStr : '—'}</span>
+            <div className="color-tool__format-item">
+              <div className="color-tool__format-info">
+                <span className="color-tool__format-label">RGB</span>
+                <span className="color-tool__format-value">
+                  {parsed.isValid ? parsed.rgbStr : '—'}
+                </span>
               </div>
               <button
                 type="button"
-                className="btn"
+                className="color-tool__btn"
                 onClick={() => handleCopy(parsed.rgbStr, 'RGB')}
                 disabled={!parsed.isValid}
                 aria-label="Copy RGB value"
@@ -292,14 +305,16 @@ export default function ColorTool({ onBack }) {
               </button>
             </div>
 
-            <div className="format-item">
-              <div className="format-info">
-                <span className="format-label">HSL</span>
-                <span className="format-value">{parsed.isValid ? parsed.hslStr : '—'}</span>
+            <div className="color-tool__format-item">
+              <div className="color-tool__format-info">
+                <span className="color-tool__format-label">HSL</span>
+                <span className="color-tool__format-value">
+                  {parsed.isValid ? parsed.hslStr : '—'}
+                </span>
               </div>
               <button
                 type="button"
-                className="btn"
+                className="color-tool__btn"
                 onClick={() => handleCopy(parsed.hslStr, 'HSL')}
                 disabled={!parsed.isValid}
                 aria-label="Copy HSL value"
@@ -310,15 +325,15 @@ export default function ColorTool({ onBack }) {
           </div>
 
           <div style={{ marginTop: '0.75rem' }}>
-            <h4 className="card-title" style={{ fontSize: '0.875rem' }}>
+            <h4 className="color-tool__card-title" style={{ fontSize: '0.875rem' }}>
               Preset Swatches
             </h4>
-            <div className="presets-grid" aria-label="Preset color palette">
+            <div className="color-tool__presets-grid" aria-label="Preset color palette">
               {PRESET_COLORS.map((preset) => (
                 <button
                   key={preset.hex}
                   type="button"
-                  className="preset-chip"
+                  className="color-tool__preset-chip"
                   style={{ backgroundColor: preset.hex }}
                   onClick={() => handlePresetSelect(preset.hex)}
                   title={`${preset.name} (${preset.hex})`}

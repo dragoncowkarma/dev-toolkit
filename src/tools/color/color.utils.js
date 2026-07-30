@@ -220,7 +220,7 @@ export function hslToHex(h, s, l) {
 export function detectFormat(input) {
   if (typeof input !== 'string') return 'unknown';
   const trimmed = input.trim();
-  if (/^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(trimmed)) return 'hex';
+  if (/^#/i.test(trimmed) || /^([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/i.test(trimmed)) return 'hex';
   if (/^rgb\s*\(/i.test(trimmed)) return 'rgb';
   if (/^hsl\s*\(/i.test(trimmed)) return 'hsl';
   return 'unknown';
@@ -243,7 +243,7 @@ export function getContrastingTextColor(r, g, b) {
  * Parses and converts any input color string (#HEX, rgb(...), hsl(...)).
  *
  * @param {string} input The input color string.
- * @returns {object} Validation result object with normalized hex, rgb, and hsl properties or error message.
+ * @returns {object} Validation result object with normalized hex, rgb, and hsl properties.
  */
 export function parseColor(input) {
   if (typeof input !== 'string' || !input.trim()) {
@@ -279,7 +279,8 @@ export function parseColor(input) {
         return {
           isValid: false,
           error:
-            'Invalid RGB format. Use rgb(r, g, b) format with values 0-255 (e.g. rgb(255, 87, 51)).',
+            'Invalid RGB format. Use rgb(r, g, b) format with values 0-255' +
+            ' (e.g. rgb(255, 87, 51)).',
         };
       }
       const r = Number(match[1]);
@@ -350,7 +351,8 @@ export function parseColor(input) {
     return {
       isValid: false,
       error:
-        'Unrecognized color format. Supported formats: #RRGGBB, #RGB, rgb(r, g, b), hsl(h, s%, l%).',
+        'Unrecognized color format. Supported formats: #RRGGBB, #RGB, ' +
+        'rgb(r, g, b), hsl(h, s%, l%).',
     };
   } catch (err) {
     return {

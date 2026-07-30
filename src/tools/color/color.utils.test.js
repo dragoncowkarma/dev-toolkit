@@ -115,6 +115,7 @@ describe('color.utils - detectFormat & parseColor', () => {
   it('should correctly detect color format', () => {
     expect(detectFormat('#FF5733')).toBe('hex');
     expect(detectFormat('f57')).toBe('hex');
+    expect(detectFormat('#12345')).toBe('hex');
     expect(detectFormat('rgb(255, 87, 51)')).toBe('rgb');
     expect(detectFormat('hsl(9, 100%, 60%)')).toBe('hsl');
     expect(detectFormat('invalid')).toBe('unknown');
@@ -152,6 +153,10 @@ describe('color.utils - detectFormat & parseColor', () => {
     expect(parseColor('rgb(300, 0, 0)').isValid).toBe(false);
     expect(parseColor('hsl(500, 100%, 50%)').isValid).toBe(false);
     expect(parseColor('not-a-color').isValid).toBe(false);
+
+    const invalidHexRes = parseColor('#12345');
+    expect(invalidHexRes.isValid).toBe(false);
+    expect(invalidHexRes.error).toMatch(/Invalid HEX color format/);
   });
 
   it('should calculate contrasting text color', () => {

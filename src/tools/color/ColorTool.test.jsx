@@ -50,6 +50,11 @@ describe('ColorTool Component', () => {
       /Unrecognized color format/i
     );
 
+    fireEvent.change(input, { target: { value: '#12345' } });
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      /Invalid HEX color format/i
+    );
+
     fireEvent.change(input, { target: { value: 'rgb(300, 0, 0)' } });
     expect(screen.getByRole('alert')).toHaveTextContent(
       /RGB values must be integers between 0 and 255/i

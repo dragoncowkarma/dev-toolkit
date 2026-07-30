@@ -5,6 +5,7 @@ const HashTool = React.lazy(() => import('./tools/hash/HashTool.jsx'));
 const JsonTool = React.lazy(() => import('./tools/json/JsonTool.jsx'));
 const UrlTool = React.lazy(() => import('./tools/url/UrlTool.jsx'));
 const ColorTool = React.lazy(() => import('./tools/color/ColorTool.jsx'));
+const UuidTool = React.lazy(() => import('./tools/uuid/UuidTool.jsx'));
 
 const TOOLS = [
   {
@@ -46,6 +47,14 @@ const TOOLS = [
     icon: '#',
     category: 'Generator',
     component: HashTool,
+  },
+  {
+    id: 'uuid',
+    name: 'UUID Generator',
+    description: 'Generate and format random UUID v4 or time-ordered UUID v7 batches.',
+    icon: '⌗',
+    category: 'Generator',
+    component: UuidTool,
   },
   {
     id: 'regex',
