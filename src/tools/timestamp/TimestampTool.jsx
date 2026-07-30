@@ -160,7 +160,7 @@ export default function TimestampTool() {
             id="out-iso"
             type="text"
             className="card-value-input"
-            value={result.iso}
+            value={result.iso || ''}
             readOnly
             placeholder="e.g. 2026-07-30T09:55:49.000Z"
           />
@@ -182,7 +182,7 @@ export default function TimestampTool() {
             id="out-utc"
             type="text"
             className="card-value-input"
-            value={result.utc}
+            value={result.utc || ''}
             readOnly
             placeholder="e.g. Thu, 30 Jul 2026 09:55:49 GMT"
           />
@@ -206,7 +206,7 @@ export default function TimestampTool() {
             id="out-local"
             type="text"
             className="card-value-input"
-            value={result.local}
+            value={result.local || ''}
             readOnly
             placeholder="e.g. 2026-07-30 18:55:49"
           />
@@ -228,7 +228,7 @@ export default function TimestampTool() {
             id="out-sec"
             type="text"
             className="card-value-input"
-            value={result.unixSeconds}
+            value={result.unixSeconds || ''}
             readOnly
             placeholder="e.g. 1785405349"
           />
@@ -250,7 +250,7 @@ export default function TimestampTool() {
             id="out-ms"
             type="text"
             className="card-value-input"
-            value={result.unixMs}
+            value={result.unixMs || ''}
             readOnly
             placeholder="e.g. 1785405349000"
           />
@@ -272,7 +272,7 @@ export default function TimestampTool() {
             id="out-relative"
             type="text"
             className="card-value-input"
-            value={result.relative}
+            value={result.relative || ''}
             readOnly
             placeholder="e.g. 방금 전, 3분 전, 2시간 후"
           />
