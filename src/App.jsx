@@ -2,6 +2,7 @@ import React from 'react';
 import Layout from './components/Layout.jsx';
 import Base64Tool from './tools/base64/Base64Tool.jsx';
 import JsonTool from './tools/json/JsonTool.jsx';
+import DiffTool from './tools/diff/DiffTool.jsx';
 
 const TOOLS = [
   {
@@ -50,7 +51,7 @@ const TOOLS = [
     description: 'Compare two text blocks and quickly spot every change.',
     icon: '±',
     category: 'Comparison',
-    component: ToolPlaceholder,
+    component: DiffTool,
   },
 ];
 
