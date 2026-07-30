@@ -11,8 +11,18 @@ import './Layout.css';
  * @returns {React.JSX.Element} The main application layout.
  */
 export default function Layout({ tools, defaultToolId }) {
-  const getToolIdFromHash = () => {
-    const hash = window.location.hash;
+  const isToolRouteHash = (hash) => {
+    if (!hash || hash === '#' || hash === '#/') {
+      return true;
+    }
+    if (hash.startsWith('#/')) {
+      return true;
+    }
+    const rawId = hash.startsWith('#') ? hash.substring(1) : hash;
+    return tools.some((tool) => tool.id === rawId);
+  };
+
+  const getToolIdFromHash = (hash = window.location.hash) => {
     let rawId = '';
     if (hash.startsWith('#/')) {
       rawId = hash.substring(2);
@@ -52,17 +62,30 @@ export default function Layout({ tools, defaultToolId }) {
 
   useEffect(() => {
     const expectedHash = `#/${activeToolId}`;
-    if (window.location.hash !== expectedHash) {
-      window.location.hash = expectedHash;
+    const currentHash = window.location.hash;
+
+    if (currentHash !== expectedHash) {
+      if (currentHash && !isToolRouteHash(currentHash)) {
+        return;
+      }
+
+      const isInvalidToolRoute =
+        isToolRouteHash(currentHash) && !getToolIdFromHash(currentHash);
+      if (isInvalidToolRoute && window.history?.replaceState) {
+        window.history.replaceState(null, '', expectedHash);
+      } else {
+        window.location.hash = expectedHash;
+      }
     }
   }, [activeToolId]);
 
   useEffect(() => {
     const handleHashChange = () => {
-      const hashId = getToolIdFromHash();
+      const hash = window.location.hash;
+      const hashId = getToolIdFromHash(hash);
       if (hashId) {
         setActiveToolId(hashId);
-      } else {
+      } else if (isToolRouteHash(hash)) {
         const fallbackId = tools.some((tool) => tool.id === defaultToolId)
           ? defaultToolId
           : tools[0]?.id;

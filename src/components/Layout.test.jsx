@@ -82,4 +82,20 @@ describe('Layout URL hash routing', () => {
     expect(screen.getByTestId('tool-json')).toBeInTheDocument();
     expect(document.title).toBe('JSON Formatter - Dev Toolkit');
   });
+
+  it('preserves non-default active tool when non-tool anchor like skip link (#main-content) is activated', () => {
+    window.location.hash = '#/json';
+    render(<Layout tools={TEST_TOOLS} defaultToolId="base64" />);
+
+    expect(screen.getByTestId('tool-json')).toBeInTheDocument();
+
+    const skipLink = screen.getByRole('link', { name: /skip to main content/i });
+    expect(skipLink).toHaveAttribute('href', '#main-content');
+
+    window.location.hash = '#main-content';
+    fireEvent(window, new Event('hashchange'));
+
+    expect(screen.getByTestId('tool-json')).toBeInTheDocument();
+    expect(document.title).toBe('JSON Formatter - Dev Toolkit');
+  });
 });
