@@ -44,6 +44,13 @@ OPEN_ITEMS_LIMIT = 1000
 # retried so a transient AI CLI failure cannot deadlock the swarm forever.
 MAX_DISPATCH_ATTEMPTS = 3
 
+# `agy --print-timeout` defaults to 5m, which is shorter than a real Worker
+# task (exploration + npm install + implementation). Without an explicit
+# override, agy exits 1 with "Error: timeout waiting for response" well
+# before finishing, burning all MAX_DISPATCH_ATTEMPTS on tasks that never
+# had a chance to complete.
+ANTIGRAVITY_PRINT_TIMEOUT = "45m"
+
 # Stable reasons returned by ProcessTracker.should_dispatch().
 DISPATCH_RUNNING = "already running"
 DISPATCH_COMPLETED = "already completed"
@@ -797,7 +804,7 @@ def build_ai_argv(ai_name: str, model: str, reasoning: str,
 
     Each tool's actual flags (verified via --help):
       codex exec -m <model> -C <dir> -s workspace-write --dangerously-bypass-approvals-and-sandbox <prompt_from_stdin>
-      agy -p --model <model> --effort <level> --dangerously-skip-permissions <prompt_from_file>
+      agy -p --model <model> --effort <level> --print-timeout <dur> --dangerously-skip-permissions <prompt_from_file>
       claude -p --model <model> --dangerously-skip-permissions <prompt_from_file>
     """
     prompt_text = prompt_file.read_text(encoding="utf-8")
@@ -821,6 +828,7 @@ def build_ai_argv(ai_name: str, model: str, reasoning: str,
         return [
             "agy",
             "--dangerously-skip-permissions",
+            "--print-timeout", ANTIGRAVITY_PRINT_TIMEOUT,
             "-p", prompt_text,
         ]
 
