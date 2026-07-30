@@ -663,32 +663,49 @@ def cleanup_worktree(issue_number: int, branch_name: str):
         return
 
     if worktree_path.exists():
-        status = subprocess.run(
-            ["git", "status", "--porcelain"],
-            cwd=worktree_path,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if status.returncode != 0 or status.stdout.strip():
-            log_blocker(
-                f"dirty-worktree:{issue_number}",
-                "Refusing to remove non-clean worktree for Issue #%d: %s",
-                issue_number,
+        git_link = worktree_path / ".git"
+        if not git_link.exists():
+            # Prunable worktree: .git file is missing so `git worktree remove`
+            # will fail with "validation failed". Prune git's internal refs and
+            # remove the orphaned directory manually.
+            log.warning(
+                "Worktree %s is prunable (missing .git file); "
+                "pruning refs and removing directory.",
                 worktree_path,
-                level=logging.WARNING,
             )
-            return
+            subprocess.run(
+                ["git", "worktree", "prune"],
+                cwd=REPO_ROOT, check=False,
+            )
+            shutil.rmtree(worktree_path, ignore_errors=True)
+            log.info("Removed prunable worktree: %s", worktree_path)
+        else:
+            status = subprocess.run(
+                ["git", "status", "--porcelain"],
+                cwd=worktree_path,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if status.returncode != 0 or status.stdout.strip():
+                log_blocker(
+                    f"dirty-worktree:{issue_number}",
+                    "Refusing to remove non-clean worktree for Issue #%d: %s",
+                    issue_number,
+                    worktree_path,
+                    level=logging.WARNING,
+                )
+                return
 
-        removed = subprocess.run(
-            ["git", "worktree", "remove", str(worktree_path)],
-            cwd=REPO_ROOT,
-            check=False,
-        )
-        if removed.returncode != 0:
-            log.warning("Failed to remove worktree: %s", worktree_path)
-            return
-        log.info("Removed worktree: %s", worktree_path)
+            removed = subprocess.run(
+                ["git", "worktree", "remove", str(worktree_path)],
+                cwd=REPO_ROOT,
+                check=False,
+            )
+            if removed.returncode != 0:
+                log.warning("Failed to remove worktree: %s", worktree_path)
+                return
+            log.info("Removed worktree: %s", worktree_path)
 
     # Delete branch if it was merged
     subprocess.run(
