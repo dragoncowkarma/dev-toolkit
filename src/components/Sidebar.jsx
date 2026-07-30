@@ -1,5 +1,20 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import './Sidebar.css';
+import { filterTools } from './sidebar.utils.js';
+
+const EDITABLE_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
+
+function isEditableTarget(target) {
+  if (!target) {
+    return false;
+  }
+
+  if (target.isContentEditable) {
+    return true;
+  }
+
+  return EDITABLE_TAGS.has(target.tagName);
+}
 
 /**
  * Renders the tool navigation for desktop and mobile layouts.
@@ -23,6 +38,9 @@ export default function Sidebar({
   onToggleCollapse,
   onCloseMobile,
 }) {
+  const [query, setQuery] = useState('');
+  const searchInputRef = useRef(null);
+
   const sidebarClassName = [
     'sidebar',
     isCollapsed ? 'sidebar--collapsed' : '',
@@ -31,10 +49,37 @@ export default function Sidebar({
     .filter(Boolean)
     .join(' ');
 
+  const filteredTools = filterTools(tools, query);
+
   const handleToolSelect = (toolId) => {
     onSelectTool(toolId);
     onCloseMobile();
+    setQuery('');
   };
+
+  useEffect(() => {
+    function handleKeyDown(event) {
+      if (event.key === '/') {
+        if (isEditableTarget(document.activeElement)) {
+          return;
+        }
+
+        event.preventDefault();
+        searchInputRef.current?.focus();
+        return;
+      }
+
+      if (event.key === 'Escape' && document.activeElement === searchInputRef.current) {
+        setQuery('');
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
 
   return (
     <>
@@ -66,31 +111,48 @@ export default function Sidebar({
 
         <nav className="sidebar__nav" aria-label="Tool list">
           <p className="sidebar__section-label">Tools</p>
-          <ul>
-            {tools.map((tool) => {
-              const isActive = tool.id === activeToolId;
+          <div className="sidebar__search">
+            <input
+              ref={searchInputRef}
+              className="sidebar__search-input"
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Filter tools…"
+              aria-label="Filter tools"
+              title={isCollapsed ? 'Filter tools' : undefined}
+            />
+          </div>
 
-              return (
-                <li key={tool.id}>
-                  <button
-                    className={`sidebar__tool ${isActive ? 'sidebar__tool--active' : ''}`}
-                    type="button"
-                    onClick={() => handleToolSelect(tool.id)}
-                    aria-current={isActive ? 'page' : undefined}
-                    title={isCollapsed ? tool.name : undefined}
-                  >
-                    <span className="sidebar__tool-icon" aria-hidden="true">
-                      {tool.icon}
-                    </span>
-                    <span className="sidebar__tool-name">{tool.name}</span>
-                    {isActive && (
-                      <span className="sidebar__active-indicator" aria-hidden="true" />
-                    )}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+          {filteredTools.length > 0 ? (
+            <ul>
+              {filteredTools.map((tool) => {
+                const isActive = tool.id === activeToolId;
+
+                return (
+                  <li key={tool.id}>
+                    <button
+                      className={`sidebar__tool ${isActive ? 'sidebar__tool--active' : ''}`}
+                      type="button"
+                      onClick={() => handleToolSelect(tool.id)}
+                      aria-current={isActive ? 'page' : undefined}
+                      title={isCollapsed ? tool.name : undefined}
+                    >
+                      <span className="sidebar__tool-icon" aria-hidden="true">
+                        {tool.icon}
+                      </span>
+                      <span className="sidebar__tool-name">{tool.name}</span>
+                      {isActive && (
+                        <span className="sidebar__active-indicator" aria-hidden="true" />
+                      )}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p className="sidebar__empty-state">No tools match &quot;{query.trim()}&quot;</p>
+          )}
         </nav>
 
         <div className="sidebar__footer">
