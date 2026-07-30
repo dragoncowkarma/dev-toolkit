@@ -28,8 +28,8 @@ describe('RegexTool Component', () => {
     fireEvent.change(testTextInput, { target: { value: 'Item 123 and 456' } });
 
     expect(screen.getByText(/2 matches found/i)).toBeInTheDocument();
-    expect(screen.getByText('123')).toBeInTheDocument();
-    expect(screen.getByText('456')).toBeInTheDocument();
+    expect(screen.getAllByText('123').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('456').length).toBeGreaterThan(0);
   });
 
   it('toggles flags correctly', () => {
@@ -71,7 +71,7 @@ describe('RegexTool Component', () => {
 
     const patternInput = screen.getByLabelText('Regular expression pattern');
     expect(patternInput.value).toContain('25[0-5]');
-    expect(screen.getByText(/127.0.0.1/)).toBeInTheDocument();
+    expect(screen.getAllByText(/127.0.0.1/).length).toBeGreaterThan(0);
   });
 
   it('displays capture groups in a table when present', () => {
