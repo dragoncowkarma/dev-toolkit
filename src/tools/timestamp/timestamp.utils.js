@@ -82,10 +82,11 @@ export function getLocalTimezoneInfo(date = new Date()) {
 
 /**
  * Formats relative time between a target date and reference date.
+ * Note: Months are approximated as 30 days and years as 365 days.
  *
  * @param {Date} date - Target date.
  * @param {Date} [now=new Date()] - Reference date.
- * @returns {string} Relative time text (e.g. "3분 전", "2시간 후").
+ * @returns {string} Relative time text (e.g. "3 minutes ago", "2 hours from now").
  */
 export function formatRelativeTime(date, now = new Date()) {
   if (!date || isNaN(date.getTime())) return '';
@@ -96,37 +97,37 @@ export function formatRelativeTime(date, now = new Date()) {
   const isFuture = diffMs > 0;
 
   if (absSec < 5) {
-    return '방금 전';
+    return 'just now';
   }
 
-  const suffix = isFuture ? ' 후' : ' 전';
+  const suffix = isFuture ? ' from now' : ' ago';
 
   if (absSec < 60) {
-    return `${absSec}초${suffix}`;
+    return `${absSec} ${absSec === 1 ? 'second' : 'seconds'}${suffix}`;
   }
 
   const absMin = Math.floor(absSec / 60);
   if (absMin < 60) {
-    return `${absMin}분${suffix}`;
+    return `${absMin} ${absMin === 1 ? 'minute' : 'minutes'}${suffix}`;
   }
 
   const absHours = Math.floor(absMin / 60);
   if (absHours < 24) {
-    return `${absHours}시간${suffix}`;
+    return `${absHours} ${absHours === 1 ? 'hour' : 'hours'}${suffix}`;
   }
 
   const absDays = Math.floor(absHours / 24);
   if (absDays < 30) {
-    return `${absDays}일${suffix}`;
+    return `${absDays} ${absDays === 1 ? 'day' : 'days'}${suffix}`;
   }
 
   const absMonths = Math.floor(absDays / 30);
   if (absMonths < 12) {
-    return `${absMonths}개월${suffix}`;
+    return `${absMonths} ${absMonths === 1 ? 'month' : 'months'}${suffix}`;
   }
 
   const absYears = Math.floor(absDays / 365);
-  return `${absYears}년${suffix}`;
+  return `${absYears} ${absYears === 1 ? 'year' : 'years'}${suffix}`;
 }
 
 /**
@@ -186,8 +187,8 @@ export function convertTimestamp(input, unitMode = 'auto', now = new Date()) {
       isValid: false,
       isEmpty: false,
       error: inputType === 'timestamp'
-        ? '유효하지 않은 Unix 타임스탬프 숫자입니다.'
-        : '유효하지 않은 날짜/시간 문자열 형식입니다.',
+        ? 'Invalid Unix timestamp number.'
+        : 'Invalid date/time string format.',
       unixSeconds: '',
       unixMs: '',
       iso: '',

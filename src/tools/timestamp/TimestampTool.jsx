@@ -154,6 +154,7 @@ export default function TimestampTool() {
             <button
               type="button"
               className="btn copy-btn"
+              aria-label={copiedField === 'iso' ? 'ISO 8601 copied' : 'Copy ISO 8601'}
               onClick={() => handleCopy('iso', result.iso)}
               disabled={!result.iso}
             >
@@ -176,6 +177,7 @@ export default function TimestampTool() {
             <button
               type="button"
               className="btn copy-btn"
+              aria-label={copiedField === 'utc' ? 'UTC Time copied' : 'Copy UTC Time'}
               onClick={() => handleCopy('utc', result.utc)}
               disabled={!result.utc}
             >
@@ -200,6 +202,7 @@ export default function TimestampTool() {
             <button
               type="button"
               className="btn copy-btn"
+              aria-label={copiedField === 'local' ? 'Local Time copied' : 'Copy Local Time'}
               onClick={() => handleCopy('local', result.local)}
               disabled={!result.local}
             >
@@ -222,6 +225,7 @@ export default function TimestampTool() {
             <button
               type="button"
               className="btn copy-btn"
+              aria-label={copiedField === 'unixSeconds' ? 'Unix Timestamp (Seconds) copied' : 'Copy Unix Timestamp (Seconds)'}
               onClick={() => handleCopy('unixSeconds', result.unixSeconds)}
               disabled={!result.unixSeconds}
             >
@@ -244,6 +248,7 @@ export default function TimestampTool() {
             <button
               type="button"
               className="btn copy-btn"
+              aria-label={copiedField === 'unixMs' ? 'Unix Timestamp (Milliseconds) copied' : 'Copy Unix Timestamp (Milliseconds)'}
               onClick={() => handleCopy('unixMs', result.unixMs)}
               disabled={!result.unixMs}
             >
@@ -262,10 +267,11 @@ export default function TimestampTool() {
 
         <div className="output-card">
           <div className="card-header">
-            <label className="card-label" htmlFor="out-relative">Relative Time (상대 시간)</label>
+            <label className="card-label" htmlFor="out-relative">Relative Time</label>
             <button
               type="button"
               className="btn copy-btn"
+              aria-label={copiedField === 'relative' ? 'Relative Time copied' : 'Copy Relative Time'}
               onClick={() => handleCopy('relative', result.relative)}
               disabled={!result.relative}
             >
@@ -278,7 +284,7 @@ export default function TimestampTool() {
             className="card-value-input"
             value={result.relative || ''}
             readOnly
-            placeholder="e.g. 방금 전, 3분 전, 2시간 후"
+            placeholder="e.g. just now, 3 minutes ago, 2 hours from now"
           />
         </div>
       </div>

@@ -60,7 +60,7 @@ describe('TimestampTool real-time conversion', () => {
     const inputEl = screen.getByLabelText('Unix Timestamp or Date String');
     fireEvent.change(inputEl, { target: { value: 'invalid-date-string' } });
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/유효하지 않은/);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Invalid/);
   });
 });
 
@@ -141,13 +141,13 @@ describe('TimestampTool clipboard copy', () => {
       expect(screen.getByLabelText('ISO 8601')).toHaveValue('2026-07-30T12:00:00.000Z');
     });
 
-    const copyButtons = screen.getAllByRole('button', { name: 'Copy' });
+    const copyBtn = screen.getByRole('button', { name: 'Copy ISO 8601' });
     await act(async () => {
-      fireEvent.click(copyButtons[0]);
+      fireEvent.click(copyBtn);
     });
 
     expect(writeText).toHaveBeenCalledWith('2026-07-30T12:00:00.000Z');
-    expect(await screen.findByRole('button', { name: '✓ Copied' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'ISO 8601 copied' })).toBeInTheDocument();
   });
 
   it('reports copy failure in alert box when clipboard access is rejected', async () => {
@@ -165,9 +165,9 @@ describe('TimestampTool clipboard copy', () => {
       expect(screen.getByLabelText('ISO 8601')).toHaveValue('2026-07-30T12:00:00.000Z');
     });
 
-    const copyButtons = screen.getAllByRole('button', { name: 'Copy' });
+    const copyBtn = screen.getByRole('button', { name: 'Copy ISO 8601' });
     await act(async () => {
-      fireEvent.click(copyButtons[0]);
+      fireEvent.click(copyBtn);
     });
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Failed to copy to clipboard.');

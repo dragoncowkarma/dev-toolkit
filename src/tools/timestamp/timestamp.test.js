@@ -71,44 +71,44 @@ describe('getLocalTimezoneInfo', () => {
 describe('formatRelativeTime', () => {
   const baseTime = new Date('2026-07-30T12:00:00.000Z');
 
-  it('returns "방금 전" for differences less than 5 seconds', () => {
+  it('returns "just now" for differences less than 5 seconds', () => {
     const target = new Date('2026-07-30T12:00:02.000Z');
-    expect(formatRelativeTime(target, baseTime)).toBe('방금 전');
+    expect(formatRelativeTime(target, baseTime)).toBe('just now');
   });
 
   it('formats past and future seconds correctly', () => {
     const past = new Date('2026-07-30T11:59:30.000Z'); // 30s ago
     const future = new Date('2026-07-30T12:00:30.000Z'); // 30s future
-    expect(formatRelativeTime(past, baseTime)).toBe('30초 전');
-    expect(formatRelativeTime(future, baseTime)).toBe('30초 후');
+    expect(formatRelativeTime(past, baseTime)).toBe('30 seconds ago');
+    expect(formatRelativeTime(future, baseTime)).toBe('30 seconds from now');
   });
 
   it('formats past and future minutes correctly', () => {
     const past = new Date('2026-07-30T11:57:00.000Z'); // 3 mins ago
     const future = new Date('2026-07-30T12:03:00.000Z'); // 3 mins future
-    expect(formatRelativeTime(past, baseTime)).toBe('3분 전');
-    expect(formatRelativeTime(future, baseTime)).toBe('3분 후');
+    expect(formatRelativeTime(past, baseTime)).toBe('3 minutes ago');
+    expect(formatRelativeTime(future, baseTime)).toBe('3 minutes from now');
   });
 
   it('formats past and future hours correctly', () => {
     const past = new Date('2026-07-30T10:00:00.000Z'); // 2 hours ago
     const future = new Date('2026-07-30T14:00:00.000Z'); // 2 hours future
-    expect(formatRelativeTime(past, baseTime)).toBe('2시간 전');
-    expect(formatRelativeTime(future, baseTime)).toBe('2시간 후');
+    expect(formatRelativeTime(past, baseTime)).toBe('2 hours ago');
+    expect(formatRelativeTime(future, baseTime)).toBe('2 hours from now');
   });
 
   it('formats past and future days correctly', () => {
     const past = new Date('2026-07-25T12:00:00.000Z'); // 5 days ago
     const future = new Date('2026-08-04T12:00:00.000Z'); // 5 days future
-    expect(formatRelativeTime(past, baseTime)).toBe('5일 전');
-    expect(formatRelativeTime(future, baseTime)).toBe('5일 후');
+    expect(formatRelativeTime(past, baseTime)).toBe('5 days ago');
+    expect(formatRelativeTime(future, baseTime)).toBe('5 days from now');
   });
 
   it('formats months and years at boundary values', () => {
     const pastMonth = new Date('2026-06-15T12:00:00.000Z');
     const pastYear = new Date('2024-07-30T12:00:00.000Z');
-    expect(formatRelativeTime(pastMonth, baseTime)).toBe('1개월 전');
-    expect(formatRelativeTime(pastYear, baseTime)).toBe('2년 전');
+    expect(formatRelativeTime(pastMonth, baseTime)).toBe('1 month ago');
+    expect(formatRelativeTime(pastYear, baseTime)).toBe('2 years ago');
   });
 
   it('returns empty string for invalid date', () => {
@@ -136,7 +136,7 @@ describe('convertTimestamp', () => {
     expect(res.unixMs).toBe('1785412800000');
     expect(res.iso).toBe('2026-07-30T12:00:00.000Z');
     expect(res.utc).toBe('Thu, 30 Jul 2026 12:00:00 GMT');
-    expect(res.relative).toBe('방금 전');
+    expect(res.relative).toBe('just now');
   });
 
   it('converts Unix timestamp in milliseconds auto-detected', () => {
@@ -169,12 +169,12 @@ describe('convertTimestamp', () => {
   it('handles invalid date strings gracefully', () => {
     const res = convertTimestamp('invalid date string', 'auto', refTime);
     expect(res.isValid).toBe(false);
-    expect(res.error).toMatch(/유효하지 않은/);
+    expect(res.error).toMatch(/Invalid/);
   });
 
   it('handles invalid timestamp numbers gracefully', () => {
     const res = convertTimestamp('999999999999999999999', 'auto', refTime);
     expect(res.isValid).toBe(false);
-    expect(res.error).toMatch(/유효하지 않은/);
+    expect(res.error).toMatch(/Invalid/);
   });
 });
