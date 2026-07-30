@@ -32,6 +32,7 @@ describe('App tool catalog wiring', () => {
       'json',
       'url',
       'hash',
+      'uuid',
       'regex',
       'diff',
     ]);
@@ -49,9 +50,11 @@ describe('App tool catalog wiring', () => {
           description: expect.any(String),
           icon: expect.any(String),
           category: expect.any(String),
-          component: expect.any(Function),
         }),
       );
+      // Real tools are React.lazy() objects; placeholders are plain functions.
+      expect(['function', 'object']).toContain(typeof tool.component);
+      expect(tool.component).toBeTruthy();
     });
   });
 
@@ -63,6 +66,8 @@ describe('App tool catalog wiring', () => {
     expect(byId.base64.component).not.toBe(byId.json.component);
     expect(byId.hash.component).not.toBe(byId.json.component);
     expect(byId.hash.component).not.toBe(byId.base64.component);
+    expect(byId.url.component).not.toBe(byId.base64.component);
+    expect(byId.uuid.component).not.toBe(byId.hash.component);
   });
 
   it('falls back placeholder tools onto the same shared component', () => {
@@ -70,7 +75,7 @@ describe('App tool catalog wiring', () => {
 
     const { tools } = Layout.mock.calls[0][0];
     const placeholderTools = tools.filter((tool) =>
-      ['url', 'regex', 'diff'].includes(tool.id),
+      ['regex', 'diff'].includes(tool.id),
     );
     const [firstComponent] = placeholderTools.map((tool) => tool.component);
     placeholderTools.forEach((tool) => {
@@ -79,5 +84,7 @@ describe('App tool catalog wiring', () => {
 
     const byId = Object.fromEntries(tools.map((tool) => [tool.id, tool]));
     expect(byId.hash.component).not.toBe(firstComponent);
+    expect(byId.url.component).not.toBe(firstComponent);
+    expect(byId.uuid.component).not.toBe(firstComponent);
   });
 });
