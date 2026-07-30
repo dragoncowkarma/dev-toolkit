@@ -150,3 +150,78 @@ describe('JsonTool error state', () => {
     expect(screen.getByRole('button', { name: 'Minify JSON' })).toBeDisabled();
   });
 });
+
+describe('JsonTool Large Data & Virtualization Regression', () => {
+  it('limits DOM nodes for line numbers and tree rows to under 100 for large JSON (10,000+ lines)', async () => {
+    render(<JsonTool />);
+
+    const largeJson = '[\n' + Array.from({ length: 10000 }, (_, i) => i).join(',\n') + '\n]';
+
+    fireEvent.change(getInput(), { target: { value: largeJson } });
+    await waitFor(() => expect(screen.getByText('Valid')).toBeInTheDocument());
+
+    const lineItems = document.querySelectorAll('.line-number-item');
+    expect(lineItems.length).toBeGreaterThan(0);
+    expect(lineItems.length).toBeLessThan(100);
+
+    const treeTab = screen.getByRole('tab', { name: 'Tree View' });
+    await waitFor(() => expect(treeTab).not.toBeDisabled());
+    fireEvent.click(treeTab);
+
+    const treeRows = document.querySelectorAll('.json-tree-row');
+    expect(treeRows.length).toBeGreaterThan(0);
+    expect(treeRows.length).toBeLessThan(100);
+  });
+
+  it('maintains tree container DOM identity (no unmount/remount) across Collapse All and Expand All', async () => {
+    render(<JsonTool />);
+
+    fireEvent.change(getInput(), { target: { value: VALID_JSON_UNFORMATTED } });
+    await waitFor(() => expect(screen.getByText('Valid')).toBeInTheDocument());
+
+    const treeTab = screen.getByRole('tab', { name: 'Tree View' });
+    await waitFor(() => expect(treeTab).not.toBeDisabled());
+    fireEvent.click(treeTab);
+
+    const treeContainerBefore = screen.getByRole('tree');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse all nodes' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Expand all nodes' }));
+
+    const treeContainerAfter = screen.getByRole('tree');
+    expect(treeContainerAfter).toBe(treeContainerBefore);
+  });
+
+  it('preserves child collapsed state after collapsing and re-expanding parent node', async () => {
+    render(<JsonTool />);
+
+    const nestedJson = JSON.stringify({
+      outer: {
+        inner: {
+          a: 1,
+        },
+      },
+    });
+
+    fireEvent.change(getInput(), { target: { value: nestedJson } });
+    await waitFor(() => expect(screen.getByText('Valid')).toBeInTheDocument());
+
+    const treeTab = screen.getByRole('tab', { name: 'Tree View' });
+    await waitFor(() => expect(treeTab).not.toBeDisabled());
+    fireEvent.click(treeTab);
+
+    const collapseInnerBtn = screen.getByRole('button', { name: 'Collapse inner node' });
+    const collapseOuterBtn = screen.getByRole('button', { name: 'Collapse outer node' });
+
+    fireEvent.click(collapseInnerBtn);
+    expect(screen.getByRole('button', { name: 'Expand inner node' })).toBeInTheDocument();
+
+    fireEvent.click(collapseOuterBtn);
+
+    const expandOuterBtn = screen.getByRole('button', { name: 'Expand outer node' });
+    fireEvent.click(expandOuterBtn);
+
+    expect(screen.getByRole('button', { name: 'Expand inner node' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Collapse inner node' })).toBeNull();
+  });
+});
