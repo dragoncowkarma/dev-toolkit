@@ -75,7 +75,9 @@ describe('Sidebar mobile drawer toggle', () => {
     const { onCloseMobile } = renderSidebar({ isMobileOpen: true });
 
     const sidebarLandmark = screen.getByRole('complementary', { name: 'Developer tools' });
-    await user.click(within(sidebarLandmark).getByRole('button', { name: 'Close tool navigation' }));
+    await user.click(
+      within(sidebarLandmark).getByRole('button', { name: 'Close tool navigation' }),
+    );
 
     expect(onCloseMobile).toHaveBeenCalledTimes(1);
   });
