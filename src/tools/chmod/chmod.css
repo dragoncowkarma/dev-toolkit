@@ -1,0 +1,169 @@
+.chmod-tool {
+  display: flex;
+  width: 100%;
+  max-width: 920px;
+  margin: 0 auto;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 0 1.25rem 2rem;
+}
+
+.chmod-tool__overview,
+.chmod-tool__inputs {
+  display: grid;
+  gap: .75rem;
+}
+
+.chmod-tool__overview > div,
+.chmod-tool__matrix,
+.chmod-tool__special,
+.chmod-tool__inputs label {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  padding: .85rem 1rem;
+}
+
+.chmod-tool__overview span,
+.chmod-tool__inputs label {
+  display: flex;
+  flex-direction: column;
+  color: var(--color-text-muted);
+  font-size: .76rem;
+  font-weight: 700;
+}
+
+.chmod-tool__overview strong,
+.chmod-tool__overview code {
+  color: var(--color-primary-light);
+  font-size: 1.1rem;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.chmod-tool__presets,
+.chmod-tool__copies {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+}
+
+.chmod-tool button {
+  border: 1px solid var(--color-border);
+  border-radius: calc(var(--radius) - 4px);
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: .82rem;
+  font-weight: 700;
+  padding: .55rem .75rem;
+}
+
+.chmod-tool button:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.chmod-tool__matrix {
+  display: grid;
+  gap: .5rem;
+}
+
+.chmod-tool__matrix-head,
+.chmod-tool__matrix-row {
+  display: grid;
+  grid-template-columns: 1.25fr repeat(3, 1fr);
+  gap: .5rem;
+  align-items: center;
+}
+
+.chmod-tool__matrix-head {
+  color: var(--color-text-muted);
+  font-size: .72rem;
+  font-weight: 700;
+}
+
+.chmod-tool__matrix-head small {
+  display: block;
+  font-weight: 400;
+}
+
+.chmod-tool__matrix-row {
+  border: 0;
+  padding: .5rem 0;
+}
+
+.chmod-tool__matrix-row legend {
+  grid-column: 1;
+  color: var(--color-text);
+  font-size: .86rem;
+  font-weight: 700;
+}
+
+.chmod-tool__matrix-row label {
+  display: flex;
+  gap: .35rem;
+  align-items: center;
+  color: var(--color-text-muted);
+  font-size: .78rem;
+}
+
+.chmod-tool input[type='checkbox'] {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--color-primary);
+}
+
+.chmod-tool__special {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .75rem 1rem;
+}
+
+.chmod-tool__special legend {
+  padding: 0 .25rem;
+  font-size: .86rem;
+  font-weight: 700;
+}
+
+.chmod-tool__special label {
+  color: var(--color-text-muted);
+  font-size: .82rem;
+}
+
+.chmod-tool__special small {
+  color: var(--color-text-muted);
+}
+
+.chmod-tool__inputs input {
+  width: 100%;
+  margin-top: .35rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-code-bg);
+  color: var(--color-text);
+  font: inherit;
+  padding: .55rem .65rem;
+}
+
+.chmod-tool__status {
+  min-height: 1.25rem;
+  color: var(--color-success);
+  font-size: .8rem;
+}
+
+.chmod-tool__error {
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+  padding: .65rem .8rem;
+}
+
+@media (min-width: 680px) {
+  .chmod-tool__overview,
+  .chmod-tool__inputs {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
