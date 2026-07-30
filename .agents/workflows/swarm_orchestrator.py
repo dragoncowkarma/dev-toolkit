@@ -15,6 +15,7 @@ Requires: gh CLI authenticated, git, and at least one AI CLI installed.
 import argparse
 import json
 import logging
+import logging.handlers
 import os
 import re
 import shutil
@@ -39,6 +40,28 @@ LOG_DIR = REPO_ROOT / ".agents" / "logs"
 POLL_INTERVAL_SECONDS = 30
 PROCESS_REGISTRY_FILE = REPO_ROOT / ".agents" / ".process_registry.json"
 OPEN_ITEMS_LIMIT = 1000
+
+# The orchestrator can run unattended for days; console scrollback alone loses
+# the top of a long run. Mirror everything to a rotating file so history
+# survives even when nobody is watching the terminal.
+ORCHESTRATOR_LOG_FILE = LOG_DIR / "orchestrator.log"
+ORCHESTRATOR_LOG_MAX_BYTES = 20 * 1024 * 1024
+ORCHESTRATOR_LOG_BACKUP_COUNT = 5
+
+# Per-task log files (one per dispatched AI process) are never rewritten, only
+# added to, so on a long-lived swarm they grow without bound. Sweep files
+# older than this on every startup.
+TASK_LOG_RETENTION_DAYS = 14
+
+# `gh` calls run on the polling thread; a hung network call would silently
+# freeze the entire swarm (no dispatch, no status, no worktree cleanup) with
+# no diagnostic. Bound every invocation so a stall surfaces as a normal error.
+GH_TIMEOUT_SECONDS = 60
+
+# How often (in polling cycles) to reconcile the local `main` checkout against
+# `origin/main`. Every cycle would add a network round-trip to the hot path;
+# this keeps main fresh without dominating the poll interval.
+MAIN_SYNC_EVERY_CYCLES = 5
 
 # A lifecycle event runs at most once successfully, but a crashed process is
 # retried so a transient AI CLI failure cannot deadlock the swarm forever.
@@ -103,11 +126,21 @@ DEFAULT_ROTATION = {
 # Prompt temp file directory (cleaned on shutdown)
 PROMPT_DIR = REPO_ROOT / ".agents" / ".prompts"
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+_log_formatter = logging.Formatter(
+    fmt="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
+_console_handler = logging.StreamHandler()
+_console_handler.setFormatter(_log_formatter)
+_file_handler = logging.handlers.RotatingFileHandler(
+    ORCHESTRATOR_LOG_FILE,
+    maxBytes=ORCHESTRATOR_LOG_MAX_BYTES,
+    backupCount=ORCHESTRATOR_LOG_BACKUP_COUNT,
+    encoding="utf-8",
+)
+_file_handler.setFormatter(_log_formatter)
+logging.basicConfig(level=logging.INFO, handlers=[_console_handler, _file_handler])
 log = logging.getLogger("swarm")
 
 # Blocker states already reported, so a stuck PR cannot flood the log on every
@@ -663,13 +696,22 @@ def gh(args: list[str], check: bool = True) -> str:
     """Run a gh CLI command and return stdout."""
     cmd = ["gh"] + args
     log.debug("Running: %s", " ".join(cmd))
-    result = subprocess.run(
-        cmd,
-        capture_output=True,
-        text=True,
-        cwd=REPO_ROOT,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            cwd=REPO_ROOT,
+            check=False,
+            timeout=GH_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        log.error(
+            "gh command timed out after %ds: %s", GH_TIMEOUT_SECONDS, " ".join(cmd),
+        )
+        if check:
+            raise
+        return ""
     if result.returncode != 0:
         log.error(
             "gh command failed (exit %d): %s\nstderr: %s",
@@ -949,6 +991,114 @@ def cleanup_worktree(issue_number: int, branch_name: str):
             log.warning("Failed to delete branch '%s': %s", branch_name, stderr)
 
 
+def sync_main_branch(dry_run: bool = False):
+    """Fast-forward local main from origin, and push local-only commits back.
+
+    Runs periodically so the shared checkout that worktrees branch off of
+    never drifts far from origin/main after Maintainers merge PRs on GitHub.
+    Only ever fast-forwards or pushes — never rewrites history — so a
+    genuinely diverged main is reported and left for a human, not clobbered.
+    """
+    fetch = subprocess.run(
+        ["git", "fetch", "origin", "main"],
+        cwd=REPO_ROOT, capture_output=True, text=True, check=False,
+        timeout=GH_TIMEOUT_SECONDS,
+    )
+    if fetch.returncode != 0:
+        log_blocker(
+            "main-sync:fetch",
+            "Failed to fetch origin/main: %s",
+            fetch.stderr.strip() or "(unknown error)",
+            level=logging.WARNING,
+        )
+        return
+
+    branch = subprocess.run(
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+        cwd=REPO_ROOT, capture_output=True, text=True, check=False,
+    ).stdout.strip()
+    if branch != "main":
+        log.debug("Skipping main sync: repo root is on '%s', not 'main'.", branch)
+        return
+
+    status = subprocess.run(
+        ["git", "status", "--porcelain"],
+        cwd=REPO_ROOT, capture_output=True, text=True, check=False,
+    )
+    if status.stdout.strip():
+        log_blocker(
+            "main-sync:dirty",
+            "Skipping main sync: repo root working tree is dirty.",
+            level=logging.WARNING,
+        )
+        return
+
+    local_sha = subprocess.run(
+        ["git", "rev-parse", "main"],
+        cwd=REPO_ROOT, capture_output=True, text=True, check=False,
+    ).stdout.strip()
+    remote_sha = subprocess.run(
+        ["git", "rev-parse", "origin/main"],
+        cwd=REPO_ROOT, capture_output=True, text=True, check=False,
+    ).stdout.strip()
+    if not local_sha or not remote_sha or local_sha == remote_sha:
+        return
+
+    behind = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", "main", "origin/main"],
+        cwd=REPO_ROOT, check=False,
+    ).returncode == 0
+    ahead = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", "origin/main", "main"],
+        cwd=REPO_ROOT, check=False,
+    ).returncode == 0
+
+    if behind and not ahead:
+        if dry_run:
+            log.info(
+                "[DRY RUN] Would fast-forward local main %s -> origin/main %s",
+                local_sha[:8], remote_sha[:8],
+            )
+            return
+        merge = subprocess.run(
+            ["git", "merge", "--ff-only", "origin/main"],
+            cwd=REPO_ROOT, capture_output=True, text=True, check=False,
+        )
+        if merge.returncode == 0:
+            log.info("🔄 Fast-forwarded local main %s -> %s", local_sha[:8], remote_sha[:8])
+        else:
+            log_blocker(
+                "main-sync:ff",
+                "Failed to fast-forward main: %s",
+                merge.stderr.strip(),
+                level=logging.WARNING,
+            )
+    elif ahead and not behind:
+        if dry_run:
+            log.info("[DRY RUN] Would push local main %s -> origin/main", local_sha[:8])
+            return
+        push = subprocess.run(
+            ["git", "push", "origin", "main"],
+            cwd=REPO_ROOT, capture_output=True, text=True, check=False,
+        )
+        if push.returncode == 0:
+            log.info("⬆️ Pushed local main %s -> origin", local_sha[:8])
+        else:
+            log_blocker(
+                "main-sync:push",
+                "Failed to push main: %s",
+                push.stderr.strip(),
+                level=logging.WARNING,
+            )
+    else:
+        log_blocker(
+            "main-sync:diverged",
+            "Local main and origin/main have diverged; leaving as-is "
+            "(manual resolution required).",
+            level=logging.WARNING,
+        )
+
+
 # ---------------------------------------------------------------------------
 # Log File Management
 # ---------------------------------------------------------------------------
@@ -975,6 +1125,36 @@ def create_log_files(role: str, task_ref: str, ai_name: str) -> tuple[Path, "IO"
     )
     log_file.flush()
     return log_path, log_file, log_file
+
+
+def cleanup_old_task_logs(retention_days: int = TASK_LOG_RETENTION_DAYS):
+    """Delete per-task AI process log files older than retention_days.
+
+    Each dispatched Worker/Reviewer/Maintainer gets its own timestamped log
+    file that is never reused or truncated, so a long-lived swarm accumulates
+    them without bound. The orchestrator's own rotating log is size-capped
+    separately and is skipped here.
+    """
+    if not LOG_DIR.exists():
+        return
+    cutoff = time.time() - retention_days * 86400
+    removed = 0
+    for path in LOG_DIR.glob("*.log"):
+        if path.name == ORCHESTRATOR_LOG_FILE.name or path.name.startswith(
+            ORCHESTRATOR_LOG_FILE.name + "."
+        ):
+            continue
+        try:
+            if path.stat().st_mtime < cutoff:
+                path.unlink()
+                removed += 1
+        except OSError:
+            continue
+    if removed:
+        log.info(
+            "🧹 Removed %d task log file(s) older than %d day(s).",
+            removed, retention_days,
+        )
 
 
 def write_prompt_file(prompt: str, role: str, task_ref: str) -> Path:
@@ -1912,6 +2092,7 @@ def run_loop(interval: int, dry_run: bool = False):
 
     initial = True
     idle_cycles = 0
+    cycle_count = 0
     while True:
         try:
             log.info("--- Polling cycle (active: %d) ---", tracker.active_count)
@@ -1919,7 +2100,17 @@ def run_loop(interval: int, dry_run: bool = False):
             # 1. Check status of all running AI processes
             tracker.poll_all()
 
-            # 2. Poll every open item immediately on startup and every interval
+            # 2. Keep local main current so new worktrees branch from a fresh
+            # base. Cheap, but still throttled — no need to hit the network
+            # every single interval.
+            cycle_count += 1
+            if cycle_count == 1 or cycle_count % MAIN_SYNC_EVERY_CYCLES == 0:
+                try:
+                    sync_main_branch(dry_run)
+                except Exception as e:
+                    log.error("Error syncing main branch: %s", e, exc_info=True)
+
+            # 3. Poll every open item immediately on startup and every interval
             process_polling_cycle(dry_run, initial=initial)
             initial = False
 
@@ -1976,9 +2167,11 @@ def main():
         return
 
     reset_process_history()
+    cleanup_old_task_logs()
 
     if args.once:
         log.info("Running single polling cycle...")
+        sync_main_branch(args.dry_run)
         process_polling_cycle(args.dry_run, initial=True)
         tracker.poll_all()
         cleanup_merged_prs(args.dry_run)
