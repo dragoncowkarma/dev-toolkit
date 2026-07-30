@@ -158,6 +158,7 @@ describe('HashTool clipboard behavior', () => {
       target: { value: 'hello' },
     });
 
+    await screen.findByText('SHA-256:hello');
     const copyButton = await screen.findByRole('button', {
       name: 'Copy SHA-256 hash',
     });
@@ -182,6 +183,7 @@ describe('HashTool clipboard behavior', () => {
       target: { value: 'hello' },
     });
 
+    await screen.findByText('SHA-256:hello');
     const copyButton = await screen.findByRole('button', {
       name: 'Copy SHA-256 hash',
     });
