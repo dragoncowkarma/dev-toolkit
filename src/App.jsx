@@ -1,6 +1,7 @@
 import React from 'react';
 import Layout from './components/Layout.jsx';
 import Base64Tool from './tools/base64/Base64Tool.jsx';
+import HashTool from './tools/hash/HashTool.jsx';
 import JsonTool from './tools/json/JsonTool.jsx';
 
 const TOOLS = [
@@ -34,7 +35,7 @@ const TOOLS = [
     description: 'Generate common hashes for content checks and development workflows.',
     icon: '#',
     category: 'Generator',
-    component: ToolPlaceholder,
+    component: HashTool,
   },
   {
     id: 'regex',
