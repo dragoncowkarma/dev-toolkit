@@ -20,8 +20,10 @@ class FakeTracker:
     def __init__(self, dispatched=None):
         self.dispatched = set(dispatched or [])
 
-    def should_dispatch(self, task_ref, role):
+    def should_dispatch(self, task_ref, role, completion_confirmed=True):
         if (task_ref, role) in self.dispatched:
+            if not completion_confirmed:
+                return True, "retry 2/3 after unconfirmed completion"
             return False, swarm.DISPATCH_COMPLETED
         return True, "new event"
 
@@ -46,6 +48,20 @@ class DispatchDecisionTests(unittest.TestCase):
 
         self.assertFalse(tracker.should_dispatch("review#12-abc123", "reviewer")[0])
         self.assertTrue(tracker.should_dispatch("review#12-def456", "reviewer")[0])
+
+    def test_completed_process_is_retried_when_transition_is_unconfirmed(self):
+        tracker = make_tracker([
+            record("review#12-abc123", "reviewer", swarm.ProcessStatus.COMPLETED),
+        ])
+
+        allowed, reason = tracker.should_dispatch(
+            "review#12-abc123",
+            "reviewer",
+            completion_confirmed=False,
+        )
+
+        self.assertTrue(allowed)
+        self.assertIn("unconfirmed completion", reason)
 
     def test_running_event_is_not_dispatched_again(self):
         tracker = make_tracker([
@@ -74,6 +90,21 @@ class DispatchDecisionTests(unittest.TestCase):
         ])
 
         allowed, reason = tracker.should_dispatch("issue#7:initial", "worker")
+
+        self.assertFalse(allowed)
+        self.assertIn("exhausted", reason)
+
+    def test_unconfirmed_completions_stop_at_the_attempt_budget(self):
+        tracker = make_tracker([
+            record("review#12-abc123", "reviewer", swarm.ProcessStatus.COMPLETED)
+            for _ in range(swarm.MAX_DISPATCH_ATTEMPTS)
+        ])
+
+        allowed, reason = tracker.should_dispatch(
+            "review#12-abc123",
+            "reviewer",
+            completion_confirmed=False,
+        )
 
         self.assertFalse(allowed)
         self.assertIn("exhausted", reason)
@@ -164,6 +195,106 @@ class LifecycleSignalTests(unittest.TestCase):
         self.assertIn("both use AI 'codex'", reason)
 
 
+class StartupScanTests(unittest.TestCase):
+    def test_open_issue_fetch_keeps_non_task_items_visible(self):
+        payload = (
+            '[{"number": 7, "title": "[Task] JSON", "body": "worker"}, '
+            '{"number": 8, "title": "Bug report", "body": ""}]'
+        )
+        with patch.object(swarm, "gh", return_value=payload):
+            issues = swarm.fetch_open_issues()
+
+        self.assertEqual([7, 8], [issue["number"] for issue in issues])
+
+    def test_open_pr_fetch_keeps_nonstandard_items_visible(self):
+        payload = (
+            '[{"number": 12, "title": "[PR] 7 - JSON"}, '
+            '{"number": 13, "title": "Draft fix"}]'
+        )
+        with patch.object(swarm, "gh", return_value=payload):
+            prs = swarm.fetch_open_prs()
+
+        self.assertEqual([12, 13], [pr["number"] for pr in prs])
+
+    def test_initial_cycle_scans_both_collections_before_processing(self):
+        issues = [{"number": 7, "title": "[Task] JSON"}]
+        prs = [{"number": 12, "title": "[PR] 7 - JSON"}]
+        with (
+            patch.object(swarm, "fetch_open_issues", return_value=issues),
+            patch.object(swarm, "fetch_open_prs", return_value=prs),
+            patch.object(swarm, "log_open_items") as log_open_items,
+            patch.object(swarm, "process_issues") as process_issues,
+            patch.object(swarm, "process_prs") as process_prs,
+            patch.object(swarm, "cleanup_merged_prs") as cleanup_merged_prs,
+        ):
+            swarm.process_polling_cycle(initial=True)
+
+        log_open_items.assert_called_once_with(issues, prs)
+        process_issues.assert_called_once_with(
+            False,
+            open_issues=issues,
+            open_prs=prs,
+        )
+        process_prs.assert_called_once_with(False, prs)
+        cleanup_merged_prs.assert_called_once_with(False)
+
+    def test_critical_gh_failure_is_reported_and_raised(self):
+        result = SimpleNamespace(returncode=1, stdout="", stderr="auth failed")
+        with (
+            patch.object(swarm.subprocess, "run", return_value=result),
+            self.assertLogs("swarm", level="ERROR") as captured,
+            self.assertRaises(swarm.subprocess.CalledProcessError),
+        ):
+            swarm.gh(["issue", "list"])
+
+        self.assertIn("auth failed", "\n".join(captured.output))
+
+
+class DispatchSafetyTests(unittest.TestCase):
+    def test_worker_dry_run_does_not_create_worktree(self):
+        issue = swarm.TaskIssue(
+            number=7,
+            title="[Task] JSON - formatter",
+            body="Implement it.",
+            worker=swarm.RoleAssignment("codex", "5.6 sol", "높음"),
+        )
+        with (
+            patch.object(swarm, "create_worktree") as create_worktree,
+            patch.object(swarm, "write_prompt_file", return_value=Path("prompt")),
+            patch.object(swarm, "build_ai_argv", return_value=["codex", "exec"]),
+        ):
+            swarm.dispatch_worker(issue, dry_run=True)
+
+        create_worktree.assert_not_called()
+
+    def test_worker_revision_dry_run_does_not_create_worktree(self):
+        issue = swarm.TaskIssue(
+            number=7,
+            title="[Task] JSON - formatter",
+            body="Implement it.",
+            worker=swarm.RoleAssignment("codex", "5.6 sol", "높음"),
+        )
+        pr = swarm.TaskPR(
+            number=12,
+            title="[PR] 7 - formatter",
+            body="",
+            head_branch="worker/7-codex-formatter",
+        )
+        with (
+            patch.object(swarm, "create_worktree") as create_worktree,
+            patch.object(swarm, "write_prompt_file", return_value=Path("prompt")),
+            patch.object(swarm, "build_ai_argv", return_value=["codex", "exec"]),
+        ):
+            swarm.dispatch_worker_revision(
+                pr,
+                issue,
+                "Fix it.",
+                dry_run=True,
+            )
+
+        create_worktree.assert_not_called()
+
+
 class PollingLifecycleTests(unittest.TestCase):
     def setUp(self):
         self.issue = {
@@ -182,7 +313,7 @@ class PollingLifecycleTests(unittest.TestCase):
             "headRefOid": "abc123",
         }
 
-    def test_initial_worker_event_is_not_dispatched_twice(self):
+    def test_worker_is_retried_when_issue_stays_open_without_pr(self):
         tracker = FakeTracker({("issue#7:initial", "worker")})
         with (
             patch.object(swarm, "tracker", tracker),
@@ -190,6 +321,17 @@ class PollingLifecycleTests(unittest.TestCase):
             patch.object(swarm, "dispatch_worker") as dispatch_worker,
         ):
             swarm.process_issues(open_prs=[])
+
+        dispatch_worker.assert_called_once()
+
+    def test_worker_is_not_retried_after_pr_appears(self):
+        tracker = FakeTracker({("issue#7:initial", "worker")})
+        with (
+            patch.object(swarm, "tracker", tracker),
+            patch.object(swarm, "fetch_open_issues", return_value=[self.issue]),
+            patch.object(swarm, "dispatch_worker") as dispatch_worker,
+        ):
+            swarm.process_issues(open_prs=[self.pr])
 
         dispatch_worker.assert_not_called()
 
@@ -208,7 +350,7 @@ class PollingLifecycleTests(unittest.TestCase):
             dispatch_reviewer.call_args.kwargs["task_ref"],
         )
 
-    def test_completed_review_event_is_not_dispatched_again(self):
+    def test_reviewer_is_retried_when_no_review_signal_appears(self):
         tracker = FakeTracker({("review#12-abc123", "reviewer")})
         with (
             patch.object(swarm, "tracker", tracker),
@@ -218,7 +360,7 @@ class PollingLifecycleTests(unittest.TestCase):
         ):
             swarm.process_prs(open_prs=[self.pr])
 
-        dispatch_reviewer.assert_not_called()
+        dispatch_reviewer.assert_called_once()
 
     def test_reviewer_feedback_dispatches_original_worker_once(self):
         feedback = {

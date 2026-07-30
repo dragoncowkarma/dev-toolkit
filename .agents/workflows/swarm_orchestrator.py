@@ -38,6 +38,7 @@ WORKTREE_DIR = REPO_ROOT / ".worktrees"
 LOG_DIR = REPO_ROOT / ".agents" / "logs"
 POLL_INTERVAL_SECONDS = 30
 PROCESS_REGISTRY_FILE = REPO_ROOT / ".agents" / ".process_registry.json"
+OPEN_ITEMS_LIMIT = 1000
 
 # A lifecycle event runs at most once successfully, but a crashed process is
 # retried so a transient AI CLI failure cannot deadlock the swarm forever.
@@ -306,7 +307,12 @@ class ProcessTracker:
                 return True
         return False
 
-    def should_dispatch(self, task_ref: str, role: str) -> tuple[bool, str]:
+    def should_dispatch(
+        self,
+        task_ref: str,
+        role: str,
+        completion_confirmed: bool = True,
+    ) -> tuple[bool, str]:
         """Decide whether a lifecycle event still needs a process, with a reason.
 
         Task references identify lifecycle events rather than only an Issue or
@@ -314,9 +320,10 @@ class ProcessTracker:
         restarts while the Worker/Reviewer loop can still advance when a new
         review comment or commit creates a new event.
 
-        A running or completed attempt blocks the event permanently. A crashed
-        attempt is retried up to MAX_DISPATCH_ATTEMPTS times, because a swarm
-        that abandons an event after one failed AI process stalls forever.
+        A running attempt always blocks another dispatch. A completed process
+        blocks the event only after its required GitHub lifecycle transition is
+        visible. A zero exit code without that transition is retried up to
+        MAX_DISPATCH_ATTEMPTS times, just like a crashed process.
         """
         attempts = [
             record for record in self.all_records
@@ -326,11 +333,18 @@ class ProcessTracker:
             return True, "new event"
         if any(record.status == ProcessStatus.RUNNING for record in attempts):
             return False, DISPATCH_RUNNING
-        if any(record.status == ProcessStatus.COMPLETED for record in attempts):
+        completed = any(
+            record.status == ProcessStatus.COMPLETED for record in attempts
+        )
+        if completed and completion_confirmed:
             return False, DISPATCH_COMPLETED
         if len(attempts) >= MAX_DISPATCH_ATTEMPTS:
-            return False, f"exhausted {len(attempts)} failed attempts"
-        return True, f"retry {len(attempts) + 1}/{MAX_DISPATCH_ATTEMPTS} after failure"
+            return False, f"exhausted {len(attempts)} unconfirmed attempts"
+        cause = "unconfirmed completion" if completed else "failure"
+        return (
+            True,
+            f"retry {len(attempts) + 1}/{MAX_DISPATCH_ATTEMPTS} after {cause}",
+        )
 
     @property
     def active_count(self) -> int:
@@ -455,38 +469,55 @@ def gh(args: list[str], check: bool = True) -> str:
     """Run a gh CLI command and return stdout."""
     cmd = ["gh"] + args
     log.debug("Running: %s", " ".join(cmd))
-    result = subprocess.run(cmd, capture_output=True, text=True, cwd=REPO_ROOT, check=check)
-    if result.returncode != 0 and check:
-        log.error("gh command failed: %s\nstderr: %s", " ".join(cmd), result.stderr)
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+        check=False,
+    )
+    if result.returncode != 0:
+        log.error(
+            "gh command failed (exit %d): %s\nstderr: %s",
+            result.returncode,
+            " ".join(cmd),
+            result.stderr.strip() or "(empty)",
+        )
+        if check:
+            raise subprocess.CalledProcessError(
+                result.returncode,
+                cmd,
+                output=result.stdout,
+                stderr=result.stderr,
+            )
+        return ""
     return result.stdout.strip()
 
 
 def fetch_open_issues() -> list[dict]:
-    """Fetch open issues with [Task] prefix."""
+    """Fetch every open Issue so the startup scan cannot hide malformed tasks."""
     raw = gh([
         "issue", "list",
         "--state", "open",
         "--json", "number,title,body",
-        "--limit", "50",
-    ], check=False)
+        "--limit", str(OPEN_ITEMS_LIMIT),
+    ])
     if not raw:
         return []
-    issues = json.loads(raw)
-    return [i for i in issues if i.get("title", "").startswith("[Task]")]
+    return json.loads(raw)
 
 
 def fetch_open_prs() -> list[dict]:
-    """Fetch open PRs with [PR] prefix."""
+    """Fetch every open PR so the startup scan cannot hide malformed work."""
     raw = gh([
         "pr", "list",
         "--state", "open",
         "--json", "number,title,body,headRefName,headRefOid",
-        "--limit", "50",
-    ], check=False)
+        "--limit", str(OPEN_ITEMS_LIMIT),
+    ])
     if not raw:
         return []
-    prs = json.loads(raw)
-    return [p for p in prs if p.get("title", "").startswith("[PR]")]
+    return json.loads(raw)
 
 
 def fetch_pr_comments(pr_number: int) -> list[dict]:
@@ -851,7 +882,9 @@ def dispatch_worker(
     if not short_desc:
         short_desc = f"task-{issue.number}"
     branch_name = f"worker/{issue.number}-{worker.ai}-{short_desc}"
-    worktree_path = create_worktree(issue.number, branch_name)
+    worktree_path = WORKTREE_DIR / str(issue.number)
+    if not dry_run:
+        worktree_path = create_worktree(issue.number, branch_name)
 
     prompt = (
         f"You are the Worker for Issue #{issue.number}: {issue.title}.\n"
@@ -1087,8 +1120,11 @@ def dispatch_worker_revision(
         log.warning("PR #%d has no head branch, cannot dispatch revision.", pr.number)
         return
     
-    # We must run inside the same worktree or recreate it
-    worktree_path = create_worktree(issue.number, branch_name)
+    # We must run inside the same worktree or recreate it. Dry-run only reports
+    # the intended path and must not mutate git worktree state.
+    worktree_path = WORKTREE_DIR / str(issue.number)
+    if not dry_run:
+        worktree_path = create_worktree(issue.number, branch_name)
 
     prompt = (
         f"You are the Worker for PR #{pr.number} (Issue #{issue.number}: {issue.title}).\n"
@@ -1152,12 +1188,16 @@ def dispatch_worker_revision(
 # Main Polling Loop
 # ---------------------------------------------------------------------------
 
-def process_issues(dry_run: bool = False, open_prs: list[dict] = None):
+def process_issues(
+    dry_run: bool = False,
+    open_issues: Optional[list[dict]] = None,
+    open_prs: Optional[list[dict]] = None,
+):
     """Poll and dispatch each initial Issue event at most once."""
-    issues = fetch_open_issues()
+    issues = open_issues if open_issues is not None else fetch_open_issues()
     if open_prs is None:
         open_prs = fetch_open_prs()
-        
+
     pr_issue_numbers = set()
     for pr in open_prs:
         pr_title = pr.get("title", "")
@@ -1167,15 +1207,35 @@ def process_issues(dry_run: bool = False, open_prs: list[dict] = None):
 
     for raw in issues:
         num = raw["number"]
-        
+
+        if not raw.get("title", "").startswith("[Task]"):
+            log.debug(
+                "Open Issue #%d is not a [Task] Issue; inspected without dispatch.",
+                num,
+            )
+            continue
+
         # 1. If PR already exists, Worker is done (or PR handles the rest)
         if num in pr_issue_numbers:
             continue
-            
+
         # 2. A persistent event key prevents repeat dispatch after completion.
+        # The still-open Issue and missing PR prove that a prior zero exit code
+        # did not complete the required GitHub transition.
         task_ref = f"issue#{num}:initial"
-        allowed, reason = tracker.should_dispatch(task_ref, role="worker")
+        allowed, reason = tracker.should_dispatch(
+            task_ref,
+            role="worker",
+            completion_confirmed=False,
+        )
         if not allowed:
+            if reason.startswith("exhausted"):
+                log_blocker(
+                    f"dispatch-exhausted:{task_ref}",
+                    "Issue #%d Worker dispatch blocked: %s.",
+                    num,
+                    reason,
+                )
             log.debug("Skipping Worker for Issue #%d: %s.", num, reason)
             continue
 
@@ -1199,7 +1259,10 @@ def process_issues(dry_run: bool = False, open_prs: list[dict] = None):
         dispatch_worker(issue, dry_run, task_ref=task_ref)
 
 
-def process_prs(dry_run: bool = False, open_prs: list[dict] = None):
+def process_prs(
+    dry_run: bool = False,
+    open_prs: Optional[list[dict]] = None,
+):
     """Advance each PR by one idempotent Worker/Reviewer/Maintainer event."""
     prs = open_prs if open_prs is not None else fetch_open_prs()
 
@@ -1297,8 +1360,19 @@ def process_prs(dry_run: bool = False, open_prs: list[dict] = None):
                 continue
 
             task_ref = f"maintain#{pr_num}-{signal_id}"
-            allowed, reason = tracker.should_dispatch(task_ref, role="maintainer")
+            allowed, reason = tracker.should_dispatch(
+                task_ref,
+                role="maintainer",
+                completion_confirmed=False,
+            )
             if not allowed:
+                if reason.startswith("exhausted"):
+                    log_blocker(
+                        f"dispatch-exhausted:{task_ref}",
+                        "PR #%d Maintainer dispatch blocked: %s.",
+                        pr_num,
+                        reason,
+                    )
                 log.debug("Skipping Maintainer for PR #%d: %s.", pr_num, reason)
                 continue
             log.info(
@@ -1325,8 +1399,19 @@ def process_prs(dry_run: bool = False, open_prs: list[dict] = None):
         if action == "review":
             review_version = head_sha or signal_id
             task_ref = f"review#{pr_num}-{review_version}"
-            allowed, reason = tracker.should_dispatch(task_ref, role="reviewer")
+            allowed, reason = tracker.should_dispatch(
+                task_ref,
+                role="reviewer",
+                completion_confirmed=False,
+            )
             if not allowed:
+                if reason.startswith("exhausted"):
+                    log_blocker(
+                        f"dispatch-exhausted:{task_ref}",
+                        "PR #%d Reviewer dispatch blocked: %s.",
+                        pr_num,
+                        reason,
+                    )
                 # A finished review on an unchanged head SHA cannot produce a
                 # new event key, so the lifecycle would stall in silence: either
                 # the Worker never pushed, or the Reviewer posted no tagged
@@ -1354,8 +1439,19 @@ def process_prs(dry_run: bool = False, open_prs: list[dict] = None):
             continue
 
         task_ref = f"revise#{pr_num}-{signal_id}"
-        allowed, reason = tracker.should_dispatch(task_ref, role="worker_revise")
+        allowed, reason = tracker.should_dispatch(
+            task_ref,
+            role="worker_revise",
+            completion_confirmed=False,
+        )
         if not allowed:
+            if reason.startswith("exhausted"):
+                log_blocker(
+                    f"dispatch-exhausted:{task_ref}",
+                    "PR #%d Worker revision dispatch blocked: %s.",
+                    pr_num,
+                    reason,
+                )
             log.debug("Skipping Worker revision for PR #%d: %s.", pr_num, reason)
             continue
         feedback_reviewer = parse_role(
@@ -1431,6 +1527,47 @@ def cleanup_merged_prs(dry_run: bool = False):
                 log.error("Failed to clean worktree for issue #%d: %s", issue_num, e)
 
 
+def log_open_items(issues: list[dict], prs: list[dict]):
+    """Log the complete startup snapshot before dispatch decisions are made."""
+    log.info(
+        "Initial GitHub scan found %d open Issue(s) and %d open PR(s).",
+        len(issues),
+        len(prs),
+    )
+    for issue in issues:
+        log.info(
+            "  Open Issue #%s: %s",
+            issue.get("number", "?"),
+            issue.get("title", "(untitled)"),
+        )
+    for pr in prs:
+        log.info(
+            "  Open PR #%s: %s",
+            pr.get("number", "?"),
+            pr.get("title", "(untitled)"),
+        )
+
+
+def process_polling_cycle(dry_run: bool = False, initial: bool = False):
+    """Fetch a consistent open-work snapshot and advance every eligible item."""
+    # Fetch both collections before dispatch. If either critical query fails,
+    # the cycle fails closed instead of creating a duplicate Worker while its
+    # existing PR was merely unavailable.
+    open_issues = fetch_open_issues()
+    open_prs = fetch_open_prs()
+
+    if initial:
+        log_open_items(open_issues, open_prs)
+
+    process_issues(
+        dry_run,
+        open_issues=open_issues,
+        open_prs=open_prs,
+    )
+    process_prs(dry_run, open_prs)
+    cleanup_merged_prs(dry_run)
+
+
 def run_loop(interval: int, dry_run: bool = False):
     """Main polling loop with process status monitoring."""
     log.info("=" * 60)
@@ -1450,6 +1587,7 @@ def run_loop(interval: int, dry_run: bool = False):
     signal.signal(signal.SIGTERM, handle_signal)
     signal.signal(signal.SIGINT, handle_signal)
 
+    initial = True
     while True:
         try:
             log.info("--- Polling cycle (active: %d) ---", tracker.active_count)
@@ -1457,13 +1595,9 @@ def run_loop(interval: int, dry_run: bool = False):
             # 1. Check status of all running AI processes
             tracker.poll_all()
 
-            # 2. Poll for new work
-            open_prs = fetch_open_prs()
-            process_issues(dry_run, open_prs)
-            process_prs(dry_run, open_prs)
-            
-            # 3. Clean up merged PR issues
-            cleanup_merged_prs(dry_run)
+            # 2. Poll every open item immediately on startup and every interval
+            process_polling_cycle(dry_run, initial=initial)
+            initial = False
 
         except KeyboardInterrupt:
             log.info("Shutting down gracefully...")
@@ -1508,10 +1642,7 @@ def main():
 
     if args.once:
         log.info("Running single polling cycle...")
-        open_prs = fetch_open_prs()
-        process_issues(args.dry_run, open_prs)
-        process_prs(args.dry_run, open_prs)
-        cleanup_merged_prs(args.dry_run)
+        process_polling_cycle(args.dry_run, initial=True)
         tracker.poll_all()
         log.info("Done.")
     else:
