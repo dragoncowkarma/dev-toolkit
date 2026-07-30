@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Sidebar from './Sidebar.jsx';
 import LoadingSpinner from './LoadingSpinner.jsx';
+import ToolErrorBoundary from './ToolErrorBoundary.jsx';
 import './Layout.css';
 
 /**
@@ -110,12 +111,14 @@ export default function Layout({ tools, defaultToolId }) {
           </header>
 
           <main id="main-content" className="layout__main" tabIndex="-1">
-            <React.Suspense fallback={<LoadingSpinner />}>
-              <ActiveToolComponent
-                tool={activeTool}
-                onBack={() => setActiveToolId(defaultToolId)}
-              />
-            </React.Suspense>
+            <ToolErrorBoundary resetKey={activeTool.id}>
+              <React.Suspense fallback={<LoadingSpinner />}>
+                <ActiveToolComponent
+                  tool={activeTool}
+                  onBack={() => setActiveToolId(defaultToolId)}
+                />
+              </React.Suspense>
+            </ToolErrorBoundary>
           </main>
 
           <footer className="layout__footer">

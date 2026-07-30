@@ -1,0 +1,41 @@
+.tool-error-boundary {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.75rem;
+  max-width: 32rem;
+  margin: 2rem auto;
+  padding: 1.75rem;
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  background: var(--color-error-bg);
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.tool-error-boundary__title {
+  margin: 0;
+  color: var(--color-error-light);
+  font-size: 1.1rem;
+}
+
+.tool-error-boundary__description {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.tool-error-boundary__refresh {
+  margin-top: 0.25rem;
+}
