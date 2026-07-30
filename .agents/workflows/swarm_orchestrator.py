@@ -1006,6 +1006,16 @@ _CLAUDE_EFFORT_MAP: dict[str, str] = {
     "엑스트라": "xhigh", "최대": "max", "ultracode": "max",
 }
 
+_CODEX_MODEL_MAP: dict[str, str] = {
+    "5.6 (sol, terra, luna)": "gpt-4o",
+    "5.6":                    "gpt-4o",
+    "5.5":                    "gpt-4o",
+    "5.4":                    "gpt-4o",
+    "5.4 mini":               "gpt-4o-mini",
+    "gpt-4o":                 "gpt-4o",
+    "gpt-4o-mini":            "gpt-4o-mini",
+}
+
 
 def build_ai_argv(ai_name: str, model: str, reasoning: str,
                   prompt_file: Path, cwd: str) -> list[str]:
@@ -1019,12 +1029,18 @@ def build_ai_argv(ai_name: str, model: str, reasoning: str,
     prompt_text = prompt_file.read_text(encoding="utf-8")
 
     if ai_name == "codex":
+        resolved_model = _CODEX_MODEL_MAP.get(model.lower().strip(), model)
+        if resolved_model != model:
+            log.info(
+                "Model alias: '%s' → '%s' (codex)",
+                model, resolved_model,
+            )
         # codex exec: -C workdir, prompt is positional
         # --dangerously-bypass-approvals-and-sandbox for autonomous mode
         # -s workspace-write to allow file edits
         return [
             "codex", "exec",
-            "-m", model,
+            "-m", resolved_model,
             "-C", cwd,
             "-s", "workspace-write",
             "--dangerously-bypass-approvals-and-sandbox",
