@@ -1,5 +1,22 @@
 const DEFAULT_CONTEXT = 3;
 const TOKEN_PATTERN = /\s+|[A-Za-z0-9_]+|[^\sA-Za-z0-9_]/g;
+// Bounds Myers' trace memory (O(D^2) integers) to a few tens of MB even when
+// two large inputs share nothing in common and the true edit distance is huge.
+const MAX_EDIT_DISTANCE = 2000;
+
+/**
+ * @typedef {object} DiffStats
+ * @property {number} added
+ * @property {number} removed
+ * @property {number} modified
+ * @property {number} unchanged
+ */
+
+/**
+ * @typedef {object} DiffResult
+ * @property {Array<object>} rows
+ * @property {DiffStats} stats
+ */
 
 /**
  * Splits text into an array of lines. An empty string yields an empty array.
@@ -9,6 +26,56 @@ const TOKEN_PATTERN = /\s+|[A-Za-z0-9_]+|[^\sA-Za-z0-9_]/g;
 export function splitLines(text) {
   if (text === '') return [];
   return text.split('\n');
+}
+
+/**
+ * Splits text into real lines for patch generation: unlike {@link splitLines},
+ * it drops the artificial trailing empty entry `String#split` leaves behind
+ * for a trailing newline, and reports whether the text's last line is
+ * missing its own trailing newline.
+ * @param {string} text
+ * @returns {{lines: string[], noNewlineAtEnd: boolean}}
+ */
+function splitPatchLines(text) {
+  if (text === '') return { lines: [], noNewlineAtEnd: false };
+  const lines = text.split('\n');
+  const noNewlineAtEnd = lines[lines.length - 1] !== '';
+  if (!noNewlineAtEnd) lines.pop();
+  return { lines, noNewlineAtEnd };
+}
+
+/**
+ * Adjusts a line edit script for patch generation only: standard diff/patch
+ * tools never treat a file's final line as equal to a same-content line on
+ * the other side unless both files actually end it the same way (both with,
+ * or both without, a trailing newline). This walks the (already-computed)
+ * ops in O(n) and splits the single 'equal' op that would otherwise pair a
+ * newline-terminated line with a non-terminated one into an explicit
+ * delete+insert, without re-running the O(ND) Myers search.
+ * @param {Array<{type: string, aIndex: number, bIndex: number}>} ops
+ * @param {number} lastOldIndex
+ * @param {number} lastNewIndex
+ * @param {boolean} oldNoNewline
+ * @param {boolean} newNoNewline
+ * @returns {Array<{type: string, aIndex: number, bIndex: number}>}
+ */
+function patchSafeOps(ops, lastOldIndex, lastNewIndex, oldNoNewline, newNoNewline) {
+  if (!oldNoNewline && !newNoNewline) return ops;
+
+  const result = [];
+  for (const op of ops) {
+    if (op.type === 'equal') {
+      const oldUnterminated = oldNoNewline && op.aIndex === lastOldIndex;
+      const newUnterminated = newNoNewline && op.bIndex === lastNewIndex;
+      if (oldUnterminated !== newUnterminated) {
+        result.push({ type: 'delete', aIndex: op.aIndex, bIndex: -1 });
+        result.push({ type: 'insert', aIndex: -1, bIndex: op.bIndex });
+        continue;
+      }
+    }
+    result.push(op);
+  }
+  return result;
 }
 
 /**
@@ -62,7 +129,25 @@ function internItems(items, table) {
 }
 
 /**
+ * Builds a fully-disjoint edit script (delete everything, then insert
+ * everything) in O(n+m) time/space. Used as a bounded fallback once the
+ * true edit distance would exceed {@link MAX_EDIT_DISTANCE}.
+ * @param {Int32Array} a
+ * @param {Int32Array} b
+ * @returns {Array<{type: 'equal'|'delete'|'insert', aIndex: number, bIndex: number}>}
+ */
+function replaceAllEditScript(a, b) {
+  const ops = [];
+  for (let i = 0; i < a.length; i++) ops.push({ type: 'delete', aIndex: i, bIndex: -1 });
+  for (let j = 0; j < b.length; j++) ops.push({ type: 'insert', aIndex: -1, bIndex: j });
+  return ops;
+}
+
+/**
  * Runs Myers' O(ND) shortest-edit-script algorithm over two integer arrays.
+ * The search (and its O(D^2) trace memory) is capped at {@link MAX_EDIT_DISTANCE}
+ * rounds; large, mostly-dissimilar inputs whose true edit distance exceeds
+ * that cap fall back to {@link replaceAllEditScript} instead of exhausting memory.
  * @param {Int32Array} a
  * @param {Int32Array} b
  * @returns {Array<{type: 'equal'|'delete'|'insert', aIndex: number, bIndex: number}>}
@@ -73,11 +158,13 @@ function myersEditScript(a, b) {
   const max = n + m;
   if (max === 0) return [];
 
-  const offset = max;
-  const v = new Int32Array(2 * max + 1);
+  const boundedMax = Math.min(max, MAX_EDIT_DISTANCE);
+  const offset = boundedMax;
+  const v = new Int32Array(2 * boundedMax + 1);
   const trace = [];
+  let found = false;
 
-  outer: for (let d = 0; d <= max; d++) {
+  outer: for (let d = 0; d <= boundedMax; d++) {
     trace.push(v.slice());
     for (let k = -d; k <= d; k += 2) {
       let x;
@@ -93,10 +180,13 @@ function myersEditScript(a, b) {
       }
       v[offset + k] = x;
       if (x >= n && y >= m) {
+        found = true;
         break outer;
       }
     }
   }
+
+  if (!found) return replaceAllEditScript(a, b);
 
   const ops = [];
   let x = n;
@@ -210,7 +300,7 @@ export function diffTokens(oldLine, newLine) {
  * @param {string[]} oldLines
  * @param {string[]} newLines
  * @param {Array<{type: string, aIndex: number, bIndex: number}>} ops
- * @returns {{rows: Array<object>, stats: {added: number, removed: number, modified: number, unchanged: number}}}
+ * @returns {DiffResult}
  */
 export function buildDiffRows(oldLines, newLines, ops) {
   const rows = [];
@@ -279,7 +369,7 @@ export function buildDiffRows(oldLines, newLines, ops) {
  * as either a side-by-side or unified view.
  * @param {string} oldText
  * @param {string} newText
- * @returns {{rows: Array<object>, stats: {added: number, removed: number, modified: number, unchanged: number}}}
+ * @returns {DiffResult}
  */
 export function diffLines(oldText, newText) {
   const oldLines = splitLines(oldText);
@@ -289,18 +379,28 @@ export function diffLines(oldText, newText) {
 }
 
 /**
- * Generates a standard unified-diff string (as produced by `diff -u`),
- * grouping nearby changes into hunks with surrounding context lines.
- * @param {string} oldText
- * @param {string} newText
- * @param {{oldLabel?: string, newLabel?: string, context?: number}} [options]
- * @returns {string} The unified diff, or an empty string when the texts are identical.
+ * @typedef {object} UnifiedDiffMeta
+ * @property {string} oldLabel
+ * @property {string} newLabel
+ * @property {number} context
+ * @property {boolean} oldNoNewline Whether the old text's last line has no trailing newline.
+ * @property {boolean} newNoNewline Whether the new text's last line has no trailing newline.
  */
-export function generateUnifiedDiff(oldText, newText, options = {}) {
-  const { oldLabel = 'a', newLabel = 'b', context = DEFAULT_CONTEXT } = options;
-  const oldLines = splitLines(oldText);
-  const newLines = splitLines(newText);
-  const ops = computeLineOps(oldLines, newLines);
+
+/**
+ * Formats a precomputed line edit script as a standard unified-diff string
+ * (as produced by `diff -u`), grouping nearby changes into hunks with
+ * surrounding context lines and annotating a missing final trailing newline
+ * on either side with a `\ No newline at end of file` marker, so the result
+ * is an applicable patch regardless of how either text ends.
+ * @param {string[]} oldLines Real lines of the old text (see {@link splitPatchLines}).
+ * @param {string[]} newLines Real lines of the new text (see {@link splitPatchLines}).
+ * @param {Array<{type: string, aIndex: number, bIndex: number}>} ops
+ * @param {UnifiedDiffMeta} meta
+ * @returns {string} The unified diff, or an empty string when there are no changes.
+ */
+function formatUnifiedDiff(oldLines, newLines, ops, meta) {
+  const { oldLabel, newLabel, context, oldNoNewline, newNoNewline } = meta;
 
   const changeIndexes = [];
   for (let i = 0; i < ops.length; i++) {
@@ -326,6 +426,7 @@ export function generateUnifiedDiff(oldText, newText, options = {}) {
   }
 
   const output = [`--- ${oldLabel}`, `+++ ${newLabel}`];
+  const NO_NEWLINE_MARKER = '\\ No newline at end of file';
 
   for (const group of groups) {
     const start = Math.max(0, group[0] - context);
@@ -342,15 +443,91 @@ export function generateUnifiedDiff(oldText, newText, options = {}) {
 
     for (let i = start; i <= end; i++) {
       const op = ops[i];
+      const isFinalOld = op.aIndex === oldLines.length - 1 && oldNoNewline;
+      const isFinalNew = op.bIndex === newLines.length - 1 && newNoNewline;
       if (op.type === 'equal') {
         output.push(` ${oldLines[op.aIndex]}`);
+        if (isFinalOld || isFinalNew) output.push(NO_NEWLINE_MARKER);
       } else if (op.type === 'delete') {
         output.push(`-${oldLines[op.aIndex]}`);
+        if (isFinalOld) output.push(NO_NEWLINE_MARKER);
       } else {
         output.push(`+${newLines[op.bIndex]}`);
+        if (isFinalNew) output.push(NO_NEWLINE_MARKER);
       }
     }
   }
 
-  return output.join('\n');
+  // A unified diff is itself a line-oriented text file: like `diff -u`'s own
+  // output, it always ends with a trailing newline, even when the very last
+  // emitted line documents a *content* line that lacks one (the marker
+  // above already captures that fact). Omitting it corrupts the patch for
+  // `git apply`/`patch`, which parse the file the same way.
+  return `${output.join('\n')}\n`;
+}
+
+/**
+ * Generates a standard unified-diff string (as produced by `diff -u`),
+ * grouping nearby changes into hunks with surrounding context lines.
+ * @param {string} oldText
+ * @param {string} newText
+ * @param {{oldLabel?: string, newLabel?: string, context?: number}} [options]
+ * @returns {string} The unified diff, or an empty string when the texts are identical.
+ */
+export function generateUnifiedDiff(oldText, newText, options = {}) {
+  const { oldLabel = 'a', newLabel = 'b', context = DEFAULT_CONTEXT } = options;
+  const { lines: oldLines, noNewlineAtEnd: oldNoNewline } = splitPatchLines(oldText);
+  const { lines: newLines, noNewlineAtEnd: newNoNewline } = splitPatchLines(newText);
+  const ops = computeLineOps(oldLines, newLines);
+  const patchOps = patchSafeOps(
+    ops,
+    oldLines.length - 1,
+    newLines.length - 1,
+    oldNoNewline,
+    newNoNewline,
+  );
+  return formatUnifiedDiff(oldLines, newLines, patchOps, {
+    oldLabel,
+    newLabel,
+    context,
+    oldNoNewline,
+    newNoNewline,
+  });
+}
+
+/**
+ * Computes both the display diff (rows/stats) and the unified-diff patch
+ * text for the same pair of texts, sharing a single Myers computation
+ * instead of running it once per output as separate calls would. The
+ * display rows use the raw content-only match; the patch text additionally
+ * runs through {@link patchSafeOps} so trailing-newline differences never
+ * leak into the on-screen comparison, only into the downloadable patch.
+ * @param {string} oldText
+ * @param {string} newText
+ * @param {{oldLabel?: string, newLabel?: string, context?: number}} [options]
+ * @returns {DiffResult & {unifiedDiff: string}}
+ */
+export function computeTextDiff(oldText, newText, options = {}) {
+  const { oldLabel = 'a', newLabel = 'b', context = DEFAULT_CONTEXT } = options;
+  const { lines: oldLines, noNewlineAtEnd: oldNoNewline } = splitPatchLines(oldText);
+  const { lines: newLines, noNewlineAtEnd: newNoNewline } = splitPatchLines(newText);
+  const ops = computeLineOps(oldLines, newLines);
+
+  const { rows, stats } = buildDiffRows(oldLines, newLines, ops);
+  const patchOps = patchSafeOps(
+    ops,
+    oldLines.length - 1,
+    newLines.length - 1,
+    oldNoNewline,
+    newNoNewline,
+  );
+  const unifiedDiff = formatUnifiedDiff(oldLines, newLines, patchOps, {
+    oldLabel,
+    newLabel,
+    context,
+    oldNoNewline,
+    newNoNewline,
+  });
+
+  return { rows, stats, unifiedDiff };
 }
