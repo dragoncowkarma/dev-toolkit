@@ -141,6 +141,7 @@ export default function PasswordTool({ onBack }) {
                   type="checkbox"
                   checked={options[name]}
                   onChange={() => toggleOption(name)}
+                  aria-label={label}
                 />
                 <span>{label}</span><small>{hint}</small>
               </label>
@@ -167,6 +168,7 @@ export default function PasswordTool({ onBack }) {
             onChange={(event) =>
               setBoundedValue(setBatchSize, MIN_BATCH_SIZE, MAX_BATCH_SIZE, event.target.value)
             }
+            aria-label="Batch size"
           />
           <p>Generate {MIN_BATCH_SIZE} to {MAX_BATCH_SIZE} passwords at once.</p>
         </fieldset>
