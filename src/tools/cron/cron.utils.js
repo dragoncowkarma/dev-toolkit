@@ -19,9 +19,11 @@ function parseNumber(value, definition) {
   if (!/^\d+$/.test(value)) invalidExpression(`${definition.name} contains "${value}".`);
   const number = Number(value);
   if (number < definition.min || number > definition.max) {
-    invalidExpression(`${definition.name} must be between ${definition.min} and ${definition.max}.`);
+    invalidExpression(
+      `${definition.name} must be between ${definition.min} and ${definition.max}.`,
+    );
   }
-  return definition.name === 'day of week' && number === 7 ? 0 : number;
+  return number;
 }
 
 function parseField(source, definition) {
@@ -37,14 +39,19 @@ function parseField(source, definition) {
     let end = definition.max;
     if (rangeSource !== '*') {
       const parts = rangeSource.split('-');
-      if (parts.length === 1) start = end = parseNumber(parts[0], definition);
+      if (parts.length === 1) {
+        start = parseNumber(parts[0], definition);
+        end = stepSource === undefined ? start : definition.max;
+      }
       else if (parts.length === 2) {
         start = parseNumber(parts[0], definition);
         end = parseNumber(parts[1], definition);
         if (start > end) invalidExpression(`${definition.name} range is reversed.`);
       } else invalidExpression(`${definition.name} has an invalid range.`);
     }
-    for (let value = start; value <= end; value += step) values.add(value === 7 ? 0 : value);
+    for (let value = start; value <= end; value += step) {
+      values.add(definition.name === 'day of week' && value === 7 ? 0 : value);
+    }
   });
   return { source, values, wildcard: source === '*' };
 }
@@ -55,18 +62,34 @@ function parseField(source, definition) {
  * @returns {{hasSeconds: boolean, second: object, fields: object[]}}
  */
 export function parseCron(expression) {
-  if (typeof expression !== 'string' || !expression.trim()) invalidExpression('enter an expression.');
+  if (typeof expression !== 'string' || !expression.trim()) {
+    invalidExpression('enter an expression.');
+  }
   const parts = expression.trim().split(/\s+/);
   if (parts.length !== 5 && parts.length !== 6) invalidExpression('use 5 or 6 fields.');
   const hasSeconds = parts.length === 6;
   const second = hasSeconds
     ? parseField(parts.shift(), { name: 'second', min: 0, max: 59 })
     : { source: '0', values: new Set([0]), wildcard: false };
-  return { hasSeconds, second, fields: parts.map((part, index) => parseField(part, FIELD_DEFINITIONS[index])) };
+  const fields = parts.map((part, index) => parseField(part, FIELD_DEFINITIONS[index]));
+  return { hasSeconds, second, fields };
 }
 
 function formatValues(values, labels) {
   return [...values].sort((a, b) => a - b).map((value) => labels?.[value] ?? value).join(', ');
+}
+
+function formatTime(hour, minute) {
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+}
+
+function formatTimes(hours, minutes) {
+  return [...hours]
+    .sort((first, second) => first - second)
+    .flatMap((hour) => [...minutes]
+      .sort((first, second) => first - second)
+      .map((minute) => formatTime(hour, minute)))
+    .join(', ');
 }
 
 /**
@@ -77,16 +100,30 @@ function formatValues(values, labels) {
 export function describeCron(expression) {
   const cron = parseCron(expression);
   const [minute, hour, day, month, weekday] = cron.fields;
+  const allDateFieldsWildcard = day.wildcard && month.wildcard && weekday.wildcard;
   if (cron.hasSeconds && cron.second.source.startsWith('*/') && minute.wildcard && hour.wildcard &&
-    day.wildcard && month.wildcard && weekday.wildcard) return `Every ${cron.second.source.slice(2)} seconds`;
-  if (minute.source.startsWith('*/') && hour.wildcard && day.wildcard && month.wildcard && weekday.wildcard) {
+    allDateFieldsWildcard) {
+    return `Every ${cron.second.source.slice(2)} seconds`;
+  }
+  if (minute.source.startsWith('*/') && hour.wildcard && allDateFieldsWildcard) {
     return `Every ${minute.source.slice(2)} minutes`;
   }
-  if (minute.wildcard && hour.wildcard && day.wildcard && month.wildcard && weekday.wildcard) return 'Every minute';
-  const time = `at ${String(formatValues(hour.values)).padStart(2, '0')}:${String(formatValues(minute.values)).padStart(2, '0')}`;
-  if (!weekday.wildcard && day.wildcard && month.wildcard) return `Every ${formatValues(weekday.values, WEEKDAY_NAMES)} ${time}`;
-  if (!day.wildcard && month.wildcard && weekday.wildcard) return `On day ${formatValues(day.values)} of every month ${time}`;
-  if (!month.wildcard && day.wildcard && weekday.wildcard) return `Every ${formatValues(month.values, MONTH_NAMES)} ${time}`;
+  if (minute.wildcard && hour.wildcard && allDateFieldsWildcard) {
+    return 'Every minute';
+  }
+  if (minute.source === '0' && hour.wildcard && allDateFieldsWildcard) {
+    return 'Every hour';
+  }
+  const time = `at ${formatTimes(hour.values, minute.values)}`;
+  if (!weekday.wildcard && day.wildcard && month.wildcard) {
+    return `Every ${formatValues(weekday.values, WEEKDAY_NAMES)} ${time}`;
+  }
+  if (!day.wildcard && month.wildcard && weekday.wildcard) {
+    return `On day ${formatValues(day.values)} of every month ${time}`;
+  }
+  if (!month.wildcard && day.wildcard && weekday.wildcard) {
+    return `Every ${formatValues(month.values, MONTH_NAMES)} ${time}`;
+  }
   if (!hour.wildcard || !minute.wildcard) return `Every day ${time}`;
   return 'On the configured schedule';
 }
@@ -97,7 +134,9 @@ function matches(date, cron) {
     !hour.values.has(date.getHours()) || !month.values.has(date.getMonth() + 1)) return false;
   const dayMatches = day.values.has(date.getDate());
   const weekdayMatches = weekday.values.has(date.getDay());
-  return day.wildcard || weekday.wildcard ? dayMatches && weekdayMatches : dayMatches || weekdayMatches;
+  return day.wildcard || weekday.wildcard
+    ? dayMatches && weekdayMatches
+    : dayMatches || weekdayMatches;
 }
 
 /**
@@ -109,7 +148,9 @@ function matches(date, cron) {
  */
 export function getNextExecutions(expression, from = new Date(), count = 5) {
   const cron = parseCron(expression);
-  if (!Number.isInteger(count) || count < 1) throw new RangeError('Count must be a positive integer.');
+  if (!Number.isInteger(count) || count < 1) {
+    throw new RangeError('Count must be a positive integer.');
+  }
   const step = cron.hasSeconds ? 1000 : 60000;
   const candidate = new Date(from.getTime() + step);
   if (cron.hasSeconds) candidate.setMilliseconds(0);
@@ -120,7 +161,9 @@ export function getNextExecutions(expression, from = new Date(), count = 5) {
     if (matches(candidate, cron)) executions.push(new Date(candidate));
     candidate.setTime(candidate.getTime() + step);
   }
-  if (executions.length < count) throw new Error('Could not find enough executions within five years.');
+  if (executions.length < count) {
+    throw new Error('Could not find enough executions within five years.');
+  }
   return executions;
 }
 
