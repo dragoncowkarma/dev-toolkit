@@ -1,5 +1,6 @@
 import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Layout from './Layout.jsx';
 
@@ -48,6 +49,33 @@ const TEST_TOOLS = [
     icon: '{ }',
     category: 'Formatter',
     component: () => <div data-testid="tool-json">JSON Tool</div>,
+  },
+];
+
+function ToolA() {
+  return <div data-testid="tool-a-content">Tool A content</div>;
+}
+
+function ToolB() {
+  return <div data-testid="tool-b-content">Tool B content</div>;
+}
+
+const TOOLS = [
+  {
+    id: 'tool-a',
+    name: 'Tool A',
+    description: 'First tool',
+    icon: 'A',
+    category: 'Alpha',
+    component: ToolA,
+  },
+  {
+    id: 'tool-b',
+    name: 'Tool B',
+    description: 'Second tool',
+    icon: 'B',
+    category: 'Beta',
+    component: ToolB,
   },
 ];
 
@@ -120,6 +148,92 @@ describe('Layout Component', () => {
 
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(screen.getByText('Good Tool content')).toBeInTheDocument();
+  });
+});
+
+describe('Layout tool switching', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it('renders the default tool component on initial mount', () => {
+    render(<Layout tools={TOOLS} defaultToolId="tool-a" />);
+
+    expect(screen.getByTestId('tool-a-content')).toBeInTheDocument();
+    expect(screen.queryByTestId('tool-b-content')).not.toBeInTheDocument();
+  });
+
+  it('swaps the rendered component when a different tool is selected', async () => {
+    const user = userEvent.setup();
+    render(<Layout tools={TOOLS} defaultToolId="tool-a" />);
+
+    await user.click(screen.getByRole('button', { name: 'Tool B' }));
+
+    expect(screen.getByTestId('tool-b-content')).toBeInTheDocument();
+    expect(screen.queryByTestId('tool-a-content')).not.toBeInTheDocument();
+  });
+
+  it('falls back to the first tool when defaultToolId does not match any tool', () => {
+    render(<Layout tools={TOOLS} defaultToolId="does-not-exist" />);
+
+    expect(screen.getByTestId('tool-a-content')).toBeInTheDocument();
+  });
+});
+
+describe('Layout empty tools handling', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it('renders a fallback message instead of crashing when tools is empty', () => {
+    render(<Layout tools={[]} defaultToolId="tool-a" />);
+
+    expect(screen.getByRole('heading', { name: 'No tools available' })).toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Tool list' })).not.toBeInTheDocument();
+  });
+});
+
+describe('Layout breadcrumb', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it('shows the active tool category in the breadcrumb', () => {
+    render(<Layout tools={TOOLS} defaultToolId="tool-a" />);
+
+    expect(screen.getByText('Tools / Alpha')).toBeInTheDocument();
+  });
+
+  it('updates the breadcrumb category after switching tools', async () => {
+    const user = userEvent.setup();
+    render(<Layout tools={TOOLS} defaultToolId="tool-a" />);
+
+    await user.click(screen.getByRole('button', { name: 'Tool B' }));
+
+    expect(screen.getByText('Tools / Beta')).toBeInTheDocument();
+    expect(screen.queryByText('Tools / Alpha')).not.toBeInTheDocument();
+  });
+});
+
+describe('Layout dynamic page title', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it('shows the active tool name as the page heading', () => {
+    render(<Layout tools={TOOLS} defaultToolId="tool-a" />);
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Tool A' })).toBeInTheDocument();
+  });
+
+  it('changes the page heading when the active tool changes', async () => {
+    const user = userEvent.setup();
+    render(<Layout tools={TOOLS} defaultToolId="tool-a" />);
+
+    await user.click(screen.getByRole('button', { name: 'Tool B' }));
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Tool B' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 1, name: 'Tool A' })).not.toBeInTheDocument();
   });
 });
 
