@@ -7,7 +7,8 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 describe('CronTool', () => {
   it('shows a default explanation and five future executions', () => {
     render(<CronTool />);
-    expect(screen.getByText('Every 5 minutes')).toBeInTheDocument();
+    const description = screen.getByText('Human-readable schedule').parentElement;
+    expect(within(description).getByText('Every 5 minutes')).toBeInTheDocument();
     expect(within(screen.getByRole('list', { name: 'Next cron executions' })).getAllByRole('listitem')).toHaveLength(5);
   });
 
