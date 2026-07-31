@@ -1,6 +1,5 @@
 import React from 'react';
 import Layout from './components/Layout.jsx';
-
 // Tools are discovered from disk, not registered by hand. Adding a tool means
 // adding `src/tools/<slug>/meta.js` (+ `<Name>Tool.jsx` once implemented) —
 // nothing here ever needs editing, so parallel tool PRs stop colliding on a
