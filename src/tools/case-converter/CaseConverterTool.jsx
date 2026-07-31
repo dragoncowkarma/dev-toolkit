@@ -72,6 +72,7 @@ export default function CaseConverterTool() {
                 className="case-converter-tool__button"
                 onClick={() => handleCopy(label, value)}
                 disabled={!value}
+                aria-label={`Copy ${label} result`}
               >
                 Copy
               </button>

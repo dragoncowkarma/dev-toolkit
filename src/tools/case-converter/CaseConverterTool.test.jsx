@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import CaseConverterTool from './CaseConverterTool.jsx';
+import { CASE_DEFINITIONS } from './caseConverter.utils.js';
 
 afterEach(() => {
   cleanup();
@@ -67,7 +68,7 @@ describe('CaseConverterTool actions', () => {
     fireEvent.change(screen.getByLabelText('Input text'), { target: { value: 'hello world' } });
 
     const kebabPanel = screen.getByLabelText('kebab-case').closest('.case-converter-tool__result');
-    const copyButton = within(kebabPanel).getByRole('button', { name: 'Copy' });
+    const copyButton = within(kebabPanel).getByRole('button', { name: 'Copy kebab-case result' });
 
     await act(async () => {
       fireEvent.click(copyButton);
@@ -80,6 +81,21 @@ describe('CaseConverterTool actions', () => {
   it('disables copy buttons when a result is empty', () => {
     render(<CaseConverterTool />);
     const kebabPanel = screen.getByLabelText('kebab-case').closest('.case-converter-tool__result');
-    expect(within(kebabPanel).getByRole('button', { name: 'Copy' })).toBeDisabled();
+    const copyButton = within(kebabPanel).getByRole('button', { name: 'Copy kebab-case result' });
+    expect(copyButton).toBeDisabled();
+  });
+
+  it('gives every copy button a distinct, case-specific accessible name', () => {
+    render(<CaseConverterTool />);
+
+    const accessibleNames = CASE_DEFINITIONS.map(({ label }) => {
+      const expectedName = `Copy ${label} result`;
+      const button = screen.getByRole('button', { name: expectedName });
+      expect(button).toHaveAccessibleName(expectedName);
+      expect(button).toHaveTextContent('Copy');
+      return expectedName;
+    });
+
+    expect(new Set(accessibleNames).size).toBe(CASE_DEFINITIONS.length);
   });
 });
