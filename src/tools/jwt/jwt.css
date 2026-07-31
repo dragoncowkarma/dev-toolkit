@@ -1,0 +1,159 @@
+.jwt-tool {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+}
+
+.jwt-tool__toolbar,
+.jwt-tool__status-row,
+.jwt-tool__panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.jwt-tool__toolbar {
+  margin-bottom: 1rem;
+}
+.jwt-tool__eyebrow,
+.jwt-tool__label,
+.jwt-tool__details dt {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.jwt-tool__hint {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+.jwt-tool__label {
+  display: block;
+  margin-bottom: 0.5rem;
+}
+.jwt-tool__input,
+.jwt-tool__json {
+  width: 100%;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  font: 0.9rem/1.5 'SF Mono', 'Fira Code', Consolas, monospace;
+  padding: 1rem;
+}
+.jwt-tool__input {
+  min-height: 150px;
+  resize: vertical;
+}
+.jwt-tool__input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+.jwt-tool__button {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 0.45rem 0.75rem;
+}
+.jwt-tool__button:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+.jwt-tool__empty,
+.jwt-tool__copy-error {
+  color: var(--color-text-muted);
+  margin-top: 1rem;
+}
+.jwt-tool__alert {
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  color: var(--color-error-light);
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+}
+.jwt-tool__result {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+.jwt-tool__algorithm {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+.jwt-tool__status {
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.25rem 0.6rem;
+}
+.jwt-tool__status--valid {
+  background: color-mix(in srgb, var(--color-success) 18%, transparent);
+  color: var(--color-success);
+}
+.jwt-tool__status--expired,
+.jwt-tool__status--invalid {
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+}
+.jwt-tool__status--not-active {
+  background: color-mix(in srgb, var(--color-warning) 18%, transparent);
+  color: var(--color-warning);
+}
+.jwt-tool__panels {
+  display: grid;
+  gap: 1rem;
+}
+.jwt-tool__panel,
+.jwt-tool__details {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1rem;
+}
+.jwt-tool__panel-heading {
+  margin-bottom: 0.75rem;
+}
+.jwt-tool__panel h2,
+.jwt-tool__details h2 {
+  font-size: 1rem;
+}
+.jwt-tool__json {
+  background: var(--color-code-bg);
+  margin: 0;
+  min-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.jwt-tool__details dl {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+.jwt-tool__details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.jwt-tool__details small {
+  color: var(--color-text-muted);
+}
+.jwt-tool__signature {
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+  font-size: 0.8rem;
+}
+@media (min-width: 768px) {
+  .jwt-tool { padding: 0 2rem 3rem; }
+  .jwt-tool__panels { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 520px) {
+  .jwt-tool__toolbar, .jwt-tool__status-row { align-items: flex-start; flex-direction: column; }
+}
