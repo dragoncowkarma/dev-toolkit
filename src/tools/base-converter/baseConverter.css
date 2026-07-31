@@ -1,0 +1,208 @@
+.base-converter {
+  display: flex;
+  width: 100%;
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.base-converter__intro,
+.base-converter__bit-viewer,
+.base-converter__custom {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  padding: 1rem;
+}
+
+.base-converter__intro h2,
+.base-converter__section-heading h3 {
+  font-size: 1.1rem;
+}
+
+.base-converter__intro > p:last-child,
+.base-converter__section-heading > span,
+.base-converter__bit-panel-header span {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
+.base-converter__eyebrow {
+  color: var(--color-primary-light);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.base-converter__fields,
+.base-converter__bit-panels {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+}
+
+.base-converter__field,
+.base-converter__bit-panel {
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: calc(var(--radius) - 2px);
+  background: var(--color-surface);
+  padding: 0.8rem;
+}
+
+.base-converter__field > label,
+.base-converter__custom label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+}
+
+.base-converter input {
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: calc(var(--radius) - 5px);
+  background: var(--color-code-bg);
+  color: var(--color-text);
+  font: inherit;
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  padding: 0.55rem 0.65rem;
+}
+
+.base-converter input:focus {
+  outline: 0;
+  border-color: var(--color-primary);
+}
+
+.base-converter__input-row {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.base-converter__input-row input {
+  width: 100%;
+}
+
+.base-converter button {
+  border: 1px solid var(--color-border);
+  border-radius: calc(var(--radius) - 5px);
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 0.45rem 0.65rem;
+}
+
+.base-converter button:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.base-converter button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.base-converter__bit-viewer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.base-converter__section-heading,
+.base-converter__bit-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.base-converter__bit-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  overflow-x: auto;
+}
+
+.base-converter__bit-panel-header {
+  min-width: max-content;
+}
+
+.base-converter__bits {
+  display: flex;
+  width: max-content;
+  gap: 0.2rem;
+}
+
+.base-converter__bit {
+  width: 1.65rem;
+  height: 1.9rem;
+  padding: 0;
+  background: var(--color-code-bg) !important;
+  color: var(--color-text-muted) !important;
+  font-family: 'SFMono-Regular', Consolas, monospace !important;
+}
+
+.base-converter__bit.active {
+  border-color: var(--color-primary) !important;
+  background: var(--color-primary) !important;
+  color: #fff !important;
+}
+
+.base-converter__custom {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.base-converter__custom .base-converter__section-heading {
+  grid-column: 1 / -1;
+}
+
+.base-converter__custom button {
+  align-self: end;
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.base-converter__custom output {
+  min-width: 0;
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: calc(var(--radius) - 5px);
+  background: var(--color-code-bg);
+  color: var(--color-primary-light);
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  padding: 0.55rem 0.65rem;
+}
+
+.base-converter__error {
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+  font-size: 0.85rem;
+  padding: 0.75rem 1rem;
+}
+
+@media (min-width: 700px) {
+  .base-converter__fields {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .base-converter__bit-panels {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .base-converter__custom {
+    grid-template-columns: 2fr 1fr 1fr auto;
+  }
+}
