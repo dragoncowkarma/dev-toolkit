@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import JwtTool from './JwtTool.jsx';
 
@@ -15,7 +15,7 @@ const VALID_PAYLOAD_B64 =
 const VALID_JWT = `${HEADER_B64}.${VALID_PAYLOAD_B64}.test-signature`;
 
 // Payload: {"sub":"user123","exp":1767223800}
-// exp: 2026-01-01 23:30:00 UTC previous day (-30 min relative to FIXED_NOW)
+// exp: 2025-12-31 23:30:00 UTC (-30 min relative to FIXED_NOW)
 const EXPIRED_PAYLOAD_B64 = 'eyJzdWIiOiJ1c2VyMTIzIiwiZXhwIjoxNzY3MjIzODAwfQ';
 const EXPIRED_JWT = `${HEADER_B64}.${EXPIRED_PAYLOAD_B64}.test-signature`;
 
@@ -52,9 +52,11 @@ describe('JwtTool decoding and rendering', () => {
     expect(screen.getByText('Algorithm: HS256')).toBeInTheDocument();
     expect(screen.getByText('test-signature')).toBeInTheDocument();
 
-    const jsonBlocks = screen.getAllByText((_, element) => element?.tagName.toLowerCase() === 'pre');
-    expect(jsonBlocks[0]).toHaveTextContent('"alg": "HS256"');
-    expect(jsonBlocks[1]).toHaveTextContent('"name": "Valid User"');
+    const header = within(screen.getByRole('region', { name: 'Header' }));
+    const payload = within(screen.getByRole('region', { name: 'Payload' }));
+
+    expect(header.getByText(/"alg": "HS256"/)).toBeInTheDocument();
+    expect(payload.getByText(/"name": "Valid User"/)).toBeInTheDocument();
   });
 
   it('displays role="alert" error message and Invalid Format badge for invalid token', () => {
@@ -128,20 +130,20 @@ describe('JwtTool timer behavior', () => {
     expect(screen.getByText('Expired')).toBeInTheDocument();
   });
 
-  it('cleans up interval on unmount without warnings or extra state updates', () => {
+  it('clears the countdown interval on unmount', () => {
+    const clearIntervalSpy = vi.spyOn(globalThis, 'clearInterval');
     const { unmount } = render(<JwtTool />);
 
     fireEvent.change(screen.getByLabelText('JWT token'), {
       target: { value: COUNTDOWN_JWT },
     });
 
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+
     unmount();
 
-    expect(() => {
-      act(() => {
-        vi.advanceTimersByTime(5000);
-      });
-    }).not.toThrow();
+    expect(clearIntervalSpy).toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
 
