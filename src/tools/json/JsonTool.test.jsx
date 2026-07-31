@@ -152,7 +152,8 @@ describe('JsonTool error state', () => {
 });
 
 describe('JsonTool Large Data & Virtualization Regression', () => {
-  it('limits DOM nodes for line numbers and tree rows to under 100 for large JSON (10,000+ lines)', async () => {
+  it('limits DOM nodes for line numbers and tree rows to under 100 ' +
+    'for large JSON (10,000+ lines)', async () => {
     render(<JsonTool />);
 
     const largeJson = '[\n' + Array.from({ length: 10000 }, (_, i) => i).join(',\n') + '\n]';
@@ -173,7 +174,8 @@ describe('JsonTool Large Data & Virtualization Regression', () => {
     expect(treeRows.length).toBeLessThan(100);
   });
 
-  it('maintains tree container DOM identity (no unmount/remount) across Collapse All and Expand All', async () => {
+  it('maintains tree container DOM identity (no unmount/remount) ' +
+    'across Collapse All and Expand All', async () => {
     render(<JsonTool />);
 
     fireEvent.change(getInput(), { target: { value: VALID_JSON_UNFORMATTED } });
