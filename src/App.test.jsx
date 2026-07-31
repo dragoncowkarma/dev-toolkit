@@ -22,22 +22,30 @@ describe('App mounting', () => {
 });
 
 describe('App tool catalog wiring', () => {
-  it('passes the full TOOLS catalog and default tool id to Layout', () => {
+  it('passes the full TOOLS catalog, sorted by id, and the default tool id to Layout', () => {
     render(<App />);
 
     const props = Layout.mock.calls[0][0];
     expect(props.defaultToolId).toBe('base64');
-    expect(props.tools.map((tool) => tool.id)).toEqual([
-      'base64',
-      'json',
-      'jwt',
-      'url',
-      'html-entity',
-      'hash',
-      'uuid',
-      'regex',
-      'diff',
-    ]);
+
+    // Tools are auto-discovered from src/tools/*/meta.js and sorted by id, so
+    // this can't hardcode the full id list without going stale every time a
+    // tool is added — assert the sort invariant plus the known core set.
+    const ids = props.tools.map((tool) => tool.id);
+    expect(ids).toEqual([...ids].sort((a, b) => a.localeCompare(b)));
+    expect(ids).toEqual(
+      expect.arrayContaining([
+        'base64',
+        'diff',
+        'hash',
+        'html-entity',
+        'json',
+        'jwt',
+        'regex',
+        'url',
+        'uuid',
+      ]),
+    );
   });
 
   it('gives every tool a complete definition shape', () => {
