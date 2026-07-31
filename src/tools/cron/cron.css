@@ -1,0 +1,14 @@
+.cron-tool { width: 100%; max-width: 900px; margin: 0 auto; padding: 0 1.25rem 2rem; }
+.cron-tool__intro, .cron-tool__input-group, .cron-tool__description, .cron-tool__schedule { border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-surface); padding: 1rem; }
+.cron-tool__intro p:last-child, .cron-tool__input-group p, .cron-tool__description span { color: var(--color-text-muted); font-size: .85rem; }
+.cron-tool__eyebrow { color: var(--color-scheduler); font-size: .75rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.cron-tool__presets { display: flex; flex-wrap: wrap; gap: .5rem; margin: 1rem 0; }
+.cron-tool button { border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-code-bg); color: var(--color-text); cursor: pointer; font: inherit; font-size: .8rem; font-weight: 600; padding: .5rem .7rem; }
+.cron-tool button:hover { border-color: var(--color-primary); color: var(--color-primary-light); }
+.cron-tool__input-group > div, .cron-tool__description { display: flex; gap: .6rem; align-items: center; margin-top: .4rem; }
+.cron-tool input { min-width: 0; flex: 1; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-code-bg); color: var(--color-primary-light); font: 1rem monospace; padding: .65rem; }
+.cron-tool__description { justify-content: space-between; margin-top: 1rem; }
+.cron-tool__description div { display: flex; flex-direction: column; }
+.cron-tool__schedule { margin-top: 1rem; }.cron-tool__schedule ol { margin: .65rem 0 0; padding-left: 1.4rem; color: var(--color-text-muted); }.cron-tool__schedule li + li { margin-top: .35rem; }
+.cron-tool__error { margin-top: 1rem; border: 1px solid var(--color-error-border); border-radius: var(--radius); background: var(--color-error-bg); color: var(--color-error-light); padding: .8rem; }.cron-tool__status { min-height: 1.4rem; color: var(--color-success); font-size: .8rem; text-align: right; }
+@media (max-width: 520px) { .cron-tool__input-group > div, .cron-tool__description { align-items: stretch; flex-direction: column; } }
