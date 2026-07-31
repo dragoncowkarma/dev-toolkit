@@ -1175,6 +1175,33 @@ def write_prompt_file(prompt: str, role: str, task_ref: str) -> Path:
 # AI Agent Dispatch — builds argv lists (NOT shell strings)
 # ---------------------------------------------------------------------------
 
+# Appended to every dispatched prompt. Observed failure modes this guards
+# against: (1) a `claude -p` process ending its turn on "I'll wait for the
+# test/notification and continue" — there IS no later turn in a single-shot
+# batch invocation, so the process just exits with the task undone; (2) an
+# agent reporting `git push` / `gh pr comment` as done from what it intended
+# rather than a checked exit code or a re-fetched, confirmed GitHub state
+# (e.g. a stale worktree producing a non-fast-forward push that was never
+# actually accepted by origin).
+EXECUTION_INTEGRITY_NOTICE = (
+    "CRITICAL: You are a single, non-interactive batch process in a fully "
+    "autonomous swarm. This invocation has no follow-up turn — nothing will "
+    "resume you later. Do NOT defer any part of your task to a background "
+    "job, a monitor, or a future notification; complete every step yourself, "
+    "synchronously, before you finish responding. Do NOT use planning mode. "
+    "Do NOT request human feedback, approval, or ask questions.\n\n"
+    "Before reporting any step as done, verify it actually happened: after "
+    "`git push`, confirm the command exited 0 — a rejected or non-fast-forward "
+    "push is a push that did NOT happen, and requires a rebase/merge and a "
+    "retry, not a report of success. After posting a PR/Issue comment, "
+    "re-fetch it from GitHub (e.g. `gh pr view <n> --json comments`) and "
+    "confirm your comment is actually present before you finish. Only report "
+    "a step as complete when you have independently confirmed it on GitHub — "
+    "if a step failed or you're unsure, say so explicitly instead of "
+    "describing what you intended to do.\n\n"
+    "Execute your task completely and exit."
+)
+
 # Maps AGENTS.md model names + reasoning level to actual agy CLI model IDs.
 # agy embeds the effort level in the model name itself, e.g.:
 #   "Gemini 3.6 Flash (High)", "Gemini 3.6 Flash (Medium)", "Gemini 3.6 Flash (Low)"
@@ -1364,9 +1391,7 @@ def dispatch_worker(
         f"[Reviewer: ...] tag in the body.\n"
         f"4. The Reviewer AI MUST be different from Worker AI '{worker.ai}'.\n"
         f"5. Document your decisions and verification evidence in the PR description.\n\n"
-        f"CRITICAL: You are running as a background worker in a fully autonomous swarm. "
-        f"Do NOT use planning mode. Do NOT request human feedback, approval, or ask questions. "
-        f"Execute your task completely and exit."
+        f"{EXECUTION_INTEGRITY_NOTICE}"
     )
 
     task_ref = task_ref or f"issue#{issue.number}:initial"
@@ -1448,9 +1473,7 @@ def dispatch_reviewer(
         f"AND clearly describe all required changes. Do NOT include "
         f"[Maintainer: ...] in this case.\n\n"
         f"Follow the review checklist in .agents/rules/review_checklist.md.\n\n"
-        f"CRITICAL: You are running as a background reviewer in a fully autonomous swarm. "
-        f"Do NOT use planning mode. Do NOT request human feedback, approval, or ask questions. "
-        f"Execute your review completely and exit."
+        f"{EXECUTION_INTEGRITY_NOTICE}"
     )
 
     task_ref = task_ref or f"review#{pr.number}-{pr.head_sha or 'initial'}"
@@ -1531,9 +1554,7 @@ def dispatch_maintainer(
         f"7. Do not implement the follow-up Issue yourself. The orchestrator will "
         f"dispatch its Worker in the next polling cycle.\n"
         f"8. The orchestrator will safely remove the merged worktree.\n\n"
-        f"CRITICAL: You are running as a background maintainer in a fully autonomous swarm. "
-        f"Do NOT use planning mode. Do NOT request human feedback, approval, or ask questions. "
-        f"Execute your task completely and exit."
+        f"{EXECUTION_INTEGRITY_NOTICE}"
     )
 
     task_ref = task_ref or f"maintain#{pr.number}"
@@ -1615,16 +1636,19 @@ def dispatch_worker_revision(
         f"Read AGENTS.md and .agents/rules/ for all project rules.\n"
         f"You previously created this PR, but additional modifications were requested. "
         f"Here is the feedback/comments:\n\n{feedback_text}\n\n"
-        f"Work inside this directory. When done:\n"
+        f"Work inside this directory. This worktree may be stale — first fetch and "
+        f"rebase '{branch_name}' onto the latest origin/main yourself before making "
+        f"any changes, so your commit isn't built on an outdated base. When done:\n"
         f"1. Fix the code according to the feedback.\n"
         f"2. Commit your changes with conventional commit messages.\n"
-        f"3. Push the branch '{branch_name}'.\n"
+        f"3. Push the branch '{branch_name}'. If the push is rejected (e.g. "
+        f"non-fast-forward), that is a FAILED push, not a completed one — resolve it "
+        f"(rebase/force-push your own branch as needed) and push again before "
+        f"proceeding.\n"
         f"4. Add a comment to the PR containing EXACTLY the phrase:\n"
         f"   [Worker] Revision complete.\n"
         f"   indicating it is ready for another review.\n\n"
-        f"CRITICAL: You are running as a background worker in a fully autonomous swarm. "
-        f"Do NOT use planning mode. Do NOT request human feedback, approval, or ask questions. "
-        f"Execute your task completely and exit."
+        f"{EXECUTION_INTEGRITY_NOTICE}"
     )
 
     if not task_ref:
