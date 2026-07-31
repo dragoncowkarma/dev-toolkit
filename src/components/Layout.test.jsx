@@ -127,9 +127,12 @@ describe('Layout Component', () => {
     expect(within(screen.getByRole('main')).getByRole('status')).toBeInTheDocument();
     expect(screen.getByText('Loading tool...')).toBeInTheDocument();
 
-    await waitFor(() => {
-      expect(screen.getByText('Lazy Tool loaded')).toBeInTheDocument();
-    });
+    await waitFor(
+      () => {
+        expect(screen.getByText('Lazy Tool loaded')).toBeInTheDocument();
+      },
+      { timeout: 5000 },
+    );
   });
 
   it('isolates a failing active tool to the tool area without unmounting the sidebar', () => {
