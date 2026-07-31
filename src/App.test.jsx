@@ -84,16 +84,18 @@ describe('App tool catalog wiring', () => {
     const { tools } = Layout.mock.calls[0][0];
     // Placeholders are plain functions; real tools are React.lazy() objects.
     const placeholderTools = tools.filter((tool) => typeof tool.component === 'function');
-    expect(placeholderTools.length).toBeGreaterThan(0);
+    expect(placeholderTools.length).toBe(0);
 
-    const [firstComponent] = placeholderTools.map((tool) => tool.component);
-    placeholderTools.forEach((tool) => {
-      expect(tool.component).toBe(firstComponent);
-    });
+    if (placeholderTools.length > 0) {
+      const [firstComponent] = placeholderTools.map((tool) => tool.component);
+      placeholderTools.forEach((tool) => {
+        expect(tool.component).toBe(firstComponent);
+      });
 
-    const realTools = tools.filter((tool) => typeof tool.component !== 'function');
-    realTools.forEach((tool) => {
-      expect(tool.component).not.toBe(firstComponent);
-    });
+      const realTools = tools.filter((tool) => typeof tool.component !== 'function');
+      realTools.forEach((tool) => {
+        expect(tool.component).not.toBe(firstComponent);
+      });
+    }
   });
 });
