@@ -104,6 +104,43 @@
   text-transform: uppercase;
 }
 
+.sidebar__search {
+  margin: 0 0.15rem 0.75rem;
+}
+
+.sidebar__search-input {
+  width: 100%;
+  min-height: 2.35rem;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.55rem;
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+  font-size: 0.8rem;
+  font-family: inherit;
+}
+
+.sidebar__search-input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.sidebar__search-input:focus-visible {
+  border-color: var(--color-primary-light);
+  outline: 2px solid var(--color-primary-light);
+  outline-offset: 1px;
+}
+
+.sidebar__search-input::-webkit-search-cancel-button {
+  cursor: pointer;
+}
+
+.sidebar__empty-state {
+  margin: 0.5rem 0.65rem 0;
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
 .sidebar__nav ul {
   display: grid;
   gap: 0.35rem;
@@ -273,6 +310,10 @@
   .sidebar--collapsed .sidebar__tool-name,
   .sidebar--collapsed .sidebar__github-label,
   .sidebar--collapsed .sidebar__collapse-label {
+    display: none;
+  }
+
+  .sidebar--collapsed .sidebar__search {
     display: none;
   }
 
