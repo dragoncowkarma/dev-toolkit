@@ -15,6 +15,7 @@ Requires: gh CLI authenticated, git, and at least one AI CLI installed.
 import argparse
 import json
 import logging
+import logging.handlers
 import os
 import re
 import shutil
@@ -39,6 +40,28 @@ LOG_DIR = REPO_ROOT / ".agents" / "logs"
 POLL_INTERVAL_SECONDS = 30
 PROCESS_REGISTRY_FILE = REPO_ROOT / ".agents" / ".process_registry.json"
 OPEN_ITEMS_LIMIT = 1000
+
+# The orchestrator can run unattended for days; console scrollback alone loses
+# the top of a long run. Mirror everything to a rotating file so history
+# survives even when nobody is watching the terminal.
+ORCHESTRATOR_LOG_FILE = LOG_DIR / "orchestrator.log"
+ORCHESTRATOR_LOG_MAX_BYTES = 20 * 1024 * 1024
+ORCHESTRATOR_LOG_BACKUP_COUNT = 5
+
+# Per-task log files (one per dispatched AI process) are never rewritten, only
+# added to, so on a long-lived swarm they grow without bound. Sweep files
+# older than this on every startup.
+TASK_LOG_RETENTION_DAYS = 14
+
+# `gh` calls run on the polling thread; a hung network call would silently
+# freeze the entire swarm (no dispatch, no status, no worktree cleanup) with
+# no diagnostic. Bound every invocation so a stall surfaces as a normal error.
+GH_TIMEOUT_SECONDS = 60
+
+# How often (in polling cycles) to reconcile the local `main` checkout against
+# `origin/main`. Every cycle would add a network round-trip to the hot path;
+# this keeps main fresh without dominating the poll interval.
+MAIN_SYNC_EVERY_CYCLES = 5
 
 # A lifecycle event runs at most once successfully, but a crashed process is
 # retried so a transient AI CLI failure cannot deadlock the swarm forever.
@@ -91,6 +114,7 @@ MAINTAINER_PATTERN = re.compile(
     r"\[Maintainer:\s*(?P<ai>\w+)\s*\|\s*Model:\s*(?P<model>[^|]+?)\s*\|\s*Reasoning:\s*(?P<reasoning>[^\]]+?)\]",
     re.IGNORECASE,
 )
+MAINTAINER_BLOCKED_PATTERN = re.compile(r"\[Maintainer Blocked\]", re.IGNORECASE)
 
 # Default reviewer/maintainer rotation
 DEFAULT_ROTATION = {
@@ -102,11 +126,21 @@ DEFAULT_ROTATION = {
 # Prompt temp file directory (cleaned on shutdown)
 PROMPT_DIR = REPO_ROOT / ".agents" / ".prompts"
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+_log_formatter = logging.Formatter(
+    fmt="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
+_console_handler = logging.StreamHandler()
+_console_handler.setFormatter(_log_formatter)
+_file_handler = logging.handlers.RotatingFileHandler(
+    ORCHESTRATOR_LOG_FILE,
+    maxBytes=ORCHESTRATOR_LOG_MAX_BYTES,
+    backupCount=ORCHESTRATOR_LOG_BACKUP_COUNT,
+    encoding="utf-8",
+)
+_file_handler.setFormatter(_log_formatter)
+logging.basicConfig(level=logging.INFO, handlers=[_console_handler, _file_handler])
 log = logging.getLogger("swarm")
 
 # Blocker states already reported, so a stuck PR cannot flood the log on every
@@ -403,8 +437,9 @@ class ProcessTracker:
 
         A running or completed attempt always blocks another dispatch for the
         same lifecycle event. In particular, a successful process without its
-        required GitHub signal is surfaced as a blocker instead of being run
-        again, preserving the one-successful-dispatch invariant.
+        required GitHub signal is surfaced as an unconfirmed-completion blocker
+        instead of being run again, preserving the one-successful-dispatch
+        invariant.
 
         Provider quota failures pause until their cooldown expires and do not
         consume the bounded crash retry budget.
@@ -459,12 +494,7 @@ class ProcessTracker:
         if completed_attempts:
             if completion_confirmed:
                 return False, DISPATCH_COMPLETED
-            if len(crash_attempts) >= MAX_DISPATCH_ATTEMPTS:
-                return False, f"exhausted {len(crash_attempts)} failed attempts"
-            return (
-                True,
-                f"retry after unconfirmed completion ({len(crash_attempts) + 1}/{MAX_DISPATCH_ATTEMPTS})",
-            )
+            return False, DISPATCH_UNCONFIRMED
         if len(crash_attempts) >= MAX_DISPATCH_ATTEMPTS:
             return False, f"exhausted {len(crash_attempts)} failed attempts"
         if deferred:
@@ -666,13 +696,22 @@ def gh(args: list[str], check: bool = True) -> str:
     """Run a gh CLI command and return stdout."""
     cmd = ["gh"] + args
     log.debug("Running: %s", " ".join(cmd))
-    result = subprocess.run(
-        cmd,
-        capture_output=True,
-        text=True,
-        cwd=REPO_ROOT,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            cwd=REPO_ROOT,
+            check=False,
+            timeout=GH_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        log.error(
+            "gh command timed out after %ds: %s", GH_TIMEOUT_SECONDS, " ".join(cmd),
+        )
+        if check:
+            raise
+        return ""
     if result.returncode != 0:
         log.error(
             "gh command failed (exit %d): %s\nstderr: %s",
@@ -799,9 +838,9 @@ def validate_distinct_roles(
 def determine_pr_action(comments: list[dict]) -> tuple[str, Optional[dict], int]:
     """Return the next action from the newest recognized lifecycle signal.
 
-    Recognized signals are Reviewer feedback, Worker revision completion, and
-    Reviewer approval containing a Maintainer assignment. Informational comments
-    do not change state.
+    Recognized signals are Reviewer feedback, Worker revision completion,
+    Reviewer approval containing a Maintainer assignment, and a Maintainer
+    block. Informational comments do not change state.
 
     An approval must carry BOTH a Reviewer and a Maintainer tag. A lone
     Maintainer tag — a human quoting the rules, or another agent naming a
@@ -817,7 +856,11 @@ def determine_pr_action(comments: list[dict]) -> tuple[str, Optional[dict], int]
         maintainer = parse_role(MAINTAINER_PATTERN, body)
         reviewer = parse_role(REVIEWER_PATTERN, body)
 
-        if maintainer and reviewer:
+        if maintainer and MAINTAINER_BLOCKED_PATTERN.search(body):
+            latest_action = "review_after_maintainer_block"
+            latest_comment = comment
+            latest_index = index
+        elif maintainer and reviewer:
             latest_action = "maintain"
             latest_comment = comment
             latest_index = index
@@ -935,11 +978,125 @@ def cleanup_worktree(issue_number: int, branch_name: str):
                 return
             log.info("Removed worktree: %s", worktree_path)
 
-    # Delete branch if it was merged
-    subprocess.run(
-        ["git", "branch", "-d", branch_name],
-        cwd=REPO_ROOT, check=False,
+    # Force-delete the local branch. We already confirmed the PR is merged on
+    # GitHub, so the local merge check (`-d`) is unreliable when the PR was
+    # squash- or rebase-merged (the original commits never appear on HEAD).
+    result = subprocess.run(
+        ["git", "branch", "-D", branch_name],
+        cwd=REPO_ROOT, capture_output=True, text=True, check=False,
     )
+    if result.returncode != 0:
+        stderr = result.stderr.strip()
+        if stderr:
+            log.warning("Failed to delete branch '%s': %s", branch_name, stderr)
+
+
+def sync_main_branch(dry_run: bool = False):
+    """Fast-forward local main from origin, and push local-only commits back.
+
+    Runs periodically so the shared checkout that worktrees branch off of
+    never drifts far from origin/main after Maintainers merge PRs on GitHub.
+    Only ever fast-forwards or pushes — never rewrites history — so a
+    genuinely diverged main is reported and left for a human, not clobbered.
+    """
+    fetch = subprocess.run(
+        ["git", "fetch", "origin", "main"],
+        cwd=REPO_ROOT, capture_output=True, text=True, check=False,
+        timeout=GH_TIMEOUT_SECONDS,
+    )
+    if fetch.returncode != 0:
+        log_blocker(
+            "main-sync:fetch",
+            "Failed to fetch origin/main: %s",
+            fetch.stderr.strip() or "(unknown error)",
+            level=logging.WARNING,
+        )
+        return
+
+    branch = subprocess.run(
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+        cwd=REPO_ROOT, capture_output=True, text=True, check=False,
+    ).stdout.strip()
+    if branch != "main":
+        log.debug("Skipping main sync: repo root is on '%s', not 'main'.", branch)
+        return
+
+    status = subprocess.run(
+        ["git", "status", "--porcelain"],
+        cwd=REPO_ROOT, capture_output=True, text=True, check=False,
+    )
+    if status.stdout.strip():
+        log_blocker(
+            "main-sync:dirty",
+            "Skipping main sync: repo root working tree is dirty.",
+            level=logging.WARNING,
+        )
+        return
+
+    local_sha = subprocess.run(
+        ["git", "rev-parse", "main"],
+        cwd=REPO_ROOT, capture_output=True, text=True, check=False,
+    ).stdout.strip()
+    remote_sha = subprocess.run(
+        ["git", "rev-parse", "origin/main"],
+        cwd=REPO_ROOT, capture_output=True, text=True, check=False,
+    ).stdout.strip()
+    if not local_sha or not remote_sha or local_sha == remote_sha:
+        return
+
+    behind = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", "main", "origin/main"],
+        cwd=REPO_ROOT, check=False,
+    ).returncode == 0
+    ahead = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", "origin/main", "main"],
+        cwd=REPO_ROOT, check=False,
+    ).returncode == 0
+
+    if behind and not ahead:
+        if dry_run:
+            log.info(
+                "[DRY RUN] Would fast-forward local main %s -> origin/main %s",
+                local_sha[:8], remote_sha[:8],
+            )
+            return
+        merge = subprocess.run(
+            ["git", "merge", "--ff-only", "origin/main"],
+            cwd=REPO_ROOT, capture_output=True, text=True, check=False,
+        )
+        if merge.returncode == 0:
+            log.info("🔄 Fast-forwarded local main %s -> %s", local_sha[:8], remote_sha[:8])
+        else:
+            log_blocker(
+                "main-sync:ff",
+                "Failed to fast-forward main: %s",
+                merge.stderr.strip(),
+                level=logging.WARNING,
+            )
+    elif ahead and not behind:
+        if dry_run:
+            log.info("[DRY RUN] Would push local main %s -> origin/main", local_sha[:8])
+            return
+        push = subprocess.run(
+            ["git", "push", "origin", "main"],
+            cwd=REPO_ROOT, capture_output=True, text=True, check=False,
+        )
+        if push.returncode == 0:
+            log.info("⬆️ Pushed local main %s -> origin", local_sha[:8])
+        else:
+            log_blocker(
+                "main-sync:push",
+                "Failed to push main: %s",
+                push.stderr.strip(),
+                level=logging.WARNING,
+            )
+    else:
+        log_blocker(
+            "main-sync:diverged",
+            "Local main and origin/main have diverged; leaving as-is "
+            "(manual resolution required).",
+            level=logging.WARNING,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -968,6 +1125,36 @@ def create_log_files(role: str, task_ref: str, ai_name: str) -> tuple[Path, "IO"
     )
     log_file.flush()
     return log_path, log_file, log_file
+
+
+def cleanup_old_task_logs(retention_days: int = TASK_LOG_RETENTION_DAYS):
+    """Delete per-task AI process log files older than retention_days.
+
+    Each dispatched Worker/Reviewer/Maintainer gets its own timestamped log
+    file that is never reused or truncated, so a long-lived swarm accumulates
+    them without bound. The orchestrator's own rotating log is size-capped
+    separately and is skipped here.
+    """
+    if not LOG_DIR.exists():
+        return
+    cutoff = time.time() - retention_days * 86400
+    removed = 0
+    for path in LOG_DIR.glob("*.log"):
+        if path.name == ORCHESTRATOR_LOG_FILE.name or path.name.startswith(
+            ORCHESTRATOR_LOG_FILE.name + "."
+        ):
+            continue
+        try:
+            if path.stat().st_mtime < cutoff:
+                path.unlink()
+                removed += 1
+        except OSError:
+            continue
+    if removed:
+        log.info(
+            "🧹 Removed %d task log file(s) older than %d day(s).",
+            removed, retention_days,
+        )
 
 
 def write_prompt_file(prompt: str, role: str, task_ref: str) -> Path:
@@ -1031,18 +1218,21 @@ _CLAUDE_EFFORT_MAP: dict[str, str] = {
 }
 
 # Map the human-friendly model names used in AGENTS.md to Codex CLI model IDs.
-# `gpt-5.6` is supported by Codex CLI when it is authenticated with ChatGPT.
-# Do not substitute unknown model names: passing them through gives the operator
-# a truthful CLI error instead of silently dispatching a different model.
+# The ChatGPT-authenticated Codex CLI exposes the reasoning variants, but not
+# the bare `gpt-5.6` ID.  Keep the generic aliases on the configured default
+# variant so a valid Issue/PR tag cannot be turned into a deterministic 400.
 _CODEX_MODEL_MAP: dict[str, str] = {
-    "5.6 (sol, terra, luna)": "gpt-5.6",
-    "5.6":                    "gpt-5.6",
+    "5.6 (sol, terra, luna)": "gpt-5.6-terra",
+    "5.6":                    "gpt-5.6-terra",
+    "5.6 (sol)":              "gpt-5.6-sol",
+    "5.6 (terra)":            "gpt-5.6-terra",
+    "5.6 (luna)":             "gpt-5.6-luna",
     "5.6 sol":                "gpt-5.6-sol",
     "5.6 terra":              "gpt-5.6-terra",
     "5.6 luna":               "gpt-5.6-luna",
-    "5.5":                    "gpt-5.6",
-    "5.4":                    "gpt-5.6",
-    "5.4 mini":               "gpt-5.6",
+    "5.5":                    "gpt-5.6-terra",
+    "5.4":                    "gpt-5.6-terra",
+    "5.4 mini":               "gpt-5.6-terra",
 }
 
 
@@ -1058,7 +1248,8 @@ def build_ai_argv(ai_name: str, model: str, reasoning: str,
     prompt_text = prompt_file.read_text(encoding="utf-8")
 
     if ai_name == "codex":
-        resolved_model = _CODEX_MODEL_MAP.get(model.lower().strip(), model)
+        model_key = model.lower().strip()
+        resolved_model = _CODEX_MODEL_MAP.get(model_key, model)
         if resolved_model != model:
             log.info(
                 "Model alias: '%s' → '%s' (codex)",
@@ -1224,6 +1415,7 @@ def dispatch_reviewer(
     worker: RoleAssignment,
     dry_run: bool = False,
     task_ref: Optional[str] = None,
+    trigger: Optional[str] = None,
 ):
     """Dispatch a Reviewer AI to review a PR."""
     reviewer = pr.reviewer
@@ -1231,9 +1423,18 @@ def dispatch_reviewer(
         log.warning("PR #%d has no Reviewer tag, skipping.", pr.number)
         return
 
+    trigger_context = ""
+    if trigger == "maintainer_block":
+        trigger_context = (
+            "A Maintainer blocked the previously approved PR. Re-evaluate the "
+            "block evidence and either request the required Worker changes or "
+            "issue a new approval.\n\n"
+        )
+
     prompt = (
         f"You are the Reviewer for PR #{pr.number}: {pr.title}.\n"
         f"Read AGENTS.md and .agents/rules/review_checklist.md for review rules.\n"
+        f"{trigger_context}"
         f"Review the PR diff, check code quality, and leave review comments.\n\n"
         f"When your review is complete, you MUST post exactly ONE final summary comment "
         f"on the PR containing your [Reviewer: ...] metadata tag. The tag format is:\n"
@@ -1316,8 +1517,15 @@ def dispatch_maintainer(
         f"   [Maintainer: {maintainer.ai} | Model: {maintainer.model} | "
         f"Reasoning: {maintainer.reasoning}]\n"
         f"   Include the merge rationale and verification evidence.\n"
-        f"5. Analyze the updated project and all open Issues after the merge.\n"
-        f"6. Create exactly ONE non-duplicate follow-up Issue titled "
+        f"   If you cannot merge, do not request or perform a retry. Instead, "
+        f"post the metadata above plus an exact '[Maintainer Blocked]' line, "
+        f"the blocker classification, and reproducible evidence. The "
+        f"orchestrator will return the PR to the assigned Reviewer; do not "
+        f"close the Issue or create a follow-up Issue.\n"
+        f"5. Only after a successful merge, analyze the updated project and all "
+        f"open Issues.\n"
+        f"6. Only after a successful merge, create exactly ONE non-duplicate "
+        f"follow-up Issue titled "
         f"'[Task] <Tool Name> - <Summary>'. Include requirements, acceptance criteria, "
         f"and a valid [Worker: <ai> | Model: <model> | Reasoning: <level>] tag.\n"
         f"7. Do not implement the follow-up Issue yourself. The orchestrator will "
@@ -1670,8 +1878,30 @@ def process_prs(
             )
             continue
 
-        if action == "review":
-            review_version = head_sha or signal_id
+        if action in ("review", "review_after_maintainer_block"):
+            review_trigger = None
+            if action == "review_after_maintainer_block":
+                blocked_maintainer = parse_role(
+                    MAINTAINER_PATTERN,
+                    signal_comment.get("body", ""),
+                )
+                valid, why = validate_distinct_roles(
+                    worker,
+                    reviewer,
+                    blocked_maintainer,
+                )
+                if not valid:
+                    log_blocker(
+                        f"maintainer-block-roles:{pr_num}:{signal_id}",
+                        "PR #%d Maintainer block rejected: %s.",
+                        pr_num,
+                        why,
+                    )
+                    continue
+                review_version = f"maintainer-block-{signal_id}"
+                review_trigger = "maintainer_block"
+            else:
+                review_version = head_sha or signal_id
             task_ref = f"review#{pr_num}-{review_version}"
             allowed, reason = tracker.should_dispatch(
                 task_ref,
@@ -1708,6 +1938,7 @@ def process_prs(
                 worker,
                 dry_run,
                 task_ref=task_ref,
+                trigger=review_trigger,
             )
             continue
 
@@ -1861,6 +2092,7 @@ def run_loop(interval: int, dry_run: bool = False):
 
     initial = True
     idle_cycles = 0
+    cycle_count = 0
     while True:
         try:
             log.info("--- Polling cycle (active: %d) ---", tracker.active_count)
@@ -1868,7 +2100,17 @@ def run_loop(interval: int, dry_run: bool = False):
             # 1. Check status of all running AI processes
             tracker.poll_all()
 
-            # 2. Poll every open item immediately on startup and every interval
+            # 2. Keep local main current so new worktrees branch from a fresh
+            # base. Cheap, but still throttled — no need to hit the network
+            # every single interval.
+            cycle_count += 1
+            if cycle_count == 1 or cycle_count % MAIN_SYNC_EVERY_CYCLES == 0:
+                try:
+                    sync_main_branch(dry_run)
+                except Exception as e:
+                    log.error("Error syncing main branch: %s", e, exc_info=True)
+
+            # 3. Poll every open item immediately on startup and every interval
             process_polling_cycle(dry_run, initial=initial)
             initial = False
 
@@ -1925,9 +2167,11 @@ def main():
         return
 
     reset_process_history()
+    cleanup_old_task_logs()
 
     if args.once:
         log.info("Running single polling cycle...")
+        sync_main_branch(args.dry_run)
         process_polling_cycle(args.dry_run, initial=True)
         tracker.poll_all()
         cleanup_merged_prs(args.dry_run)

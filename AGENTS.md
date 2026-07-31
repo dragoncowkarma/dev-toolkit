@@ -47,7 +47,7 @@ This project uses a **vendor-agnostic autonomous multi-agent swarm** where multi
 - Event identity is based on the Issue, PR head SHA, or triggering comment ID.
 - The same Worker may run again only after new Reviewer feedback.
 - The same Reviewer may run again only after a new Worker commit and
-  `[Worker] Revision complete.` signal.
+  `[Worker] Revision complete.` signal, or after a tagged Maintainer block.
 - Polling or restarting the orchestrator MUST NOT duplicate an event that is
   running or already succeeded.
 - An event whose AI process crashed IS retried, up to 3 attempts, so a single
@@ -133,9 +133,12 @@ git branch -d <branch_name>
 11. Steps 7–10 repeat only when a new signal exists
 12. [If approved] Reviewer adds a distinct [Maintainer: ...] tag
 13. [Orchestrator] Launches Maintainer AI once for that approval comment ID
-14. [Maintainer AI] Verifies CI, merges PR, closes Issue, analyzes the updated
+14. [If blocked] Maintainer posts `[Maintainer Blocked]` with its metadata and
+    evidence; Orchestrator launches the assigned Reviewer once for that block
+    comment ID.
+15. [Maintainer AI] Verifies CI, merges PR, closes Issue, analyzes the updated
     project, and creates exactly one non-duplicate follow-up Issue
-15. [Orchestrator] Safely removes only the clean merged worktree
+16. [Orchestrator] Safely removes only the clean merged worktree
 ```
 
 ---
