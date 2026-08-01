@@ -35,7 +35,9 @@ describe('PasswordTool configuration', () => {
   it('blocks regeneration with no selected character sets', () => {
     render(<PasswordTool />);
 
-    ['Lowercase', 'Uppercase', 'Numbers', 'Symbols'].forEach((label) => fireEvent.click(screen.getByLabelText(label)));
+    ['Lowercase', 'Uppercase', 'Numbers', 'Symbols'].forEach((label) => {
+      fireEvent.click(screen.getByLabelText(label));
+    });
     fireEvent.click(screen.getByRole('button', { name: /regenerate/i }));
 
     expect(screen.getByRole('alert')).toHaveTextContent('Select at least one character set');
@@ -61,7 +63,9 @@ describe('PasswordTool configuration', () => {
     fireEvent.click(screen.getByRole('button', { name: /regenerate/i }));
 
     expect(getResults()).toHaveLength(3);
-    getResults().forEach((row) => expect(row.querySelector('code').textContent).toHaveLength(8));
+    getResults().forEach((row) => {
+      expect(row.querySelector('code').textContent).toHaveLength(8);
+    });
   });
 });
 
@@ -82,7 +86,9 @@ describe('PasswordTool copy feedback', () => {
   });
 
   it('announces clipboard failures in its live region', async () => {
-    Object.assign(navigator, { clipboard: { writeText: vi.fn().mockRejectedValue(new Error('denied')) } });
+    Object.assign(navigator, {
+      clipboard: { writeText: vi.fn().mockRejectedValue(new Error('denied')) },
+    });
     render(<PasswordTool />);
 
     await act(async () => {

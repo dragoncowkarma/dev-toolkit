@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import {
-  CHARACTER_SETS,
   DEFAULT_BATCH_SIZE,
   DEFAULT_OPTIONS,
   DEFAULT_PASSWORD_LENGTH,
