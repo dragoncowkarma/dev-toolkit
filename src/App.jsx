@@ -1,18 +1,29 @@
 import React from 'react';
 import Layout from './components/Layout.jsx';
-// Tools are discovered from disk, not registered by hand. Adding a tool means
-// adding `src/tools/<slug>/meta.js` (+ `<Name>Tool.jsx` once implemented) —
-// nothing here ever needs editing, so parallel tool PRs stop colliding on a
-// shared registration line.
+import SubnetCalculatorTool from './tools/subnet-calculator/SubnetCalculatorTool.jsx';
+// Most tools are discovered from disk. Tools without metadata modules are
+// registered below, preserving the existing registry while allowing central
+// registration where a tool needs it.
 const metaModules = import.meta.glob('./tools/*/meta.js', { eager: true });
 const componentLoaders = import.meta.glob('./tools/*/*Tool.jsx');
+
+const CENTRAL_TOOLS = [
+  {
+    id: 'subnet-calculator',
+    name: 'Subnet Calculator',
+    description: 'Calculate IPv4 CIDR ranges, masks, usable hosts, and address classification.',
+    icon: '◫',
+    category: 'Calculator',
+    component: SubnetCalculatorTool,
+  },
+];
 
 function toolDirOf(globPath) {
   return globPath.split('/')[2];
 }
 
-const TOOLS = Object.entries(metaModules)
-  .map(([path, mod]) => {
+const TOOLS = [
+  ...Object.entries(metaModules).map(([path, mod]) => {
     const dir = toolDirOf(path);
     const componentPath = Object.keys(componentLoaders).find(
       (p) => toolDirOf(p) === dir,
@@ -23,7 +34,9 @@ const TOOLS = Object.entries(metaModules)
         ? React.lazy(componentLoaders[componentPath])
         : ToolPlaceholder,
     };
-  })
+  }),
+  ...CENTRAL_TOOLS,
+]
   .sort((a, b) => a.id.localeCompare(b.id));
 
 function ToolPlaceholder({ tool }) {

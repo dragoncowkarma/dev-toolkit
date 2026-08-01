@@ -6,7 +6,7 @@ import {
   parseCidr,
   parseIPv4,
   prefixFromMask,
-} from './subnetUtils.js';
+} from './subnet.utils.js';
 
 describe('IPv4 and CIDR parsing', () => {
   it('parses valid IPv4 and CIDR input', () => {

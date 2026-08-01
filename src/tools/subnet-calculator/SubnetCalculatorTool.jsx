@@ -5,7 +5,7 @@ import {
   parseCidr,
   parseIPv4,
   prefixFromMask,
-} from './subnetUtils.js';
+} from './subnet.utils.js';
 import './subnet.css';
 
 const DEFAULT_ADDRESS = '192.168.1.10';
