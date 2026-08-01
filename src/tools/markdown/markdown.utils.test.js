@@ -126,6 +126,23 @@ describe('parseMarkdown XSS sanitization', () => {
   });
 });
 
+describe('parseMarkdown literal control-character input', () => {
+  const zeroChar = String.fromCharCode(0);
+  const buildTag = (label) => zeroChar.concat(label, zeroChar);
+
+  it('renders text containing a literal zero byte as plain text', () => {
+    const markdown = buildTag('TAG0');
+    expect(parseMarkdown(markdown)).toBe(`<p>${buildTag('TAG0')}</p>`);
+  });
+
+  it('preserves zero-byte-delimited text placed after a real inline code span', () => {
+    const markdown = '`npm install`'.concat(buildTag('TAG0'));
+    expect(parseMarkdown(markdown)).toBe(
+      '<p><code>npm install</code>'.concat(buildTag('TAG0'), '</p>')
+    );
+  });
+});
+
 describe('parseMarkdown edge cases', () => {
   it('returns an empty string for empty or whitespace-only input', () => {
     expect(parseMarkdown('')).toBe('');
