@@ -128,7 +128,9 @@ export default function PasswordTool({ onBack }) {
               aria-label="Password length"
             />
           </div>
-          <p>Choose between {MIN_PASSWORD_LENGTH} and {MAX_PASSWORD_LENGTH} characters.</p>
+          <p>
+            Choose between {MIN_PASSWORD_LENGTH} and {MAX_PASSWORD_LENGTH} characters.
+          </p>
         </fieldset>
 
         <fieldset className="password-tool__panel">
@@ -165,7 +167,12 @@ export default function PasswordTool({ onBack }) {
             max={MAX_BATCH_SIZE}
             value={batchSize}
             onChange={(event) =>
-              setBoundedValue(setBatchSize, MIN_BATCH_SIZE, MAX_BATCH_SIZE, event.target.value)
+              setBoundedValue(
+                setBatchSize,
+                MIN_BATCH_SIZE,
+                MAX_BATCH_SIZE,
+                event.target.value
+              )
             }
             aria-label="Batch size"
           />
@@ -194,7 +201,11 @@ export default function PasswordTool({ onBack }) {
         </button>
       </div>
 
-      {error && <div className="password-tool__error" role="alert">⚠ {error}</div>}
+      {error && (
+        <div className="password-tool__error" role="alert">
+          ⚠ {error}
+        </div>
+      )}
 
       <ol className="password-tool__results" aria-label="Generated passwords">
         {passwords.map((password, index) => (
@@ -211,7 +222,9 @@ export default function PasswordTool({ onBack }) {
         ))}
       </ol>
 
-      <p className="password-tool__copy-status" role="status" aria-live="polite">{copyStatus}</p>
+      <p className="password-tool__copy-status" role="status" aria-live="polite">
+        {copyStatus}
+      </p>
     </section>
   );
 }

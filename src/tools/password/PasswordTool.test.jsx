@@ -8,7 +8,9 @@ afterEach(() => {
 });
 
 function getResults() {
-  return within(screen.getByRole('list', { name: 'Generated passwords' })).getAllByRole('listitem');
+  return within(
+    screen.getByRole('list', { name: 'Generated passwords' })
+  ).getAllByRole('listitem');
 }
 
 describe('PasswordTool configuration', () => {
@@ -82,7 +84,9 @@ describe('PasswordTool copy feedback', () => {
     });
 
     expect(writeText).toHaveBeenCalledWith(firstPassword);
-    expect(screen.getByRole('status')).toHaveTextContent('Password 1 copied to clipboard.');
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Password 1 copied to clipboard.'
+    );
   });
 
   it('announces clipboard failures in its live region', async () => {

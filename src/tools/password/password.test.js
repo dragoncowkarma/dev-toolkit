@@ -42,11 +42,19 @@ describe('password character pools', () => {
       getRandomValues: deterministicRandom([0, 1, 2, 3, 4, 5]),
     });
 
-    expect([...password].every((character) => allowedCharacters.includes(character))).toBe(true);
+    const containsOnlyAllowedCharacters = [...password].every((character) =>
+      allowedCharacters.includes(character)
+    );
+
+    expect(containsOnlyAllowedCharacters).toBe(true);
   });
 
   it('removes ambiguous characters from the selected pool', () => {
-    const pool = getCharacterPool({ ...DEFAULT_OPTIONS, symbols: false, excludeAmbiguous: true });
+    const pool = getCharacterPool({
+      ...DEFAULT_OPTIONS,
+      symbols: false,
+      excludeAmbiguous: true,
+    });
 
     expect(pool).not.toMatch(/[0O1lI]/);
     expect(pool).toContain('a');
@@ -94,8 +102,12 @@ describe('password boundaries and entropy', () => {
   });
 
   it('rejects invalid lengths, batch sizes, and an empty character selection', () => {
-    expect(() => generatePassword({ length: MIN_PASSWORD_LENGTH - 1 })).toThrow(RangeError);
-    expect(() => generatePassword({ length: MAX_PASSWORD_LENGTH + 1 })).toThrow(RangeError);
+    expect(() => generatePassword({ length: MIN_PASSWORD_LENGTH - 1 })).toThrow(
+      RangeError
+    );
+    expect(() => generatePassword({ length: MAX_PASSWORD_LENGTH + 1 })).toThrow(
+      RangeError
+    );
     expect(() => generatePasswordBatch({ batchSize: 0 })).toThrow(RangeError);
     expect(() =>
       generatePassword({
