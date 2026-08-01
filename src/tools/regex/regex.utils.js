@@ -13,7 +13,9 @@ export const REGEX_PRESETS = [
   {
     id: 'url',
     name: 'URL',
-    pattern: 'https?:\\/\\/(?:www\\.)?[-a-zA-Z0-9@:%._\\+~#=]{1,256}\\.[a-zA-Z0-9()]{1,6}\\b(?:[-a-zA-Z0-9()@:%_\\+.~#?&//=]*)',
+    pattern:
+      'https?:\\/\\/(?:www\\.)?[-a-zA-Z0-9@:%._\\+~#=]{1,256}\\.[a-zA-Z0-9()]{1,6}\\b' +
+      '(?:[-a-zA-Z0-9()@:%_\\+.~#?&//=]*)',
     flags: 'gi',
     description: 'Matches standard HTTP/HTTPS URLs.',
     testText: 'Visit https://google.com or check out http://www.wikipedia.org/wiki/Regular_expression.'
@@ -21,7 +23,9 @@ export const REGEX_PRESETS = [
   {
     id: 'ipv4',
     name: 'IPv4 Address',
-    pattern: '\\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\b',
+    pattern:
+      '\\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}' +
+      '(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\b',
     flags: 'g',
     description: 'Matches IPv4 addresses (0.0.0.0 to 255.255.255.255).',
     testText: 'Local host is 127.0.0.1, external server is 192.168.1.254. Invalid IP: 999.123.45.6.'
@@ -53,7 +57,8 @@ export const REGEX_PRESETS = [
 ];
 
 /**
- * Executes a regular expression on the provided test text and extracts matches and segment ranges for highlighting.
+ * Executes a regular expression on the provided test text and extracts matches
+ * and segment ranges for highlighting.
  *
  * @param {string} pattern - The regular expression pattern string.
  * @param {string} flags - The regex flags (e.g., 'g', 'i', 'm', 's', 'u').

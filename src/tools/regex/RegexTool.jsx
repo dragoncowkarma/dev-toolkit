@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { REGEX_PRESETS, runRegex } from './regex.utils.js';
 import './regex.css';
 
@@ -71,7 +71,8 @@ export default function RegexTool() {
             onChange={handlePresetChange}
             aria-label="Regex Presets"
             title={
-              REGEX_PRESETS.find((p) => p.id === selectedPreset)?.description || 'Select a preset...'
+              REGEX_PRESETS.find((p) => p.id === selectedPreset)?.description ||
+              'Select a preset...'
             }
           >
             <option value="">Select a preset...</option>

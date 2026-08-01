@@ -13,6 +13,8 @@ export default defineConfig({
     environment: 'jsdom',
     globals: false,
     setupFiles: ['./vitest.setup.js'],
+    // Provide headroom for CI environment and filesystem contention across the test suite
+    testTimeout: 10000,
     // .worktrees/* are the swarm orchestrator's isolated task checkouts, each
     // with its own node_modules — scanning them alongside src/ picks up a
     // stale/mismatched React copy and fails with unrelated hook errors.
