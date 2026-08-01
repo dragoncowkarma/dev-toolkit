@@ -9,7 +9,8 @@ describe('CronTool', () => {
     render(<CronTool />);
     const description = screen.getByText('Human-readable schedule').parentElement;
     expect(within(description).getByText('Every 5 minutes')).toBeInTheDocument();
-    expect(within(screen.getByRole('list', { name: 'Next cron executions' })).getAllByRole('listitem')).toHaveLength(5);
+    expect(within(screen.getByRole('list', { name: 'Next cron executions' }))
+      .getAllByRole('listitem')).toHaveLength(5);
   });
 
   it('updates the explanation when a preset is selected', () => {
@@ -29,15 +30,23 @@ describe('CronTool', () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });
     render(<CronTool />);
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Copy expression' })); await Promise.resolve(); });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy expression' }));
+      await Promise.resolve();
+    });
     expect(writeText).toHaveBeenCalledWith('*/5 * * * *');
     expect(screen.getByRole('status')).toHaveTextContent('Copied to clipboard.');
   });
 
   it('reports clipboard failures', async () => {
-    Object.assign(navigator, { clipboard: { writeText: vi.fn().mockRejectedValue(new Error('denied')) } });
+    Object.assign(navigator, {
+      clipboard: { writeText: vi.fn().mockRejectedValue(new Error('denied')) },
+    });
     render(<CronTool />);
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Copy description' })); await Promise.resolve(); });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy description' }));
+      await Promise.resolve();
+    });
     expect(screen.getByRole('status')).toHaveTextContent('Failed to copy');
   });
 });
