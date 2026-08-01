@@ -35,6 +35,7 @@ describe('App tool catalog wiring', () => {
     expect(ids).toEqual(
       expect.arrayContaining([
         'base64',
+        'case-converter',
         'diff',
         'hash',
         'html-entity',
