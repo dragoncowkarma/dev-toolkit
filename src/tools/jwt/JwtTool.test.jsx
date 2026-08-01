@@ -42,26 +42,22 @@ afterEach(() => {
 });
 
 describe('JwtTool decoding and rendering', () => {
-  it(
-    'renders Header, Payload, algorithm, and signature when a valid JWT is entered',
-    () => {
-      render(<JwtTool />);
+  it('renders Header, Payload, algorithm, and signature when a valid JWT is entered', () => {
+    render(<JwtTool />);
 
-      fireEvent.change(screen.getByLabelText('JWT token'), {
-        target: { value: VALID_JWT },
-      });
+    fireEvent.change(screen.getByLabelText('JWT token'), {
+      target: { value: VALID_JWT },
+    });
 
-      expect(screen.getByText('Algorithm: HS256')).toBeInTheDocument();
-      expect(screen.getByText('test-signature')).toBeInTheDocument();
+    expect(screen.getByText('Algorithm: HS256')).toBeInTheDocument();
+    expect(screen.getByText('test-signature')).toBeInTheDocument();
 
-      const header = within(screen.getByRole('region', { name: 'Header' }));
-      const payload = within(screen.getByRole('region', { name: 'Payload' }));
+    const header = within(screen.getByRole('region', { name: 'Header' }));
+    const payload = within(screen.getByRole('region', { name: 'Payload' }));
 
-      expect(header.getByText(/"alg": "HS256"/)).toBeInTheDocument();
-      expect(payload.getByText(/"name": "Valid User"/)).toBeInTheDocument();
-    },
-    15000
-  );
+    expect(header.getByText(/"alg": "HS256"/)).toBeInTheDocument();
+    expect(payload.getByText(/"name": "Valid User"/)).toBeInTheDocument();
+  });
 
   it('displays role="alert" error message and Invalid Format badge for invalid token', () => {
     render(<JwtTool />);

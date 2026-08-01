@@ -225,7 +225,11 @@ export default function TimestampTool() {
             <button
               type="button"
               className="btn copy-btn"
-              aria-label={copiedField === 'unixSeconds' ? 'Unix Timestamp (Seconds) copied' : 'Copy Unix Timestamp (Seconds)'}
+              aria-label={
+                copiedField === 'unixSeconds'
+                  ? 'Unix Timestamp (Seconds) copied'
+                  : 'Copy Unix Timestamp (Seconds)'
+              }
               onClick={() => handleCopy('unixSeconds', result.unixSeconds)}
               disabled={!result.unixSeconds}
             >
@@ -248,7 +252,11 @@ export default function TimestampTool() {
             <button
               type="button"
               className="btn copy-btn"
-              aria-label={copiedField === 'unixMs' ? 'Unix Timestamp (Milliseconds) copied' : 'Copy Unix Timestamp (Milliseconds)'}
+              aria-label={
+                copiedField === 'unixMs'
+                  ? 'Unix Timestamp (Milliseconds) copied'
+                  : 'Copy Unix Timestamp (Milliseconds)'
+              }
               onClick={() => handleCopy('unixMs', result.unixMs)}
               disabled={!result.unixMs}
             >
@@ -271,7 +279,9 @@ export default function TimestampTool() {
             <button
               type="button"
               className="btn copy-btn"
-              aria-label={copiedField === 'relative' ? 'Relative Time copied' : 'Copy Relative Time'}
+              aria-label={
+                copiedField === 'relative' ? 'Relative Time copied' : 'Copy Relative Time'
+              }
               onClick={() => handleCopy('relative', result.relative)}
               disabled={!result.relative}
             >
