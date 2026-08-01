@@ -81,9 +81,10 @@ src/
 
 1. Create a self-contained directory at `src/tools/<slug>/`.
 2. Add `meta.js` with a default export (`id`, `name`, `description`, `icon`, `category`) — this
-   alone makes the tool discoverable and shows it as "Planned" in the sidebar.
+   alone makes the tool discoverable and adds it to the sidebar list; selecting it renders the
+   `ToolPlaceholder`, whose body displays the "Planned" status.
 3. Add `<Name>Tool.jsx` implementing the tool's UI; once present, auto-discovery picks it up and
-   the tool switches from the placeholder to "Completed" automatically.
+   selecting the tool renders that component instead of the placeholder.
 4. Add the utility module, styles, and unit tests alongside the component.
 5. Do **not** edit `src/App.jsx` — tool discovery is fully automatic via `import.meta.glob` and
    adding a registry entry there is neither required nor expected.
