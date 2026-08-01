@@ -100,3 +100,95 @@ describe('App tool catalog wiring', () => {
     }
   });
 });
+
+describe('Tool catalog auto-discovery contract', () => {
+  const metaModules = import.meta.glob('./tools/*/meta.js', { eager: true });
+  const componentLoaders = import.meta.glob('./tools/*/*Tool.jsx');
+
+  const metaEntries = Object.entries(metaModules);
+  const componentPaths = Object.keys(componentLoaders);
+
+  function toolDirOf(path) {
+    return path.split('/')[2];
+  }
+
+  it('discovers tool metadata modules dynamically without a hardcoded list', () => {
+    expect(metaEntries.length).toBeGreaterThan(0);
+  });
+
+  it('asserts each metadata default export has non-empty string fields required by the app', () => {
+    const requiredFields = ['id', 'name', 'description', 'icon', 'category'];
+
+    metaEntries.forEach(([path, mod]) => {
+      const metadata = mod.default;
+      expect(metadata, `Module at ${path} must have a default export`).toBeDefined();
+      expect(typeof metadata, `Default export at ${path} must be an object`).toBe('object');
+
+      requiredFields.forEach((field) => {
+        const val = metadata?.[field];
+        expect(
+          typeof val === 'string' && val.trim().length > 0,
+          `Metadata field "${field}" in ${path} must be a non-empty string`,
+        ).toBe(true);
+      });
+    });
+  });
+
+  it('asserts every metadata id is unique across all tools', () => {
+    const ids = metaEntries.map(([_, mod]) => mod.default?.id);
+    const seen = new Set();
+    const duplicates = ids.filter((id) => id && seen.size === seen.add(id).size);
+    expect(duplicates, `Duplicate tool metadata IDs found: ${duplicates.join(', ')}`).toEqual([]);
+  });
+
+  it('asserts each metadata id matches its owning tool-directory slug', () => {
+    metaEntries.forEach(([path, mod]) => {
+      const dirSlug = toolDirOf(path);
+      const metadataId = mod.default?.id;
+      expect(
+        metadataId,
+        `Metadata ID "${metadataId}" in ${path} must match directory slug "${dirSlug}"`,
+      ).toBe(dirSlug);
+    });
+  });
+
+  it('asserts every metadata directory has exactly one discoverable *Tool.jsx implementation', () => {
+    const componentsByDir = componentPaths.reduce((acc, p) => {
+      const dir = toolDirOf(p);
+      acc[dir] = (acc[dir] || []).concat(p);
+      return acc;
+    }, {});
+
+    metaEntries.forEach(([path]) => {
+      const dirSlug = toolDirOf(path);
+      const components = componentsByDir[dirSlug] || [];
+      expect(
+        components.length,
+        `Tool directory "${dirSlug}" must have exactly one discoverable *Tool.jsx implementation`,
+      ).toBe(1);
+    });
+  });
+
+  it('asserts every discoverable tool component directory has metadata', () => {
+    const metaDirs = new Set(metaEntries.map(([path]) => toolDirOf(path)));
+    const componentDirs = Array.from(
+      new Set(componentPaths.map((path) => toolDirOf(path))),
+    );
+
+    componentDirs.forEach((dirSlug) => {
+      expect(
+        metaDirs.has(dirSlug),
+        `Component directory "${dirSlug}" has a *Tool.jsx implementation but is missing meta.js`,
+      ).toBe(true);
+    });
+  });
+
+  it('verifies the current merged catalog has zero placeholder tools', () => {
+    render(<App />);
+
+    const { tools } = Layout.mock.calls[0][0];
+    const placeholderTools = tools.filter((tool) => typeof tool.component === 'function');
+    expect(placeholderTools.length, 'Catalog must contain zero placeholder tools').toBe(0);
+  });
+});
+
