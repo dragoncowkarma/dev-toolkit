@@ -142,12 +142,12 @@ export function formatUuid(
 
   const withHyphens = hyphens
     ? [
-        compact.slice(0, 8),
-        compact.slice(8, 12),
-        compact.slice(12, 16),
-        compact.slice(16, 20),
-        compact.slice(20),
-      ].join('-')
+      compact.slice(0, 8),
+      compact.slice(8, 12),
+      compact.slice(12, 16),
+      compact.slice(16, 20),
+      compact.slice(20),
+    ].join('-')
     : compact;
   const withCase = uppercase ? withHyphens.toUpperCase() : withHyphens.toLowerCase();
   return braces ? `{${withCase}}` : withCase;

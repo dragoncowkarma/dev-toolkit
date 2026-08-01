@@ -1,4 +1,4 @@
-import React, {
+import {
   memo,
   useCallback,
   useEffect,
@@ -505,7 +505,7 @@ export default function JsonTool({ onBack }) {
     try {
       const formatted = formatJson(SAMPLE_JSON, indent);
       setOutput(formatted);
-    } catch (err) {
+    } catch {
       // should not happen for static sample
     }
   };
@@ -566,7 +566,7 @@ export default function JsonTool({ onBack }) {
   if (!formattedOutputText && input.trim()) {
     try {
       formattedOutputText = formatJson(input, indent);
-    } catch (e) {
+    } catch {
       formattedOutputText = '';
     }
   }

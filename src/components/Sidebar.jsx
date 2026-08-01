@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import './Sidebar.css';
 import { filterTools } from './sidebar.utils.js';
 

@@ -79,7 +79,8 @@ describe('TimestampTool actions', () => {
     });
   });
 
-  it('populates current timestamp in milliseconds when unitMode is forced to Milliseconds', async () => {
+  it('populates current timestamp in milliseconds when unitMode is forced ' +
+    'to Milliseconds', async () => {
     const mockNow = 1785412800000;
     vi.spyOn(Date, 'now').mockReturnValue(mockNow);
 

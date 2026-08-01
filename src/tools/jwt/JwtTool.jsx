@@ -60,8 +60,6 @@ export default function JwtTool() {
     }
   }
 
-  const status = getStatus(result);
-
   return (
     <section className="jwt-tool" aria-label="JWT Decoder Tool">
       <div className="jwt-tool__toolbar">

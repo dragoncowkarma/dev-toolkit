@@ -286,7 +286,8 @@ describe('Layout URL hash routing', () => {
     expect(document.title).toBe('JSON Formatter - Dev Toolkit');
   });
 
-  it('preserves non-default active tool when non-tool anchor like skip link (#main-content) is activated', () => {
+  it('preserves non-default active tool when non-tool anchor like skip link ' +
+    '(#main-content) is activated', () => {
     window.location.hash = '#/json';
     render(<Layout tools={TEST_TOOLS} defaultToolId="base64" />);
 
@@ -302,7 +303,8 @@ describe('Layout URL hash routing', () => {
     expect(document.title).toBe('JSON Formatter - Dev Toolkit');
   });
 
-  it('updates URL hash when selecting a tool from sidebar after a non-tool hash (#main-content) is active', () => {
+  it('updates URL hash when selecting a tool from sidebar after a non-tool hash ' +
+    '(#main-content) is active', () => {
     render(<Layout tools={TEST_TOOLS} defaultToolId="base64" />);
 
     expect(screen.getByTestId('tool-base64')).toBeInTheDocument();
