@@ -135,7 +135,7 @@ describe('Tool catalog auto-discovery contract', () => {
   });
 
   it('asserts every metadata id is unique across all tools', () => {
-    const ids = metaEntries.map(([_, mod]) => mod.default?.id);
+    const ids = metaEntries.map(([, mod]) => mod.default?.id);
     const seen = new Set();
     const duplicates = ids.filter((id) => id && seen.size === seen.add(id).size);
     expect(duplicates, `Duplicate tool metadata IDs found: ${duplicates.join(', ')}`).toEqual([]);
@@ -152,7 +152,7 @@ describe('Tool catalog auto-discovery contract', () => {
     });
   });
 
-  it('asserts every metadata directory has exactly one discoverable *Tool.jsx implementation', () => {
+  it('asserts every metadata directory has exactly one *Tool.jsx implementation', () => {
     const componentsByDir = componentPaths.reduce((acc, p) => {
       const dir = toolDirOf(p);
       acc[dir] = (acc[dir] || []).concat(p);
