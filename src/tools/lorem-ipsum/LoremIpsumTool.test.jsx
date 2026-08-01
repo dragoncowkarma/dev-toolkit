@@ -20,7 +20,7 @@ describe('LoremIpsumTool generation', () => {
     expect(screen.getByText(/characters$/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByLabelText('Include <p> tags'));
-    expect(output).toHaveValue(expect.stringMatching(/^<p>.*<\/p>\n<p>.*<\/p>$/));
+    expect(output).toHaveValue(expect.stringMatching(/^<p>[\s\S]*<\/p>\n<p>[\s\S]*<\/p>$/));
     expect(screen.getByText(/characters$/)).toBeInTheDocument();
   });
 
