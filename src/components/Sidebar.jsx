@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import './Sidebar.css';
-import { filterTools } from './sidebar.utils.js';
+import {
+  ALL_CATEGORY,
+  filterTools,
+  filterToolsByCategory,
+  getToolCategories,
+} from './sidebar.utils.js';
 
 const EDITABLE_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
 
@@ -39,6 +44,7 @@ export default function Sidebar({
   onCloseMobile,
 }) {
   const [query, setQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState(ALL_CATEGORY);
   const searchInputRef = useRef(null);
 
   const sidebarClassName = [
@@ -49,7 +55,8 @@ export default function Sidebar({
     .filter(Boolean)
     .join(' ');
 
-  const filteredTools = filterTools(tools, query);
+  const categories = getToolCategories(tools);
+  const filteredTools = filterToolsByCategory(filterTools(tools, query), selectedCategory);
 
   const handleToolSelect = (toolId) => {
     onSelectTool(toolId);
@@ -122,6 +129,42 @@ export default function Sidebar({
               aria-label="Filter tools"
               title={isCollapsed ? 'Filter tools' : undefined}
             />
+          </div>
+
+          <div
+            className="sidebar__categories"
+            role="group"
+            aria-label="Filter tools by category"
+          >
+            <button
+              className={[
+                'sidebar__category',
+                selectedCategory === ALL_CATEGORY ? 'sidebar__category--active' : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+              type="button"
+              aria-pressed={selectedCategory === ALL_CATEGORY}
+              onClick={() => setSelectedCategory(ALL_CATEGORY)}
+            >
+              {ALL_CATEGORY}
+            </button>
+            {categories.map((category) => (
+              <button
+                key={category}
+                className={[
+                  'sidebar__category',
+                  selectedCategory === category ? 'sidebar__category--active' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+                type="button"
+                aria-pressed={selectedCategory === category}
+                onClick={() => setSelectedCategory(category)}
+              >
+                {category}
+              </button>
+            ))}
           </div>
 
           {filteredTools.length > 0 ? (

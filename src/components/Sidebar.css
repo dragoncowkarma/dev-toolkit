@@ -134,6 +134,45 @@
   cursor: pointer;
 }
 
+.sidebar__categories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0 0.15rem 0.85rem;
+}
+
+.sidebar__category {
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.3rem 0.65rem;
+  transition:
+    background var(--transition),
+    border-color var(--transition),
+    color var(--transition);
+}
+
+.sidebar__category:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.sidebar__category:focus-visible {
+  outline: 2px solid var(--color-primary-light);
+  outline-offset: 1px;
+}
+
+.sidebar__category--active {
+  border-color: rgba(99, 102, 241, 0.4);
+  background: rgba(99, 102, 241, 0.16);
+  color: var(--color-text);
+}
+
 .sidebar__empty-state {
   margin: 0.5rem 0.65rem 0;
   color: var(--color-text-muted);
