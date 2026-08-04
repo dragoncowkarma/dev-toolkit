@@ -41,6 +41,7 @@ describe('App tool catalog wiring', () => {
         'html-entity',
         'json',
         'jwt',
+        'password',
         'regex',
         'url',
         'uuid',
