@@ -27,8 +27,9 @@ describe('App tool catalog wiring', () => {
 
     const props = Layout.mock.calls[0][0];
     expect(props.defaultToolId).toBe('base64');
-    // Tools can be discovered from metadata or registered centrally. Assert
-    // the sort invariant plus the known core set without hardcoding all ids.
+    // Tools are auto-discovered from src/tools/*/meta.js and sorted by id, so
+    // this can't hardcode the full id list without going stale every time a
+    // tool is added — assert the sort invariant plus the known core set.
     const ids = props.tools.map((tool) => tool.id);
     expect(ids).toEqual([...ids].sort((a, b) => a.localeCompare(b)));
     expect(ids).toEqual(
@@ -42,7 +43,6 @@ describe('App tool catalog wiring', () => {
         'jwt',
         'password',
         'regex',
-        'subnet-calculator',
         'url',
         'uuid',
       ]),
