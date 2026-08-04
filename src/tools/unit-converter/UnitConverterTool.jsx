@@ -32,7 +32,7 @@ export default function UnitConverterTool() {
   const result = useMemo(() => {
     if (parsedValue === null) return null;
     return convertUnit(parsedValue, category, fromUnit, toUnit);
-  }, [category, fromUnit, inputValue, parsedValue, toUnit]);
+  }, [category, fromUnit, parsedValue, toUnit]);
 
   const categoryUnits = UNIT_CATEGORIES[category].units;
   const resultText = result === null ? '' : formatConversionResult(result, precision);
