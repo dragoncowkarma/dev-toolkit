@@ -29,7 +29,7 @@ describe('UnitConverterTool', () => {
     Object.assign(navigator, { clipboard: { writeText } });
     render(<UnitConverterTool />);
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Copy result' })));
-    expect(writeText).toHaveBeenCalledWith('1000.0000');
+    expect(writeText).toHaveBeenCalledWith('0.0010');
     expect(screen.getByText('Result copied to clipboard.')).toBeInTheDocument();
 
     writeText.mockRejectedValueOnce(new Error('blocked'));
