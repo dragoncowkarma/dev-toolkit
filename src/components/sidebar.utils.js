@@ -25,9 +25,12 @@ export function filterTools(tools, query) {
 }
 
 /**
- * Sentinel category value meaning "no category filter applied".
+ * Sentinel value meaning "no category filter applied" (i.e. show every
+ * tool). This is `null` rather than a display string so that a real
+ * metadata category (e.g. one literally named "All") can never collide
+ * with the reset control.
  */
-export const ALL_CATEGORY = 'All';
+export const ALL_CATEGORY = null;
 
 /**
  * Derives the sorted list of distinct, non-empty tool categories present in
@@ -51,14 +54,16 @@ export function getToolCategories(tools) {
 
 /**
  * Filters a list of tools down to those matching a selected category.
- * The `ALL_CATEGORY` sentinel (or any falsy value) disables filtering.
+ * The `ALL_CATEGORY` sentinel (or any other falsy value) disables filtering.
+ * Real category names are always non-empty strings, so this never
+ * mistakes an actual category for the "no filter" sentinel.
  *
  * @param {Array<{category: string}>} tools Tools to filter.
- * @param {string} category Selected category, or `ALL_CATEGORY` for no filter.
+ * @param {string|null} category Selected category, or `ALL_CATEGORY` for no filter.
  * @returns {Array<object>} Tools matching the category, preserving original order.
  */
 export function filterToolsByCategory(tools, category) {
-  if (!category || category === ALL_CATEGORY) {
+  if (!category) {
     return tools;
   }
 

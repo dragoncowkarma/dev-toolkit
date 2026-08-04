@@ -44,9 +44,9 @@ function renderSidebar(overrides = {}) {
     ...overrides,
   };
 
-  render(<Sidebar {...props} />);
+  const utils = render(<Sidebar {...props} />);
 
-  return { onSelectTool, onToggleCollapse, onCloseMobile };
+  return { ...utils, onSelectTool, onToggleCollapse, onCloseMobile };
 }
 
 afterEach(() => {
@@ -310,5 +310,67 @@ describe('Sidebar category controls', () => {
       'aria-pressed',
       'true',
     );
+  });
+
+  it('filters to a real "All" category without colliding with the reset control', () => {
+    const tools = [
+      ...buildTools(),
+      {
+        id: 'grep',
+        name: 'Grep',
+        description: 'Search across every tool.',
+        icon: '⌕',
+        category: 'All',
+      },
+    ];
+    renderSidebar({ tools });
+
+    const group = screen.getByRole('group', { name: 'Filter tools by category' });
+    const allButtons = within(group).getAllByRole('button', { name: 'All' });
+    expect(allButtons).toHaveLength(2);
+
+    const [resetButton, categoryAllButton] = allButtons;
+    fireEvent.click(categoryAllButton);
+
+    expect(screen.getByRole('button', { name: /^Grep/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Base64/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /JSON Formatter/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /UUID Generator/ })).not.toBeInTheDocument();
+
+    expect(categoryAllButton).toHaveAttribute('aria-pressed', 'true');
+    expect(resetButton).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('resets to "All" when the selected category is removed from the tools prop', () => {
+    const { rerender } = renderSidebar();
+
+    const group = screen.getByRole('group', { name: 'Filter tools by category' });
+    fireEvent.click(within(group).getByRole('button', { name: 'Encoder' }));
+    expect(within(group).getByRole('button', { name: 'Encoder' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+
+    const toolsWithoutEncoder = buildTools().filter((tool) => tool.category !== 'Encoder');
+    rerender(
+      <Sidebar
+        tools={toolsWithoutEncoder}
+        activeToolId="json"
+        isCollapsed={false}
+        isMobileOpen={false}
+        onSelectTool={vi.fn()}
+        onToggleCollapse={vi.fn()}
+        onCloseMobile={vi.fn()}
+      />,
+    );
+
+    const updatedGroup = screen.getByRole('group', { name: 'Filter tools by category' });
+    const buttons = within(updatedGroup).getAllByRole('button');
+    const pressed = buttons.filter((button) => button.getAttribute('aria-pressed') === 'true');
+
+    expect(pressed).toHaveLength(1);
+    expect(pressed[0]).toHaveTextContent('All');
+    expect(screen.getByRole('button', { name: /JSON Formatter/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /UUID Generator/ })).toBeInTheDocument();
   });
 });

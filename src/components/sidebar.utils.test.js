@@ -99,6 +99,15 @@ describe('getToolCategories', () => {
 
     expect(getToolCategories(tools)).toEqual(['Analyzer', 'Encoder', 'Formatter', 'Generator']);
   });
+
+  it('includes a real category literally named "All"', () => {
+    const tools = [
+      ...buildTools(),
+      { id: 'grep', name: 'Grep', description: 'Search everything.', category: 'All' },
+    ];
+
+    expect(getToolCategories(tools)).toEqual(['All', 'Encoder', 'Formatter', 'Generator']);
+  });
 });
 
 describe('filterToolsByCategory', () => {
@@ -120,5 +129,15 @@ describe('filterToolsByCategory', () => {
   it('returns an empty array when no tool matches the selected category', () => {
     const result = filterToolsByCategory(buildTools(), 'Nonexistent');
     expect(result).toEqual([]);
+  });
+
+  it('filters to a real category literally named "All" instead of disabling the filter', () => {
+    const tools = [
+      ...buildTools(),
+      { id: 'grep', name: 'Grep', description: 'Search everything.', category: 'All' },
+    ];
+
+    const result = filterToolsByCategory(tools, 'All');
+    expect(result.map((tool) => tool.id)).toEqual(['grep']);
   });
 });

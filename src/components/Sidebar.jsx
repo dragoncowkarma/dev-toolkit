@@ -9,6 +9,11 @@ import {
 
 const EDITABLE_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
 
+/** Visible label for the reset control. Kept separate from `ALL_CATEGORY`
+ * (the state sentinel) so a real "All" metadata category never collides
+ * with it. */
+const ALL_CATEGORIES_LABEL = 'All';
+
 function isEditableTarget(target) {
   if (!target) {
     return false;
@@ -56,7 +61,14 @@ export default function Sidebar({
     .join(' ');
 
   const categories = getToolCategories(tools);
-  const filteredTools = filterToolsByCategory(filterTools(tools, query), selectedCategory);
+  // If the selected category disappeared from the tools prop (e.g. no tool
+  // has it anymore), fall back to the reset sentinel so exactly one control
+  // stays active instead of leaving every control unpressed.
+  const effectiveCategory =
+    selectedCategory === ALL_CATEGORY || categories.includes(selectedCategory)
+      ? selectedCategory
+      : ALL_CATEGORY;
+  const filteredTools = filterToolsByCategory(filterTools(tools, query), effectiveCategory);
 
   const handleToolSelect = (toolId) => {
     onSelectTool(toolId);
@@ -139,27 +151,27 @@ export default function Sidebar({
             <button
               className={[
                 'sidebar__category',
-                selectedCategory === ALL_CATEGORY ? 'sidebar__category--active' : '',
+                effectiveCategory === ALL_CATEGORY ? 'sidebar__category--active' : '',
               ]
                 .filter(Boolean)
                 .join(' ')}
               type="button"
-              aria-pressed={selectedCategory === ALL_CATEGORY}
+              aria-pressed={effectiveCategory === ALL_CATEGORY}
               onClick={() => setSelectedCategory(ALL_CATEGORY)}
             >
-              {ALL_CATEGORY}
+              {ALL_CATEGORIES_LABEL}
             </button>
             {categories.map((category) => (
               <button
                 key={category}
                 className={[
                   'sidebar__category',
-                  selectedCategory === category ? 'sidebar__category--active' : '',
+                  effectiveCategory === category ? 'sidebar__category--active' : '',
                 ]
                   .filter(Boolean)
                   .join(' ')}
                 type="button"
-                aria-pressed={selectedCategory === category}
+                aria-pressed={effectiveCategory === category}
                 onClick={() => setSelectedCategory(category)}
               >
                 {category}
