@@ -14,7 +14,7 @@ describe('HttpStatusTool', () => {
       target: { value: 'not found' },
     });
     expect(screen.getByText('404')).toBeInTheDocument();
-    expect(screen.getByRole('status')).toHaveTextContent('1 status code found.');
+    expect(screen.getAllByRole('status')[0]).toHaveTextContent('1 status code found.');
   });
 
   it('filters by class and composes class filtering with search', () => {
