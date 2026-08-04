@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { parseMarkdown } from './markdown.utils.js';
 import './markdown.css';
 
