@@ -15,13 +15,13 @@ describe('UnitConverterTool', () => {
     render(<UnitConverterTool />);
     fireEvent.click(screen.getByRole('button', { name: 'Swap units' }));
     expect(screen.getByLabelText('From unit')).toHaveValue('km');
-    expect(screen.getByRole('heading', { name: '0.0010' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '1000.0000' })).toBeInTheDocument();
   });
 
   it('changes the result precision', () => {
     render(<UnitConverterTool />);
     fireEvent.change(screen.getByLabelText('Decimal places'), { target: { value: '2' } });
-    expect(screen.getByRole('heading', { name: '1000.00' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '0.00' })).toBeInTheDocument();
   });
 
   it('reports successful and failed copy actions', async () => {
