@@ -1,0 +1,150 @@
+.csv-tool {
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+}
+
+.csv-tool__intro,
+.csv-tool__controls,
+.csv-tool__pane {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  padding: 1rem;
+}
+
+.csv-tool__eyebrow {
+  color: var(--color-accent);
+  font-size: .75rem;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.csv-tool__intro p:last-child {
+  color: var(--color-text-muted);
+  font-size: .9rem;
+}
+
+.csv-tool__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .65rem;
+  margin: 1rem 0;
+}
+
+.csv-tool__controls select,
+.csv-tool button {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-code-bg);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: .85rem;
+  padding: .5rem .7rem;
+}
+
+.csv-tool button:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.csv-tool button:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
+.csv-tool__checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  font-size: .85rem;
+}
+
+.csv-tool__checkbox input {
+  accent-color: var(--color-primary);
+}
+
+.csv-tool__panes {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: .75rem;
+}
+
+.csv-tool__pane {
+  min-width: 0;
+}
+
+.csv-tool__pane > label,
+.csv-tool__output-label label {
+  display: block;
+  font-size: .85rem;
+  font-weight: 700;
+}
+
+.csv-tool__output-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+}
+
+.csv-tool textarea {
+  width: 100%;
+  min-height: 300px;
+  resize: vertical;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-code-bg);
+  color: var(--color-primary-light);
+  font: .85rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  margin-top: .55rem;
+  padding: .75rem;
+}
+
+.csv-tool__swap {
+  display: grid;
+  place-items: center;
+  min-width: 2.5rem;
+  min-height: 2.5rem;
+  border-radius: 50% !important;
+  font-size: 1.2rem !important;
+}
+
+.csv-tool__error,
+.csv-tool__status {
+  margin-top: .75rem;
+  border-radius: 8px;
+  padding: .7rem .85rem;
+}
+
+.csv-tool__error {
+  border: 1px solid var(--color-error-border);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+}
+
+.csv-tool__status {
+  color: var(--color-success);
+  text-align: right;
+}
+
+@media (max-width: 720px) {
+  .csv-tool__panes {
+    grid-template-columns: 1fr;
+  }
+
+  .csv-tool__swap-wrap {
+    display: flex;
+    justify-content: center;
+    transform: rotate(90deg);
+  }
+
+  .csv-tool textarea {
+    min-height: 220px;
+  }
+}
