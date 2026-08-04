@@ -16,7 +16,7 @@ A curated collection of essential developer utilities, deployed as a static site
 | HTML Entity | Encode and decode HTML entities, including Unicode characters | ✅ Completed |
 | JSON Formatter | Format, validate, and minify JSON with a clear structured view | ✅ Completed |
 | JWT Decoder | Decode JWT claims and inspect expiration details locally | ✅ Completed |
-| Regex Tester | Test regular expressions and inspect matches as you type | 🚧 Planned |
+| Regex Tester | Test regular expressions and inspect matches as you type | ✅ Completed |
 | Timestamp Converter | Convert Unix timestamps and human-readable dates in real time | ✅ Completed |
 | URL Encoder | Safely encode or decode URL components for requests and redirects | ✅ Completed |
 | UUID Generator | Generate and format random UUID v4 or time-ordered UUID v7 batches | ✅ Completed |
@@ -74,7 +74,7 @@ src/
 └── tools/
     ├── base64/              # Base64 UI, utilities, styles, and tests
     ├── json/                # JSON formatter UI, utilities, styles, and tests
-    └── regex/               # meta.js only — renders as the Planned placeholder
+    └── regex/               # Regex Tester UI, utilities, styles, and tests
 ```
 
 ### Adding a Tool
