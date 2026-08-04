@@ -4,6 +4,9 @@
   "version": "0.0.1",
   "type": "module",
   "description": "All-in-One Developer Tools - A collection of essential developer utilities",
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
