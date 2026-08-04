@@ -25,7 +25,7 @@ export default function LoremIpsumTool({ onBack }) {
   const [copyStatus, setCopyStatus] = useState('');
 
   const output = useMemo(
-    () => generateLoremIpsum({ unit, count, startWithLorem, includeHtml }),
+    () => generateLoremIpsum({ unit, count, startWithLorem, includeHtml, regeneration }),
     [count, includeHtml, regeneration, startWithLorem, unit]
   );
   const statistics = useMemo(() => getLoremIpsumStatistics(output), [output]);

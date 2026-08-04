@@ -60,6 +60,7 @@ function wrapHtml(blocks, includeHtml) {
  * @param {number} [options.count=3] Number of selected units to generate.
  * @param {boolean} [options.startWithLorem=true] Starts the result with standard Lorem Ipsum.
  * @param {boolean} [options.includeHtml=false] Wraps output blocks in paragraph tags.
+ * @param {number} [options.regeneration=0] Variation counter used for regenerated output.
  * @param {() => number} [options.random=Math.random] Random number source for reproducible tests.
  * @returns {string} Generated placeholder text.
  */
@@ -68,6 +69,7 @@ export function generateLoremIpsum({
   count = DEFAULT_LOREM_COUNT,
   startWithLorem = true,
   includeHtml = false,
+  regeneration = 0,
   random = Math.random,
 } = {}) {
   validateCount(count);
@@ -75,25 +77,35 @@ export function generateLoremIpsum({
     throw new RangeError(`Unsupported Lorem Ipsum unit: ${unit}`);
   }
 
+  const regenerationOffset = regeneration % WORDS.length;
+  const randomForGeneration = () => (
+    (random() + regenerationOffset / WORDS.length) % 1
+  );
+
   if (unit === LOREM_UNITS.WORDS) {
     const openingWords = STANDARD_OPENING.replaceAll(/[,.]/g, '').split(' ');
     const generatedWords = Array.from({ length: count }, (_, index) => (
-      startWithLorem && index < openingWords.length ? openingWords[index] : pickWord(random)
+      startWithLorem && index < openingWords.length
+        ? openingWords[index]
+        : pickWord(randomForGeneration)
     ));
     return wrapHtml([generatedWords.join(' ')], includeHtml);
   }
 
   if (unit === LOREM_UNITS.SENTENCES) {
     const sentences = Array.from({ length: count }, (_, index) => (
-      createSentence(random, startWithLorem && index === 0)
+      createSentence(randomForGeneration, startWithLorem && index === 0)
     ));
     return wrapHtml(sentences, includeHtml);
   }
 
   const paragraphs = Array.from({ length: count }, (_, paragraphIndex) => {
-    const sentenceCount = 3 + Math.floor(random() * 3);
+    const sentenceCount = 3 + Math.floor(randomForGeneration() * 3);
     return Array.from({ length: sentenceCount }, (_, sentenceIndex) => (
-      createSentence(random, startWithLorem && paragraphIndex === 0 && sentenceIndex === 0)
+      createSentence(
+        randomForGeneration,
+        startWithLorem && paragraphIndex === 0 && sentenceIndex === 0
+      )
     )).join(' ');
   });
   return wrapHtml(paragraphs, includeHtml);

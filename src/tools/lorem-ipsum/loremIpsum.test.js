@@ -16,7 +16,8 @@ describe('generateLoremIpsum', () => {
     });
 
     expect(output.split('\n\n')).toHaveLength(2);
-    expect(output.startsWith('Lorem ipsum dolor sit amet, consectetur adipiscing elit.')).toBe(true);
+    const standardOpening = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit.';
+    expect(output.startsWith(standardOpening)).toBe(true);
   });
 
   it('generates the requested number of sentences', () => {
