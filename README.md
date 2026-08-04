@@ -10,12 +10,17 @@ A curated collection of essential developer utilities, deployed as a static site
 |------|-------------|--------|
 | Base Converter | Convert numbers between binary, octal, decimal, hexadecimal, and custom bases | ✅ Completed |
 | Base64 | Encode and decode Base64 strings without leaving your browser | ✅ Completed |
+| Case Converter | Convert identifiers between camelCase, snake_case, kebab-case, and more | ✅ Completed |
+| Chmod Calculator | Calculate Unix file permissions in octal and symbolic formats | ✅ Completed |
 | Color Converter | Convert between HEX, RGB, and HSL color formats with real-time preview | ✅ Completed |
+| Cron Parser | Explain cron expressions and preview upcoming execution times | ✅ Completed |
+| CSV Converter | Convert between CSV and JSON with RFC 4180 compliant parsing | ✅ Completed |
 | Text Diff | Compare two text blocks and quickly spot every change | ✅ Completed |
 | Hash Generator | Generate common hashes for content checks and development workflows | ✅ Completed |
 | HTML Entity | Encode and decode HTML entities, including Unicode characters | ✅ Completed |
 | JSON Formatter | Format, validate, and minify JSON with a clear structured view | ✅ Completed |
 | JWT Decoder | Decode JWT claims and inspect expiration details locally | ✅ Completed |
+| Password Generator | Create secure, customizable passwords with cryptographic randomness | ✅ Completed |
 | Regex Tester | Test regular expressions and inspect matches as you type | ✅ Completed |
 | Timestamp Converter | Convert Unix timestamps and human-readable dates in real time | ✅ Completed |
 | URL Encoder | Safely encode or decode URL components for requests and redirects | ✅ Completed |
