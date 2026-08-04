@@ -14,6 +14,12 @@ const EDITABLE_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
  * with it. */
 const ALL_CATEGORIES_LABEL = 'All';
 
+/** Accessible name for the reset control, distinct from `ALL_CATEGORIES_LABEL`
+ * so it never shares an accessible name with a real "All" metadata category —
+ * both would otherwise be indistinguishable to screen-reader/voice-control
+ * users despite performing opposite actions. */
+const ALL_CATEGORIES_ARIA_LABEL = 'All categories';
+
 function isEditableTarget(target) {
   if (!target) {
     return false;
@@ -157,6 +163,7 @@ export default function Sidebar({
                 .join(' ')}
               type="button"
               aria-pressed={effectiveCategory === ALL_CATEGORY}
+              aria-label={ALL_CATEGORIES_ARIA_LABEL}
               onClick={() => setSelectedCategory(ALL_CATEGORY)}
             >
               {ALL_CATEGORIES_LABEL}

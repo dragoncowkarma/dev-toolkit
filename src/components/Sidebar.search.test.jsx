@@ -201,7 +201,7 @@ describe('Sidebar category controls', () => {
     renderSidebar();
 
     const group = screen.getByRole('group', { name: 'Filter tools by category' });
-    expect(within(group).getByRole('button', { name: 'All' })).toBeInTheDocument();
+    expect(within(group).getByRole('button', { name: 'All categories' })).toBeInTheDocument();
     expect(within(group).getByRole('button', { name: 'Encoder' })).toBeInTheDocument();
     expect(within(group).getByRole('button', { name: 'Formatter' })).toBeInTheDocument();
     expect(within(group).getByRole('button', { name: 'Generator' })).toBeInTheDocument();
@@ -247,7 +247,7 @@ describe('Sidebar category controls', () => {
 
     const encoderButton = within(group).getByRole('button', { name: 'Encoder' });
     expect(encoderButton).toHaveAttribute('aria-pressed', 'true');
-    expect(within(group).getByRole('button', { name: 'All' })).toHaveAttribute(
+    expect(within(group).getByRole('button', { name: 'All categories' })).toHaveAttribute(
       'aria-pressed',
       'false',
     );
@@ -301,12 +301,12 @@ describe('Sidebar category controls', () => {
     fireEvent.click(within(group).getByRole('button', { name: 'Encoder' }));
     expect(screen.queryByRole('button', { name: /JSON Formatter/ })).not.toBeInTheDocument();
 
-    fireEvent.click(within(group).getByRole('button', { name: 'All' }));
+    fireEvent.click(within(group).getByRole('button', { name: 'All categories' }));
 
     expect(screen.getByRole('button', { name: /^Base64/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /JSON Formatter/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /UUID Generator/ })).toBeInTheDocument();
-    expect(within(group).getByRole('button', { name: 'All' })).toHaveAttribute(
+    expect(within(group).getByRole('button', { name: 'All categories' })).toHaveAttribute(
       'aria-pressed',
       'true',
     );
@@ -326,10 +326,10 @@ describe('Sidebar category controls', () => {
     renderSidebar({ tools });
 
     const group = screen.getByRole('group', { name: 'Filter tools by category' });
-    const allButtons = within(group).getAllByRole('button', { name: 'All' });
-    expect(allButtons).toHaveLength(2);
+    const resetButton = within(group).getByRole('button', { name: 'All categories' });
+    const categoryAllButton = within(group).getByRole('button', { name: 'All' });
+    expect(resetButton).not.toBe(categoryAllButton);
 
-    const [resetButton, categoryAllButton] = allButtons;
     fireEvent.click(categoryAllButton);
 
     expect(screen.getByRole('button', { name: /^Grep/ })).toBeInTheDocument();
