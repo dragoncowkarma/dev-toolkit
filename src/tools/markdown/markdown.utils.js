@@ -1,0 +1,204 @@
+const HTML_ESCAPE_MAP = {
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;',
+};
+
+const UNSAFE_URL_SCHEME = /^(javascript|data|vbscript):/i;
+
+const FENCE_OPEN_PATTERN = /^```(\w*)\s*$/;
+const FENCE_CLOSE_PATTERN = /^```\s*$/;
+const HR_PATTERN = /^(-{3,}|\*{3,}|_{3,})$/;
+const HEADER_PATTERN = /^(#{1,6})\s+(.*)$/;
+const BLOCKQUOTE_PATTERN = /^>\s?/;
+const UNORDERED_ITEM_PATTERN = /^[-*+]\s+/;
+const ORDERED_ITEM_PATTERN = /^\d+\.\s+/;
+
+/**
+ * Escapes HTML-significant characters so raw markup (including `<script>`
+ * tags) in user input is rendered as inert text instead of executed.
+ * @param {string} text Raw, untrusted text.
+ * @returns {string} Text with `& < > " '` replaced by their HTML entities.
+ */
+function escapeHtml(text) {
+  return text.replace(/[&<>"']/g, (char) => HTML_ESCAPE_MAP[char]);
+}
+
+/**
+ * Rejects link targets using dangerous URL schemes (e.g. `javascript:`).
+ * @param {string} rawUrl Link target extracted from `[text](url)` syntax.
+ * @returns {string} The original URL when safe, otherwise `#`.
+ */
+function sanitizeUrl(rawUrl) {
+  const normalized = rawUrl.replace(/\s+/g, '');
+  return UNSAFE_URL_SCHEME.test(normalized) ? '#' : rawUrl.trim();
+}
+
+/**
+ * Applies non-code inline markdown formatting (links, emphasis) to a text
+ * segment that is guaranteed not to contain a code span.
+ * @param {string} text Escaped text segment outside of any code span.
+ * @returns {string} HTML with inline formatting tags applied.
+ */
+function applyEmphasis(text) {
+  let result = text.replace(
+    /\[([^\]]+)\]\(([^)\s]+)\)/g,
+    (_match, linkText, url) =>
+      `<a href="${sanitizeUrl(url)}" target="_blank" rel="noopener noreferrer">${linkText}</a>`
+  );
+
+  result = result.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  result = result.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+  result = result.replace(/~~([^~]+)~~/g, '<del>$1</del>');
+  result = result.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+  result = result.replace(/(?<!\w)_([^_]+)_(?!\w)/g, '<em>$1</em>');
+
+  return result;
+}
+
+/**
+ * Escapes a raw line/paragraph and applies inline markdown formatting
+ * (code, links, emphasis) to it.
+ *
+ * Code spans are extracted into segments up front and rendered verbatim, so
+ * their content is never re-scanned by the emphasis/link patterns and can
+ * never be confused with parser-internal state (unlike a placeholder/marker
+ * approach, which user input containing that same marker text could collide
+ * with).
+ * @param {string} text Raw, untrusted text without block-level markup.
+ * @returns {string} HTML with inline formatting tags applied.
+ */
+function parseInline(text) {
+  const escaped = escapeHtml(text);
+  const codeSpanPattern = /`([^`]+)`/g;
+  const htmlParts = [];
+  let lastIndex = 0;
+  let match = codeSpanPattern.exec(escaped);
+
+  while (match !== null) {
+    htmlParts.push(applyEmphasis(escaped.slice(lastIndex, match.index)));
+    htmlParts.push(`<code>${match[1]}</code>`);
+    lastIndex = codeSpanPattern.lastIndex;
+    match = codeSpanPattern.exec(escaped);
+  }
+  htmlParts.push(applyEmphasis(escaped.slice(lastIndex)));
+
+  return htmlParts.join('');
+}
+
+/**
+ * Converts a markdown source string into an HTML string.
+ *
+ * Supports headers (`#` through `######`), emphasis (`**bold**`, `*italic*`,
+ * `~~strikethrough~~`), fenced and inline code, ordered/unordered lists,
+ * links, blockquotes, and horizontal rules. Every text segment is
+ * HTML-escaped before markdown syntax is applied to it, so raw HTML
+ * (including `<script>` tags) in the source is always rendered as inert
+ * text rather than executed.
+ *
+ * @param {string} markdownText Raw markdown source text.
+ * @returns {string} The rendered HTML string.
+ * @throws {TypeError} When `markdownText` is not a string.
+ */
+export function parseMarkdown(markdownText) {
+  if (typeof markdownText !== 'string') {
+    throw new TypeError('Input must be a string.');
+  }
+  if (!markdownText.trim()) {
+    return '';
+  }
+
+  const lines = markdownText.replace(/\r\n/g, '\n').split('\n');
+  const blocks = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    const fenceMatch = line.match(FENCE_OPEN_PATTERN);
+    if (fenceMatch) {
+      const language = fenceMatch[1];
+      const codeLines = [];
+      i += 1;
+      while (i < lines.length && !FENCE_CLOSE_PATTERN.test(lines[i])) {
+        codeLines.push(lines[i]);
+        i += 1;
+      }
+      i += 1;
+      const languageAttr = language ? ` class="language-${language}"` : '';
+      blocks.push(
+        `<pre><code${languageAttr}>${escapeHtml(codeLines.join('\n'))}</code></pre>`
+      );
+      continue;
+    }
+
+    if (line.trim() === '') {
+      i += 1;
+      continue;
+    }
+
+    if (HR_PATTERN.test(line.trim())) {
+      blocks.push('<hr />');
+      i += 1;
+      continue;
+    }
+
+    const headerMatch = line.match(HEADER_PATTERN);
+    if (headerMatch) {
+      const level = headerMatch[1].length;
+      blocks.push(`<h${level}>${parseInline(headerMatch[2].trim())}</h${level}>`);
+      i += 1;
+      continue;
+    }
+
+    if (BLOCKQUOTE_PATTERN.test(line)) {
+      const quoteLines = [];
+      while (i < lines.length && BLOCKQUOTE_PATTERN.test(lines[i])) {
+        quoteLines.push(lines[i].replace(BLOCKQUOTE_PATTERN, ''));
+        i += 1;
+      }
+      blocks.push(`<blockquote>${parseInline(quoteLines.join(' '))}</blockquote>`);
+      continue;
+    }
+
+    if (UNORDERED_ITEM_PATTERN.test(line)) {
+      const items = [];
+      while (i < lines.length && UNORDERED_ITEM_PATTERN.test(lines[i])) {
+        items.push(`<li>${parseInline(lines[i].replace(UNORDERED_ITEM_PATTERN, ''))}</li>`);
+        i += 1;
+      }
+      blocks.push(`<ul>${items.join('')}</ul>`);
+      continue;
+    }
+
+    if (ORDERED_ITEM_PATTERN.test(line)) {
+      const items = [];
+      while (i < lines.length && ORDERED_ITEM_PATTERN.test(lines[i])) {
+        items.push(`<li>${parseInline(lines[i].replace(ORDERED_ITEM_PATTERN, ''))}</li>`);
+        i += 1;
+      }
+      blocks.push(`<ol>${items.join('')}</ol>`);
+      continue;
+    }
+
+    const paragraphLines = [];
+    while (
+      i < lines.length &&
+      lines[i].trim() !== '' &&
+      !FENCE_OPEN_PATTERN.test(lines[i]) &&
+      !HR_PATTERN.test(lines[i].trim()) &&
+      !HEADER_PATTERN.test(lines[i]) &&
+      !BLOCKQUOTE_PATTERN.test(lines[i]) &&
+      !UNORDERED_ITEM_PATTERN.test(lines[i]) &&
+      !ORDERED_ITEM_PATTERN.test(lines[i])
+    ) {
+      paragraphLines.push(lines[i]);
+      i += 1;
+    }
+    blocks.push(`<p>${parseInline(paragraphLines.join(' '))}</p>`);
+  }
+
+  return blocks.join('\n');
+}
