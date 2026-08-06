@@ -158,7 +158,6 @@ export default function JsonSchemaTool() {
               className="json-schema__select"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              aria-label="JSON Schema Draft Standard"
             >
               <option value="2020-12">Draft 2020-12</option>
               <option value="draft-07">Draft 07</option>
@@ -174,7 +173,6 @@ export default function JsonSchemaTool() {
               className="json-schema__select"
               value={requiredMode}
               onChange={(e) => setRequiredMode(e.target.value)}
-              aria-label="Required Properties Mode"
             >
               <option value="all">Required (All Properties)</option>
               <option value="none">Optional (Omit Required)</option>
@@ -192,7 +190,6 @@ export default function JsonSchemaTool() {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g. User Profile"
-              aria-label="Root Schema Title"
             />
           </div>
 
@@ -203,7 +200,6 @@ export default function JsonSchemaTool() {
               className="json-schema__checkbox"
               checked={inferIntegers}
               onChange={(e) => setInferIntegers(e.target.checked)}
-              aria-label="Infer integer types"
             />
             Infer integer numbers
           </label>
@@ -215,7 +211,6 @@ export default function JsonSchemaTool() {
               className="json-schema__checkbox"
               checked={includeExamples}
               onChange={(e) => setIncludeExamples(e.target.checked)}
-              aria-label="Include examples in leaf schemas"
             />
             Include leaf examples
           </label>
@@ -244,7 +239,6 @@ export default function JsonSchemaTool() {
             value={inputJson}
             onChange={(e) => setInputJson(e.target.value)}
             placeholder="Paste or type sample JSON payload..."
-            aria-label="Sample JSON Input"
             spellCheck="false"
           />
         </div>
@@ -252,7 +246,7 @@ export default function JsonSchemaTool() {
         <div className="json-schema__pane">
           <div className="json-schema__pane-header">
             <label className="json-schema__pane-title" htmlFor={schemaOutputId}>
-              Generated JSON Schema
+              Generated JSON Schema Output
             </label>
           </div>
           <textarea
@@ -261,7 +255,6 @@ export default function JsonSchemaTool() {
             value={outputSchemaText}
             readOnly
             placeholder="Generated JSON Schema will appear here..."
-            aria-label="Generated JSON Schema Output"
             spellCheck="false"
           />
         </div>
