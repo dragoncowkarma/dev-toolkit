@@ -1,6 +1,11 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import JsonSchemaTool from './JsonSchemaTool.jsx';
+
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 describe('JsonSchemaTool Component', () => {
   it('renders initial state with sample JSON and generated schema', () => {
@@ -29,7 +34,7 @@ describe('JsonSchemaTool Component', () => {
   it('updates draft schema URI when draft option changes', () => {
     render(<JsonSchemaTool />);
 
-    const draftSelect = screen.getByLabelText('JSON Schema Draft Standard');
+    const draftSelect = screen.getByLabelText('Schema Draft');
     const outputArea = screen.getByLabelText('Generated JSON Schema Output');
 
     fireEvent.change(draftSelect, { target: { value: 'draft-07' } });
@@ -40,7 +45,7 @@ describe('JsonSchemaTool Component', () => {
   it('toggles required properties when requiredMode changes', () => {
     render(<JsonSchemaTool />);
 
-    const requiredSelect = screen.getByLabelText('Required Properties Mode');
+    const requiredSelect = screen.getByLabelText('Required Mode');
     const outputArea = screen.getByLabelText('Generated JSON Schema Output');
 
     expect(outputArea.value).toContain('"required"');
@@ -54,7 +59,7 @@ describe('JsonSchemaTool Component', () => {
     render(<JsonSchemaTool />);
 
     const inputArea = screen.getByLabelText('Sample JSON Input');
-    const inferIntegersCheck = screen.getByLabelText('Infer integer types');
+    const inferIntegersCheck = screen.getByLabelText('Infer integer numbers');
     const outputArea = screen.getByLabelText('Generated JSON Schema Output');
 
     fireEvent.change(inputArea, { target: { value: '{"age": 25}' } });
@@ -68,7 +73,7 @@ describe('JsonSchemaTool Component', () => {
     render(<JsonSchemaTool />);
 
     const inputArea = screen.getByLabelText('Sample JSON Input');
-    const includeExamplesCheck = screen.getByLabelText('Include examples in leaf schemas');
+    const includeExamplesCheck = screen.getByLabelText('Include leaf examples');
     const outputArea = screen.getByLabelText('Generated JSON Schema Output');
 
     fireEvent.change(inputArea, { target: { value: '{"city": "Seoul"}' } });
@@ -82,7 +87,7 @@ describe('JsonSchemaTool Component', () => {
   it('adds title to schema when title input is provided', () => {
     render(<JsonSchemaTool />);
 
-    const titleInput = screen.getByLabelText('Root Schema Title');
+    const titleInput = screen.getByLabelText('Schema Title (Optional)');
     const outputArea = screen.getByLabelText('Generated JSON Schema Output');
 
     fireEvent.change(titleInput, { target: { value: 'User Profile' } });
