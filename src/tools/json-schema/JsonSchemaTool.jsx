@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { generateSchema, formatSchema, getSchemaStats } from './jsonSchema.utils.js';
 import './jsonSchema.css';
 
@@ -63,13 +63,13 @@ export default function JsonSchemaTool() {
     [inputJson, options]
   );
 
-  const currentValidSchema = useMemo(() => {
+  useEffect(() => {
     if (inferenceResult.schema) {
       setLastValidSchema(inferenceResult.schema);
-      return inferenceResult.schema;
     }
-    return lastValidSchema;
-  }, [inferenceResult.schema, lastValidSchema]);
+  }, [inferenceResult.schema]);
+
+  const currentValidSchema = inferenceResult.schema || lastValidSchema;
 
   const outputSchemaText = useMemo(() => {
     if (!currentValidSchema) return '';
