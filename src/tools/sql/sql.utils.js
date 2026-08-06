@@ -483,17 +483,32 @@ export function minifySql(sql) {
   const tokens = tokenize(sql);
   let result = '';
   let prevWasSpace = true;
+  // Set when a comment is dropped with no adjacent whitespace, so the
+  // tokens on either side of it don't concatenate into one.
+  let pendingBoundary = false;
 
   for (const token of tokens) {
-    if (token.type === 'comment_line' || token.type === 'comment_block') continue;
+    if (token.type === 'comment_line' || token.type === 'comment_block') {
+      if (!prevWasSpace) {
+        pendingBoundary = true;
+      }
+      continue;
+    }
 
     if (token.type === 'whitespace') {
       if (!prevWasSpace) {
         result += ' ';
         prevWasSpace = true;
       }
+      pendingBoundary = false;
       continue;
     }
+
+    if (pendingBoundary && !prevWasSpace) {
+      result += ' ';
+      prevWasSpace = true;
+    }
+    pendingBoundary = false;
 
     result += token.value;
     prevWasSpace = false;

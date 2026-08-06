@@ -167,6 +167,21 @@ describe('minifySql', () => {
     expect(minifySql(input)).toBe('SELECT id, name FROM users');
   });
 
+  it('inserts a separator when a block comment has no surrounding whitespace', () => {
+    expect(minifySql('SELECT 1/*comment*/FROM users')).toBe('SELECT 1 FROM users');
+    expect(minifySql('SELECT/*comment*/FROM users')).toBe('SELECT FROM users');
+  });
+
+  it('inserts a separator when a line comment has no surrounding whitespace', () => {
+    expect(minifySql('SELECT 1--comment\nFROM users')).toBe('SELECT 1 FROM users');
+  });
+
+  it('does not add an extra space when a comment already has surrounding whitespace', () => {
+    expect(minifySql('SELECT 1 /*comment*/ FROM users')).toBe('SELECT 1 FROM users');
+    expect(minifySql('SELECT 1/*comment*/ FROM users')).toBe('SELECT 1 FROM users');
+    expect(minifySql('SELECT 1 /*comment*/FROM users')).toBe('SELECT 1 FROM users');
+  });
+
   it('returns an empty string for blank input', () => {
     expect(minifySql('')).toBe('');
     expect(minifySql('   \n\t')).toBe('');
