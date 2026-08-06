@@ -153,3 +153,21 @@ describe('xml.utils roundtrip preservation', () => {
     );
   });
 });
+
+describe('xml.utils performance scaling', () => {
+  it('parses large XML document with 8,000+ elements in linear time', () => {
+    const items = [];
+    for (let i = 0; i < 8000; i++) {
+      items.push(`<item id="${i}">content ${i}</item>`);
+    }
+    const xml = `<root>\n${items.join('\n')}\n</root>`;
+
+    const start = performance.now();
+    const res = validateXml(xml);
+    const elapsed = performance.now() - start;
+
+    expect(res.valid).toBe(true);
+    expect(elapsed).toBeLessThan(1000);
+  });
+});
+

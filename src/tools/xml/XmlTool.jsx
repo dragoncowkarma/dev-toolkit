@@ -239,14 +239,15 @@ export default function XmlTool({ onBack }) {
     setAriaLiveMessage('Downloaded XML file');
   };
 
-  let formattedOutputText = output;
-  if (!formattedOutputText && input.trim()) {
+  const formattedOutputText = useMemo(() => {
+    if (output) return output;
+    if (!input.trim()) return '';
     try {
-      formattedOutputText = formatXml(input, indent);
+      return formatXml(input, indent);
     } catch {
-      formattedOutputText = '';
+      return '';
     }
-  }
+  }, [input, output, indent]);
 
   return (
     <section className="xml-tool-container" aria-label="XML Formatter & Validator Tool">

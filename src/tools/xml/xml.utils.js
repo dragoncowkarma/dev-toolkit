@@ -3,17 +3,39 @@
  * Built with zero external dependencies (no DOMParser/XMLSerializer).
  */
 
-function getLineCol(input, index) {
-  let line = 1;
-  let column = 1;
-  for (let i = 0; i < index && i < input.length; i++) {
+function buildLineStarts(input) {
+  const lineStarts = [0];
+  const len = input.length;
+  for (let i = 0; i < len; i++) {
     if (input[i] === '\n') {
-      line++;
-      column = 1;
-    } else {
-      column++;
+      lineStarts.push(i + 1);
     }
   }
+  return lineStarts;
+}
+
+function getLineCol(inputOrLineStarts, index) {
+  const lineStarts = Array.isArray(inputOrLineStarts)
+    ? inputOrLineStarts
+    : buildLineStarts(inputOrLineStarts || '');
+
+  if (index <= 0) return { line: 1, column: 1 };
+  let low = 0;
+  let high = lineStarts.length - 1;
+  let lineIdx = 0;
+
+  while (low <= high) {
+    const mid = (low + high) >> 1;
+    if (lineStarts[mid] <= index) {
+      lineIdx = mid;
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+
+  const line = lineIdx + 1;
+  const column = index - lineStarts[lineIdx] + 1;
   return { line, column };
 }
 
@@ -52,6 +74,7 @@ export function parseXml(input) {
     };
   }
 
+  const lineStarts = buildLineStarts(input);
   const nodes = [];
   const tagStack = [];
   let pos = 0;
@@ -61,7 +84,7 @@ export function parseXml(input) {
   while (pos < len) {
     if (input[pos] === '<') {
       const markPos = pos;
-      const { line, column } = getLineCol(input, pos);
+      const { line, column } = getLineCol(lineStarts, pos);
 
       // Processing Instruction: <?
       if (input.startsWith('<?', pos)) {
@@ -214,7 +237,7 @@ export function parseXml(input) {
         while (pos < len && isWhitespace(input[pos])) pos++;
 
         if (pos >= len || input[pos] !== '>') {
-          const closeLc = getLineCol(input, pos);
+          const closeLc = getLineCol(lineStarts, pos);
           const snippet = makeSnippet(input, closeLc.line, closeLc.column);
           return {
             nodes: [],
@@ -292,7 +315,7 @@ export function parseXml(input) {
         if (pos >= len) break;
         if (input[pos] === '>' || input.startsWith('/>', pos)) break;
 
-        const attrLc = getLineCol(input, pos);
+        const attrLc = getLineCol(lineStarts, pos);
 
         if (!isNameStartChar(input[pos])) {
           const snippet = makeSnippet(input, attrLc.line, attrLc.column);
@@ -370,7 +393,7 @@ export function parseXml(input) {
         const closingQuotePos = input.indexOf(quote, pos);
 
         if (closingQuotePos === -1) {
-          const qLc = getLineCol(input, pos);
+          const qLc = getLineCol(lineStarts, pos);
           const snippet = makeSnippet(input, qLc.line, qLc.column);
           parseError = {
             message: `Unclosed attribute value for '${attrName}' in tag '<${tagName}>' ` +
@@ -471,7 +494,7 @@ export function parseXml(input) {
     if (textVal.length > 0) {
       if (tagStack.length === 0) {
         if (textVal.trim().length > 0) {
-          const textLc = getLineCol(input, pos - textVal.length);
+          const textLc = getLineCol(lineStarts, pos - textVal.length);
           const snippet = makeSnippet(input, textLc.line, textLc.column);
           return {
             nodes: [],
