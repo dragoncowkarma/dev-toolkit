@@ -1,0 +1,156 @@
+.subnet-calculator {
+  display: flex;
+  width: 100%;
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.subnet-calculator__intro,
+.subnet-calculator__inputs,
+.subnet-calculator__results,
+.subnet-calculator__details {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  padding: 1rem;
+}
+
+.subnet-calculator__intro h2 {
+  font-size: 1.25rem;
+}
+
+.subnet-calculator__intro > p:last-child,
+.subnet-calculator__result > span,
+.subnet-calculator__details span,
+.subnet-calculator__presets > span {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.subnet-calculator__eyebrow {
+  color: var(--color-primary-light);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.subnet-calculator__inputs,
+.subnet-calculator__results,
+.subnet-calculator__details {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+}
+
+.subnet-calculator__input {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+}
+
+.subnet-calculator input {
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: calc(var(--radius) - 5px);
+  background: var(--color-code-bg);
+  color: var(--color-text);
+  font: inherit;
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  padding: 0.6rem 0.7rem;
+}
+
+.subnet-calculator input:focus {
+  outline: 0;
+  border-color: var(--color-primary);
+}
+
+.subnet-calculator__presets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.subnet-calculator button {
+  border: 1px solid var(--color-border);
+  border-radius: calc(var(--radius) - 5px);
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 0.45rem 0.65rem;
+}
+
+.subnet-calculator button:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.subnet-calculator__error {
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+  font-size: 0.85rem;
+  padding: 0.75rem 1rem;
+}
+
+.subnet-calculator__result,
+.subnet-calculator__details article {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.35rem;
+  border: 1px solid var(--color-border);
+  border-radius: calc(var(--radius) - 4px);
+  background: var(--color-code-bg);
+  padding: 0.8rem;
+}
+
+.subnet-calculator__result code,
+.subnet-calculator__details code,
+.subnet-calculator__details strong {
+  overflow-x: auto;
+  color: var(--color-primary-light);
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 0.9rem;
+}
+
+.subnet-calculator__result button {
+  align-self: flex-start;
+  margin-top: 0.15rem;
+}
+
+.subnet-calculator__status {
+  min-height: 1.5rem;
+  color: var(--color-success);
+  font-size: 0.85rem;
+}
+
+@media (min-width: 650px) {
+  .subnet-calculator__inputs,
+  .subnet-calculator__results,
+  .subnet-calculator__details {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .subnet-calculator__input--wide {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (min-width: 900px) {
+  .subnet-calculator__results,
+  .subnet-calculator__details {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
