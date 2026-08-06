@@ -1,8 +1,24 @@
 import { useEffect, useRef, useState } from 'react';
 import './Sidebar.css';
-import { filterTools } from './sidebar.utils.js';
+import {
+  ALL_CATEGORY,
+  filterTools,
+  filterToolsByCategory,
+  getToolCategories,
+} from './sidebar.utils.js';
 
 const EDITABLE_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
+
+/** Visible label for the reset control. Kept separate from `ALL_CATEGORY`
+ * (the state sentinel) so a real "All" metadata category never collides
+ * with it. */
+const ALL_CATEGORIES_LABEL = 'All';
+
+/** Accessible name for the reset control, distinct from `ALL_CATEGORIES_LABEL`
+ * so it never shares an accessible name with a real "All" metadata category —
+ * both would otherwise be indistinguishable to screen-reader/voice-control
+ * users despite performing opposite actions. */
+const ALL_CATEGORIES_ARIA_LABEL = 'All categories';
 
 function isEditableTarget(target) {
   if (!target) {
@@ -39,6 +55,7 @@ export default function Sidebar({
   onCloseMobile,
 }) {
   const [query, setQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState(ALL_CATEGORY);
   const searchInputRef = useRef(null);
 
   const sidebarClassName = [
@@ -49,7 +66,15 @@ export default function Sidebar({
     .filter(Boolean)
     .join(' ');
 
-  const filteredTools = filterTools(tools, query);
+  const categories = getToolCategories(tools);
+  // If the selected category disappeared from the tools prop (e.g. no tool
+  // has it anymore), fall back to the reset sentinel so exactly one control
+  // stays active instead of leaving every control unpressed.
+  const effectiveCategory =
+    selectedCategory === ALL_CATEGORY || categories.includes(selectedCategory)
+      ? selectedCategory
+      : ALL_CATEGORY;
+  const filteredTools = filterToolsByCategory(filterTools(tools, query), effectiveCategory);
 
   const handleToolSelect = (toolId) => {
     onSelectTool(toolId);
@@ -122,6 +147,43 @@ export default function Sidebar({
               aria-label="Filter tools"
               title={isCollapsed ? 'Filter tools' : undefined}
             />
+          </div>
+
+          <div
+            className="sidebar__categories"
+            role="group"
+            aria-label="Filter tools by category"
+          >
+            <button
+              className={[
+                'sidebar__category',
+                effectiveCategory === ALL_CATEGORY ? 'sidebar__category--active' : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+              type="button"
+              aria-pressed={effectiveCategory === ALL_CATEGORY}
+              aria-label={ALL_CATEGORIES_ARIA_LABEL}
+              onClick={() => setSelectedCategory(ALL_CATEGORY)}
+            >
+              {ALL_CATEGORIES_LABEL}
+            </button>
+            {categories.map((category) => (
+              <button
+                key={category}
+                className={[
+                  'sidebar__category',
+                  effectiveCategory === category ? 'sidebar__category--active' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+                type="button"
+                aria-pressed={effectiveCategory === category}
+                onClick={() => setSelectedCategory(category)}
+              >
+                {category}
+              </button>
+            ))}
           </div>
 
           {filteredTools.length > 0 ? (
