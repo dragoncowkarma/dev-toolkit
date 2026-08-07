@@ -1,0 +1,168 @@
+.word-counter-tool {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.word-counter-tool__intro {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.word-counter-tool__eyebrow {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--color-primary-light);
+  text-transform: uppercase;
+}
+
+.word-counter-tool__intro h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.word-counter-tool__intro p {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+.word-counter-tool__input-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.word-counter-tool__input-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.word-counter-tool__input-header label {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.word-counter-tool__button {
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: calc(var(--radius) - 4px);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition), background-color var(--transition);
+}
+
+.word-counter-tool__button:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+  background: var(--color-surface-hover);
+}
+
+.word-counter-tool__button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.word-counter-tool textarea {
+  width: 100%;
+  min-height: 180px;
+  resize: vertical;
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: var(--font-family);
+  font-size: 0.95rem;
+  line-height: 1.6;
+  transition: border-color var(--transition);
+}
+
+.word-counter-tool textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.word-counter-tool__stats-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.word-counter-tool__stats-title {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.word-counter-tool__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 1rem;
+}
+
+.word-counter-tool__card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 1rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.word-counter-tool__card-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.word-counter-tool__card-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-text);
+  font-feature-settings: 'tnum';
+  font-variant-numeric: tabular-nums;
+}
+
+.word-counter-tool__notice {
+  min-height: 1.3rem;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+@media (min-width: 640px) {
+  .word-counter-tool__grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (min-width: 768px) {
+  .word-counter-tool {
+    padding: 0 2rem 3rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .word-counter-tool__grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
