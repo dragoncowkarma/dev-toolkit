@@ -1,0 +1,181 @@
+.yaml-tool {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1.25rem 1rem 3rem;
+}
+
+.yaml-tool__intro {
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.yaml-tool__eyebrow {
+  color: var(--color-accent);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.yaml-tool__intro h2 {
+  margin-top: 0.25rem;
+  color: var(--color-text);
+  font-size: clamp(1.45rem, 3vw, 2rem);
+}
+
+.yaml-tool__intro p:last-child {
+  margin-top: 0.35rem;
+  color: var(--color-text-muted);
+}
+
+.yaml-tool__controls,
+.yaml-tool__actions,
+.yaml-tool__mode,
+.yaml-tool__output-heading,
+.yaml-tool__output-heading > div {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.yaml-tool__controls {
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+
+.yaml-tool__mode {
+  padding: 0.2rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+}
+
+.yaml-tool button,
+.yaml-tool select {
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+  transition: background var(--transition), border-color var(--transition), color var(--transition);
+}
+
+.yaml-tool button {
+  padding: 0.45rem 0.7rem;
+}
+
+.yaml-tool select {
+  padding: 0.35rem 0.45rem;
+}
+
+.yaml-tool button:hover:not(:disabled),
+.yaml-tool button.is-active,
+.yaml-tool select:focus {
+  border-color: var(--color-primary-light);
+  background: var(--color-primary);
+  color: white;
+}
+
+.yaml-tool button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.yaml-tool__indent {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.yaml-tool__actions {
+  flex-wrap: wrap;
+}
+
+.yaml-tool__panes {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+.yaml-tool__pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 310px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.yaml-tool__pane:focus-within {
+  border-color: var(--color-primary);
+}
+
+.yaml-tool__pane > label,
+.yaml-tool__output-heading {
+  padding: 0.7rem 0.9rem;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text);
+  font-size: 0.9rem;
+  font-weight: 650;
+}
+
+.yaml-tool__output-heading {
+  justify-content: space-between;
+}
+
+.yaml-tool textarea {
+  flex: 1;
+  min-height: 260px;
+  border: 0;
+  outline: 0;
+  resize: vertical;
+  padding: 0.9rem;
+  background: var(--color-code-bg);
+  color: var(--color-text);
+  font-family: 'Fira Code', 'Courier New', monospace;
+  font-size: 0.85rem;
+  line-height: 1.55;
+  tab-size: 2;
+}
+
+.yaml-tool textarea::placeholder {
+  color: var(--color-text-muted);
+}
+
+.yaml-tool__error,
+.yaml-tool__status {
+  border-radius: 8px;
+  padding: 0.75rem 0.9rem;
+}
+
+.yaml-tool__error {
+  display: grid;
+  gap: 0.2rem;
+  border: 1px solid var(--color-error-border);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+}
+
+.yaml-tool__status {
+  border: 1px solid rgba(52, 211, 153, 0.35);
+  background: rgba(52, 211, 153, 0.1);
+  color: var(--color-success);
+}
+
+@media (min-width: 768px) {
+  .yaml-tool {
+    padding: 1.5rem 2rem 4rem;
+  }
+
+  .yaml-tool__panes {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
