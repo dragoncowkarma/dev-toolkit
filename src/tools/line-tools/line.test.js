@@ -93,6 +93,12 @@ describe('line.utils', () => {
       ).toEqual(['10. foo', '11. bar']);
     });
 
+    it('adds line numbers starting at 0', () => {
+      expect(
+        decorateLines(['foo', 'bar'], { numberLines: true, startNumber: 0 })
+      ).toEqual(['0. foo', '1. bar']);
+    });
+
     it('adds prefix and suffix', () => {
       expect(
         decorateLines(['one', 'two'], { prefix: '<li>', suffix: '</li>' })
