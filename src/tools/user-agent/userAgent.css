@@ -1,0 +1,213 @@
+.user-agent {
+  display: flex;
+  width: 100%;
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.user-agent__intro,
+.user-agent__input-panel,
+.user-agent__results {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  padding: 1rem;
+}
+
+.user-agent__intro h2,
+.user-agent__section-heading h3 {
+  font-size: 1.1rem;
+}
+
+.user-agent__intro > p:last-child,
+.user-agent__section-heading > span,
+.user-agent__card-description {
+  color: var(--color-text-muted);
+  font-size: 0.82rem;
+}
+
+.user-agent__eyebrow {
+  color: var(--color-primary-light);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.user-agent__input-panel,
+.user-agent__results {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.user-agent__section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.user-agent__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.45rem;
+}
+
+.user-agent button,
+.user-agent select,
+.user-agent textarea {
+  border: 1px solid var(--color-border);
+  border-radius: calc(var(--radius) - 5px);
+  background: var(--color-code-bg);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.user-agent button {
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 0.5rem 0.65rem;
+}
+
+.user-agent button:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.user-agent__primary-action {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.user-agent__primary-action:hover:not(:disabled) {
+  background: var(--color-primary-light);
+  color: #fff;
+}
+
+.user-agent button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.user-agent__preset-label,
+.user-agent__textarea-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  color: var(--color-text-muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.user-agent select,
+.user-agent textarea {
+  width: 100%;
+  padding: 0.65rem;
+}
+
+.user-agent textarea {
+  min-height: 9rem;
+  resize: vertical;
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.user-agent select:focus,
+.user-agent textarea:focus {
+  border-color: var(--color-primary);
+}
+
+.user-agent select:focus-visible,
+.user-agent textarea:focus-visible {
+  outline: 2px solid var(--color-primary-light);
+  outline-offset: 2px;
+}
+
+.user-agent__message {
+  border: 1px solid color-mix(in srgb, var(--color-success) 40%, transparent);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--color-success) 10%, transparent);
+  color: var(--color-success);
+  font-size: 0.85rem;
+  padding: 0.7rem 0.9rem;
+}
+
+.user-agent__message.is-error {
+  border-color: var(--color-error-border);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+}
+
+.user-agent__cards {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.7rem;
+}
+
+.user-agent__card {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 0.7rem;
+  border: 1px solid var(--color-border);
+  border-radius: calc(var(--radius) - 2px);
+  background: var(--color-code-bg);
+  padding: 0.85rem;
+}
+
+.user-agent__card-icon {
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--color-surface-hover);
+  color: var(--color-primary-light);
+}
+
+.user-agent__card h4 {
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.user-agent__card-value {
+  overflow-wrap: anywhere;
+  color: var(--color-text);
+  font-size: 0.98rem;
+  font-weight: 800;
+}
+
+@media (min-width: 620px) {
+  .user-agent__cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .user-agent__card:last-child {
+    grid-column: span 2;
+  }
+}
+
+@media (min-width: 880px) {
+  .user-agent__cards {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .user-agent__card:last-child {
+    grid-column: auto;
+  }
+
+  .user-agent__card {
+    flex-direction: column;
+  }
+}
