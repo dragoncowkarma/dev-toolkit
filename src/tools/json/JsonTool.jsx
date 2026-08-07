@@ -443,7 +443,7 @@ export default function JsonTool({ onBack }) {
   const [indent, setIndent] = useState('2');
   const [viewMode, setViewMode] = useState('text');
   const [validation, setValidation] = useState({ isValid: true, message: '', snippet: '' });
-  const [toast, setToast] = useState('');
+  const [toast, setToast] = useState(null);
   const [treeExpansionCommand, setTreeExpansionCommand] = useState({
     expanded: true,
     revision: 0,
@@ -518,11 +518,13 @@ export default function JsonTool({ onBack }) {
 
     navigator.clipboard.writeText(textToCopy)
       .then(() => {
-        setToast('Copied to clipboard!');
-        setTimeout(() => setToast(''), 3000);
+        setToast({ text: 'Copied to clipboard!', type: 'success' });
+        setTimeout(() => setToast(null), 3000);
       })
       .catch((err) => {
         console.error('Failed to copy: ', err);
+        setToast({ text: 'Failed to copy to clipboard.', type: 'error' });
+        setTimeout(() => setToast(null), 3000);
       });
   };
 
@@ -574,8 +576,8 @@ export default function JsonTool({ onBack }) {
   return (
     <section className="json-tool-container" aria-label="JSON Utility Tool">
       {toast && (
-        <div className="toast" role="alert">
-          <span>✅</span> {toast}
+        <div className="toast" role="status">
+          <span aria-hidden="true">{toast.type === 'error' ? '❌' : '✅'}</span> {toast.text}
         </div>
       )}
 

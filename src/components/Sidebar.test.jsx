@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import Sidebar from './Sidebar.jsx';
@@ -226,5 +226,99 @@ describe('Sidebar keyboard navigation', () => {
     const { container } = renderSidebar({ isMobileOpen: true });
 
     expect(container.querySelector('.sidebar-backdrop')).toHaveAttribute('tabindex', '0');
+  });
+});
+
+describe('Sidebar Mobile Focus Trap', () => {
+  it('traps focus inside the mobile drawer when opened and wraps at boundaries', () => {
+    const handleClose = vi.fn();
+    const { container } = render(
+      <Sidebar
+        tools={TOOLS}
+        activeToolId="base64"
+        isCollapsed={false}
+        isMobileOpen={true}
+        onSelectTool={() => {}}
+        onToggleCollapse={() => {}}
+        onCloseMobile={handleClose}
+      />,
+    );
+
+    const closeButton = container.querySelector('.sidebar__mobile-close');
+    const collapseButton = container.querySelector('.sidebar__collapse');
+
+    expect(document.activeElement).toBe(closeButton);
+
+    fireEvent.keyDown(document.activeElement, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(collapseButton);
+
+    fireEvent.keyDown(document.activeElement, { key: 'Tab', shiftKey: false });
+    expect(document.activeElement).toBe(closeButton);
+  });
+
+  it('keeps focus inside the drawer when tabbing from mid-list elements', () => {
+    render(
+      <Sidebar
+        tools={TOOLS}
+        activeToolId="base64"
+        isCollapsed={false}
+        isMobileOpen={true}
+        onSelectTool={() => {}}
+        onToggleCollapse={() => {}}
+        onCloseMobile={() => {}}
+      />,
+    );
+
+    const jsonButton = screen.getByRole('button', { name: 'JSON Formatter' });
+    jsonButton.focus();
+    expect(document.activeElement).toBe(jsonButton);
+
+    fireEvent.keyDown(document.activeElement, { key: 'Tab', shiftKey: false });
+    expect(document.activeElement).toBe(jsonButton);
+  });
+
+  it('restores focus to previously focused element when drawer closes', () => {
+    const triggerButton = document.createElement('button');
+    triggerButton.textContent = 'Open Navigation';
+    document.body.appendChild(triggerButton);
+    triggerButton.focus();
+    expect(document.activeElement).toBe(triggerButton);
+
+    const { container, unmount } = render(
+      <Sidebar
+        tools={TOOLS}
+        activeToolId="base64"
+        isCollapsed={false}
+        isMobileOpen={true}
+        onSelectTool={() => {}}
+        onToggleCollapse={() => {}}
+        onCloseMobile={() => {}}
+      />,
+    );
+
+    const closeButton = container.querySelector('.sidebar__mobile-close');
+    expect(document.activeElement).toBe(closeButton);
+
+    unmount();
+    expect(document.activeElement).toBe(triggerButton);
+    document.body.removeChild(triggerButton);
+  });
+
+  it('closes mobile drawer on Escape key press', () => {
+    const handleClose = vi.fn();
+    render(
+      <Sidebar
+        tools={TOOLS}
+        activeToolId="base64"
+        isCollapsed={false}
+        isMobileOpen={true}
+        onSelectTool={() => {}}
+        onToggleCollapse={() => {}}
+        onCloseMobile={handleClose}
+      />,
+    );
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(handleClose).toHaveBeenCalledTimes(1);
   });
 });
