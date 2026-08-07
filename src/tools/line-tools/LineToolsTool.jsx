@@ -258,7 +258,10 @@ export default function LineToolsTool() {
                   type="number"
                   className="line-tools__input line-tools__input--narrow"
                   value={startNumber}
-                  onChange={(e) => setStartNumber(parseInt(e.target.value, 10) || 1)}
+                  onChange={(e) => {
+                    const parsed = parseInt(e.target.value, 10);
+                    setStartNumber(Number.isNaN(parsed) ? 1 : parsed);
+                  }}
                   aria-label="Line numbering start value"
                 />
               </label>

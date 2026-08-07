@@ -71,6 +71,24 @@ describe('LineToolsTool component', () => {
     expect(outputArea.value).toBe('5. first\n6. second');
   });
 
+  it('allows start number to be set to 0', () => {
+    render(<LineToolsTool />);
+
+    const inputArea = screen.getByLabelText('Input text');
+    fireEvent.change(inputArea, { target: { value: 'first\nsecond' } });
+
+    const numberCheckbox = screen.getByLabelText('Number lines');
+    fireEvent.click(numberCheckbox);
+
+    const startInput = screen.getByLabelText('Line numbering start value');
+    fireEvent.change(startInput, { target: { value: '0' } });
+
+    expect(startInput.value).toBe('0');
+
+    const outputArea = screen.getByLabelText('Transformed result');
+    expect(outputArea.value).toBe('0. first\n1. second');
+  });
+
   it('copies output to clipboard and displays status notice', async () => {
     const writeTextMock = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, {
