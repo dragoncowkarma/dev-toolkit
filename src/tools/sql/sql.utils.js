@@ -19,6 +19,12 @@ const DIGIT_RE = /[0-9]/;
 const NUMBER_CHAR_RE = /[0-9.]/;
 const OPERATOR_CHAR_RE = /[=<>!+\-*/%|&^~]/;
 const SINGLE_PUNCTUATION = '(),;.';
+// Sigils that introduce a bind/host parameter: `:name` / `:1` (SQLite,
+// Oracle), `@name` (SQL Server / MySQL user vars), `$name` / `$1`
+// (PostgreSQL). Each must stay fused with its following name/number so
+// formatting never splits it into a bare sigil plus a separate identifier.
+const PARAM_SIGIL_RE = /[:@$]/;
+const PARAM_NAME_CHAR_RE = /[A-Za-z0-9_]/;
 
 // Multi-word phrases are matched greedily before falling back to single
 // keywords, so e.g. "LEFT OUTER JOIN" is not split into "LEFT" + "OUTER JOIN".
@@ -58,7 +64,13 @@ const LOGICAL_BREAK_KEYWORDS = new Set(['AND', 'OR']);
 
 /**
  * Splits raw SQL text into a flat token stream (whitespace, comments, string
- * literals, words, numbers, punctuation and operators).
+ * literals, words, numbers, punctuation, operators and bind parameters).
+ *
+ * Bind/host parameters are tokenized atomically so formatting never inserts
+ * whitespace inside them: `:name` / `:1` (SQLite, Oracle), `@name` (SQL
+ * Server, MySQL user variables) and `$name` / `$1` (PostgreSQL). The `::`
+ * PostgreSQL cast operator is likewise kept contiguous rather than being
+ * misread as the start of a `:name` parameter.
  *
  * @param {string} sql Raw SQL source text.
  * @returns {Array<{type: string, value: string}>} Ordered token list.
@@ -138,6 +150,22 @@ function tokenize(sql) {
       let j = i + 1;
       while (j < length && NUMBER_CHAR_RE.test(sql[j])) j += 1;
       tokens.push({ type: 'number', value: sql.slice(i, j) });
+      i = j;
+      continue;
+    }
+
+    // PostgreSQL cast operator: keep contiguous so it is never mistaken
+    // for the start of a `:name` bind parameter below.
+    if (char === ':' && sql[i + 1] === ':') {
+      tokens.push({ type: 'operator', value: '::' });
+      i += 2;
+      continue;
+    }
+
+    if (PARAM_SIGIL_RE.test(char) && PARAM_NAME_CHAR_RE.test(sql[i + 1] ?? '')) {
+      let j = i + 1;
+      while (j < length && PARAM_NAME_CHAR_RE.test(sql[j])) j += 1;
+      tokens.push({ type: 'param', value: sql.slice(i, j) });
       i = j;
       continue;
     }
@@ -416,7 +444,7 @@ function renderTokens(tokens, { keywordCase, indentUnit }) {
       continue;
     }
 
-    // identifier, string, number, operator, other
+    // identifier, string, number, operator, param, other
     writeText(token.value);
   }
 

@@ -134,6 +134,28 @@ describe('formatSql', () => {
   it('rejects an invalid indentSize option', () => {
     expect(() => formatSql('SELECT 1', { indentSize: '3' })).toThrow(TypeError);
   });
+
+  it('keeps a named bind parameter contiguous', () => {
+    const result = formatSql('SELECT :userId');
+    expect(result).toBe('SELECT :userId');
+  });
+
+  it('keeps supported bind/host parameter forms contiguous', () => {
+    const result = formatSql('SELECT :userId, :1, @userName, $userName, $1, ? FROM users');
+    expect(result).toBe('SELECT :userId, :1, @userName, $userName, $1, ?\nFROM users');
+  });
+
+  it('does not split a bind parameter across a clause break', () => {
+    const result = formatSql('SELECT * FROM users WHERE id = :userId AND name = @userName');
+    expect(result).toBe(
+      'SELECT *\nFROM users\nWHERE id = :userId\n  AND name = @userName'
+    );
+  });
+
+  it('keeps the PostgreSQL "::" cast operator contiguous', () => {
+    const result = formatSql('SELECT price::numeric FROM items');
+    expect(result).toBe('SELECT price :: numeric\nFROM items');
+  });
 });
 
 describe('minifySql', () => {
@@ -191,5 +213,10 @@ describe('minifySql', () => {
     expect(() => minifySql("SELECT * FROM users WHERE name = 'Ada")).toThrow(
       /unterminated string literal/i
     );
+  });
+
+  it('keeps bind parameters and the "::" cast operator contiguous', () => {
+    const input = 'SELECT :userId,\n  price::numeric\nFROM items\nWHERE id = :userId';
+    expect(minifySql(input)).toBe('SELECT :userId, price::numeric FROM items WHERE id = :userId');
   });
 });
