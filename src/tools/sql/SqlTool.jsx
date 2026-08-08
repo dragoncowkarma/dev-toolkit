@@ -160,21 +160,19 @@ export default function SqlTool() {
 
         <div className="sql-tool__panel">
           <div className="sql-tool__output-label">
-            <div className="sql-tool__tabs" role="tablist" aria-label="Output view">
+            <div className="sql-tool__tabs" role="group" aria-label="Output view">
               <button
                 type="button"
-                role="tab"
                 className={activeTab === OUTPUT_TABS.FORMATTED ? 'is-active' : ''}
-                aria-selected={activeTab === OUTPUT_TABS.FORMATTED}
+                aria-pressed={activeTab === OUTPUT_TABS.FORMATTED}
                 onClick={() => setActiveTab(OUTPUT_TABS.FORMATTED)}
               >
                 Formatted
               </button>
               <button
                 type="button"
-                role="tab"
                 className={activeTab === OUTPUT_TABS.MINIFIED ? 'is-active' : ''}
-                aria-selected={activeTab === OUTPUT_TABS.MINIFIED}
+                aria-pressed={activeTab === OUTPUT_TABS.MINIFIED}
                 onClick={() => setActiveTab(OUTPUT_TABS.MINIFIED)}
               >
                 Minified

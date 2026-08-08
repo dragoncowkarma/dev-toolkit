@@ -52,11 +52,25 @@ describe('SqlTool formatting', () => {
     fireEvent.change(screen.getByLabelText('SQL input'), {
       target: { value: 'select id,\n  name\nfrom users' },
     });
-    fireEvent.click(screen.getByRole('tab', { name: 'Minified' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Minified' }));
 
     await waitFor(() =>
       expect(screen.getByLabelText('Minified SQL')).toHaveValue('select id, name from users')
     );
+  });
+
+  it('marks the active output-mode button as pressed and the other as not', async () => {
+    render(<SqlTool />);
+    const formattedButton = screen.getByRole('button', { name: 'Formatted' });
+    const minifiedButton = screen.getByRole('button', { name: 'Minified' });
+
+    expect(formattedButton).toHaveAttribute('aria-pressed', 'true');
+    expect(minifiedButton).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(minifiedButton);
+
+    expect(formattedButton).toHaveAttribute('aria-pressed', 'false');
+    expect(minifiedButton).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('shows a friendly alert for an unterminated string literal', async () => {
