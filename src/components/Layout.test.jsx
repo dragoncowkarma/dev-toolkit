@@ -258,6 +258,30 @@ describe('Layout Integration & Focus Trap', () => {
 
     expect(document.activeElement).toBe(collapseButton);
   });
+
+  it('handles mobile drawer dialog lifecycle, background isolation, and focus restoration', () => {
+    const { container } = render(<Layout tools={TEST_TOOLS} defaultToolId="base64" />);
+
+    const openMenuButton = screen.getByRole('button', { name: 'Open tool navigation' });
+    const mainContent = container.querySelector('#main-content');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(mainContent).not.toHaveAttribute('aria-hidden');
+
+    openMenuButton.focus();
+    fireEvent.click(openMenuButton);
+
+    const dialog = screen.getByRole('dialog', { name: 'Developer tools' });
+    expect(dialog).toBeInTheDocument();
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    expect(mainContent).toHaveAttribute('aria-hidden', 'true');
+
+    const closeButton = within(dialog).getByRole('button', { name: 'Close tool navigation' });
+    fireEvent.click(closeButton);
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(mainContent).not.toHaveAttribute('aria-hidden');
+    expect(document.activeElement).toBe(openMenuButton);
+  });
 });
 
 describe('Layout URL hash routing', () => {

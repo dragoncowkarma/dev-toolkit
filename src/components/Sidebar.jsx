@@ -42,6 +42,85 @@ const FOCUSABLE_SELECTOR = [
 ].join(', ');
 
 /**
+ * Checks if an element is visible and enabled in the DOM.
+ *
+ * @param {Element} el Target element to test.
+ * @returns {boolean} True if the element is visible and enabled.
+ */
+function isElementVisibleAndEnabled(el) {
+  if (!el || !(el instanceof Element)) return false;
+  if (el.disabled) return false;
+  if (el.getAttribute('tabindex') === '-1') return false;
+  if (el.hasAttribute('hidden')) return false;
+  if (el.getAttribute('aria-hidden') === 'true') return false;
+
+  if (typeof window !== 'undefined' && window.getComputedStyle) {
+    const style = window.getComputedStyle(el);
+    if (style.display === 'none' || style.visibility === 'hidden') {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Temporarily hides non-drawer background DOM elements from assistive
+ * technology by setting `aria-hidden="true"`, and returns a restore function
+ * to revert back to their exact prior state.
+ *
+ * @param {HTMLElement|null} sidebarEl The drawer element.
+ * @returns {() => void} Function that restores original `aria-hidden` state.
+ */
+function hideBackgroundElements(sidebarEl) {
+  if (!sidebarEl) return () => {};
+
+  const elementsToRestore = [];
+  const backdrop = sidebarEl.nextElementSibling?.classList.contains('sidebar-backdrop')
+    ? sidebarEl.nextElementSibling
+    : document.querySelector('.sidebar-backdrop');
+
+  let current = sidebarEl;
+  while (current && current !== document.body) {
+    const parent = current.parentElement;
+    if (!parent) break;
+
+    Array.from(parent.children).forEach((child) => {
+      if (
+        child !== current &&
+        child !== sidebarEl &&
+        child !== backdrop &&
+        !child.contains(sidebarEl)
+      ) {
+        const hadAriaHidden = child.hasAttribute('aria-hidden');
+        const prevAriaHidden = child.getAttribute('aria-hidden');
+
+        elementsToRestore.push({
+          element: child,
+          hadAriaHidden,
+          prevAriaHidden,
+        });
+
+        child.setAttribute('aria-hidden', 'true');
+      }
+    });
+
+    current = parent;
+  }
+
+  return () => {
+    elementsToRestore.forEach(({ element, hadAriaHidden, prevAriaHidden }) => {
+      if (!document.body.contains(element)) return;
+      if (hadAriaHidden) {
+        element.setAttribute('aria-hidden', prevAriaHidden);
+      } else {
+        element.removeAttribute('aria-hidden');
+      }
+    });
+  };
+}
+
+/**
  * Renders the tool navigation for desktop and mobile layouts.
  *
  * @param {object} props Component props.
@@ -77,10 +156,12 @@ export default function Sidebar({
     if (!isMobileOpen) return undefined;
 
     const previousFocus = document.activeElement;
+    const restoreBackground = hideBackgroundElements(sidebarRef.current);
 
     const getFocusableElements = () => {
       if (!sidebarRef.current) return [];
-      return Array.from(sidebarRef.current.querySelectorAll(FOCUSABLE_SELECTOR));
+      const candidates = Array.from(sidebarRef.current.querySelectorAll(FOCUSABLE_SELECTOR));
+      return candidates.filter(isElementVisibleAndEnabled);
     };
 
     const focusableElements = getFocusableElements();
@@ -100,7 +181,10 @@ export default function Sidebar({
 
       if (event.key === 'Tab') {
         const elements = getFocusableElements();
-        if (elements.length === 0) return;
+        if (elements.length === 0) {
+          event.preventDefault();
+          return;
+        }
 
         const firstElement = elements[0];
         const lastElement = elements[elements.length - 1];
@@ -114,7 +198,10 @@ export default function Sidebar({
             event.preventDefault();
           }
         } else {
-          if (document.activeElement === lastElement) {
+          if (
+            document.activeElement === lastElement ||
+            !sidebarRef.current.contains(document.activeElement)
+          ) {
             firstElement.focus();
             event.preventDefault();
           }
@@ -122,11 +209,28 @@ export default function Sidebar({
       }
     };
 
+    const handleFocusIn = (event) => {
+      if (!sidebarRef.current) return;
+      if (!sidebarRef.current.contains(event.target)) {
+        const elements = getFocusableElements();
+        if (elements.length > 0) {
+          elements[0].focus();
+        }
+      }
+    };
+
     document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('focusin', handleFocusIn);
 
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
-      if (previousFocus && typeof previousFocus.focus === 'function') {
+      document.removeEventListener('focusin', handleFocusIn);
+      restoreBackground();
+      if (
+        previousFocus &&
+        typeof previousFocus.focus === 'function' &&
+        document.body.contains(previousFocus)
+      ) {
         previousFocus.focus();
       }
     };
@@ -141,9 +245,6 @@ export default function Sidebar({
     .join(' ');
 
   const categories = getToolCategories(tools);
-  // If the selected category disappeared from the tools prop (e.g. no tool
-  // has it anymore), fall back to the reset sentinel so exactly one control
-  // stays active instead of leaving every control unpressed.
   const effectiveCategory =
     selectedCategory === ALL_CATEGORY || categories.includes(selectedCategory)
       ? selectedCategory
@@ -187,6 +288,8 @@ export default function Sidebar({
         id="tool-navigation"
         className={sidebarClassName}
         aria-label="Developer tools"
+        role={isMobileOpen ? 'dialog' : undefined}
+        aria-modal={isMobileOpen ? 'true' : undefined}
       >
         <div className="sidebar__header">
           <div className="sidebar__brand">
@@ -326,7 +429,8 @@ export default function Sidebar({
         type="button"
         onClick={onCloseMobile}
         aria-label="Close tool navigation"
-        tabIndex={isMobileOpen ? 0 : -1}
+        tabIndex={-1}
+        aria-hidden="true"
       />
     </>
   );
