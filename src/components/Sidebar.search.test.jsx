@@ -145,6 +145,23 @@ describe('Sidebar search input', () => {
     expect(screen.getByRole('button', { name: /JSON Formatter/ })).toBeInTheDocument();
   });
 
+  it('clears query on first Escape without closing drawer when mobile drawer is open', () => {
+    const { onCloseMobile } = renderSidebar({ isMobileOpen: true });
+
+    const input = screen.getByRole('searchbox', { name: 'Filter tools' });
+    fireEvent.change(input, { target: { value: 'json' } });
+    expect(input).toHaveValue('json');
+
+    input.focus();
+    fireEvent.keyDown(input, { key: 'Escape' });
+
+    expect(input).toHaveValue('');
+    expect(onCloseMobile).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(onCloseMobile).toHaveBeenCalledTimes(1);
+  });
+
   it('removes its keydown listener on unmount', () => {
     const removeEventListenerSpy = vi.spyOn(window, 'removeEventListener');
     const { unmount } = render(<Sidebar {...{

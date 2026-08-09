@@ -202,6 +202,9 @@ export default function Base64Tool() {
             >
               {copied ? '✓ Copied' : 'Copy'}
             </button>
+            <div className="sr-only" role="status">
+              {copied ? 'Copied to clipboard' : ''}
+            </div>
           </div>
           <textarea
             id="base64-output"

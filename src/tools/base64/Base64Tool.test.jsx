@@ -47,7 +47,23 @@ describe('Base64Tool file/mode transition', () => {
   });
 });
 
-describe('Base64Tool clipboard error handling', () => {
+describe('Base64Tool clipboard status announcement', () => {
+  it('announces copied status to screen readers in a status live region', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    render(<Base64Tool />);
+
+    fireEvent.change(screen.getByLabelText('Text'), { target: { value: 'hello' } });
+    await waitFor(() => expect(screen.getByLabelText('Base64')).toHaveValue('aGVsbG8='));
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
+    });
+
+    expect(screen.getByRole('status')).toHaveTextContent('Copied to clipboard');
+  });
+
   it('reports a copy failure without disabling a valid Swap', async () => {
     Object.assign(navigator, {
       clipboard: { writeText: vi.fn().mockRejectedValue(new Error('denied')) },

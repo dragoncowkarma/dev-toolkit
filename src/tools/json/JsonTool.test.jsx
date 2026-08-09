@@ -133,7 +133,28 @@ describe('JsonTool Copy', () => {
     });
 
     expect(writeText).toHaveBeenCalledTimes(1);
-    expect(await screen.findByRole('alert')).toHaveTextContent('Copied to clipboard!');
+    expect(await screen.findByRole('status')).toHaveTextContent('Copied to clipboard!');
+  });
+});
+
+describe('JsonTool clipboard error handling', () => {
+  it('reports a copy failure in a toast status when clipboard copy fails', async () => {
+    Object.assign(navigator, {
+      clipboard: { writeText: vi.fn().mockRejectedValue(new Error('denied')) },
+    });
+
+    render(<JsonTool onBack={() => {}} />);
+
+    fireEvent.change(screen.getByLabelText('JSON Input Area'), {
+      target: { value: '{"key": "value"}' },
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy output to clipboard' }));
+    });
+
+    const status = await screen.findByRole('status');
+    expect(status).toHaveTextContent('Failed to copy to clipboard.');
   });
 });
 

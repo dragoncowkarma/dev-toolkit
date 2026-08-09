@@ -105,21 +105,6 @@ export default function Layout({ tools, defaultToolId }) {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, [tools, defaultToolId]);
 
-  useEffect(() => {
-    if (!isMobileOpen) {
-      return undefined;
-    }
-
-    const handleKeyDown = (event) => {
-      if (event.key === 'Escape') {
-        setIsMobileOpen(false);
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isMobileOpen]);
-
   if (!activeTool) {
     return (
       <main className="layout__empty">
@@ -142,6 +127,10 @@ export default function Layout({ tools, defaultToolId }) {
       <a className="layout__skip-link" href="#main-content">
         Skip to main content
       </a>
+
+      <div className="sr-only" role="status">
+        {`Active tool: ${activeTool.name}`}
+      </div>
 
       <Sidebar
         tools={tools}
