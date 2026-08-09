@@ -151,6 +151,16 @@ describe('parseCurl - body parsing', () => {
     expect(parsed.bodyType).toBe('text');
     expect(parsed.body).toBe('{not valid json');
   });
+
+  it('falls back to text and preserves the raw payload when the declared '
+    + 'JSON Content-Type is invalid JSON', () => {
+    const parsed = parseCurl(
+      'curl https://example.com -H "Content-Type: application/json" -d "{not valid json"',
+    );
+    expect(parsed.bodyType).toBe('text');
+    expect(parsed.body).toBe('{not valid json');
+    expect(parsed.headers['Content-Type']).toBe('application/json');
+  });
 });
 
 describe('parseCurl - basic auth', () => {
@@ -203,6 +213,29 @@ describe('generateFetch', () => {
     expect(code).toContain('formData.append("field1", "value1");');
     expect(code).toContain('body: formData');
   });
+
+  it('wraps the request in a self-contained, executable async IIFE', () => {
+    const parsed = parseCurl('curl -X POST https://example.com/users -d \'{"name":"Ada"}\'');
+    const code = generateFetch(parsed);
+    expect(code.trimStart()).toMatch(/^\(async \(\) => \{/);
+    expect(code.trimEnd()).toMatch(/\}\)\(\);$/);
+    expect(code).toContain('try {');
+    expect(code).toContain('} catch (error) {');
+    expect(code).toContain('console.error(error);');
+    // No top-level await: the whole snippet must be a syntactically valid,
+    // immediately-invocable script body (not a module needing top-level await).
+    expect(() => new Function(code)).not.toThrow();
+  });
+
+  it('passes an invalid JSON payload through unchanged as a text body', () => {
+    const parsed = parseCurl(
+      'curl https://example.com -H "Content-Type: application/json" -d "{not valid json"',
+    );
+    const code = generateFetch(parsed);
+    expect(code).toContain('body: "{not valid json"');
+    expect(code).not.toContain('JSON.stringify("{not valid json")');
+    expect(() => new Function(code)).not.toThrow();
+  });
 });
 
 describe('generateAxios', () => {
@@ -214,6 +247,27 @@ describe('generateAxios', () => {
     expect(code).toContain('url: "https://example.com/users"');
     expect(code).toContain('data: JSON.stringify({');
     expect(code).toContain('response.data');
+  });
+
+  it('wraps the request in a self-contained, executable async IIFE', () => {
+    const parsed = parseCurl('curl -X POST https://example.com/users -d \'{"name":"Ada"}\'');
+    const code = generateAxios(parsed);
+    expect(code.trimStart()).toMatch(/^\(async \(\) => \{/);
+    expect(code.trimEnd()).toMatch(/\}\)\(\);$/);
+    expect(code).toContain('try {');
+    expect(code).toContain('} catch (error) {');
+    expect(code).toContain('console.error(error);');
+    expect(() => new Function(code)).not.toThrow();
+  });
+
+  it('passes an invalid JSON payload through unchanged as a text body', () => {
+    const parsed = parseCurl(
+      'curl https://example.com -H "Content-Type: application/json" -d "{not valid json"',
+    );
+    const code = generateAxios(parsed);
+    expect(code).toContain('data: "{not valid json"');
+    expect(code).not.toContain('JSON.stringify("{not valid json")');
+    expect(() => new Function(code)).not.toThrow();
   });
 });
 

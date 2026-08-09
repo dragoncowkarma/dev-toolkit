@@ -246,8 +246,16 @@ export function parseCurl(input) {
 
     if (contentType.includes('json')) {
       const parsed = safeJsonParse(rawBody);
-      bodyType = 'json';
-      body = parsed.ok ? parsed.value : rawBody;
+      if (parsed.ok) {
+        bodyType = 'json';
+        body = parsed.value;
+      } else {
+        // Declared JSON but not valid JSON: keep the Content-Type header the
+        // caller specified, but pass the raw bytes through unchanged instead
+        // of re-encoding them as a JSON string literal.
+        bodyType = 'text';
+        body = rawBody;
+      }
     } else if (!contentType && looksLikeJson(rawBody)) {
       const parsed = safeJsonParse(rawBody);
       if (parsed.ok) {
@@ -281,6 +289,37 @@ function quote(value) {
 function indentBlock(text, spaces) {
   const pad = ' '.repeat(spaces);
   return text.split('\n').map((line, index) => (index === 0 ? line : pad + line)).join('\n');
+}
+
+/**
+ * Indents every line of a block of text (including the first), skipping
+ * blank lines so no trailing whitespace is introduced.
+ *
+ * @param {string} text Text to indent.
+ * @param {number} spaces Number of spaces to prepend to each non-blank line.
+ * @returns {string} Indented text.
+ */
+function indentAll(text, spaces) {
+  const pad = ' '.repeat(spaces);
+  return text.split('\n').map((line) => (line ? pad + line : line)).join('\n');
+}
+
+/**
+ * Wraps a snippet body in an async IIFE with a try/catch so the generated
+ * code is a self-contained, immediately executable script (no dangling
+ * top-level `await`).
+ *
+ * @param {string} body Snippet body using `await` expressions.
+ * @returns {string} The body wrapped in `(async () => { try { ... } catch ... } })();`.
+ */
+function wrapInAsyncIife(body) {
+  return '(async () => {\n'
+    + '  try {\n'
+    + `${indentAll(body, 4)}\n`
+    + '  } catch (error) {\n'
+    + '    console.error(error);\n'
+    + '  }\n'
+    + '})();';
 }
 
 /**
@@ -325,6 +364,10 @@ function formatHeaders(headers) {
 /**
  * Generates a browser `fetch`-based JavaScript snippet for a parsed request.
  *
+ * The request is wrapped in a self-contained `(async () => { ... })();` IIFE
+ * with a try/catch so the snippet is directly executable (no dangling
+ * top-level `await`) when pasted into a browser script or a CommonJS file.
+ *
  * @param {ReturnType<typeof parseCurl>} parsed Parsed cURL request.
  * @returns {string} Formatted JavaScript source.
  */
@@ -339,13 +382,20 @@ export function generateFetch(parsed) {
 
   const options = optionLines.map((line) => `  ${line}`).join(',\n');
 
-  return `${preamble}const response = await fetch(${quote(url)}, {\n${options},\n});\n`
+  const requestBlock = `${preamble}const response = await fetch(${quote(url)}, {\n`
+    + `${options},\n});\n`
     + 'const data = await response.json();\n'
     + 'console.log(data);';
+
+  return wrapInAsyncIife(requestBlock);
 }
 
 /**
  * Generates an `axios.request` JavaScript snippet for a parsed request.
+ *
+ * The request is wrapped in a self-contained `(async () => { ... })();` IIFE
+ * with a try/catch so the snippet is directly executable (no dangling
+ * top-level `await`) when pasted into a browser script or a CommonJS file.
  *
  * @param {ReturnType<typeof parseCurl>} parsed Parsed cURL request.
  * @returns {string} Formatted JavaScript source.
@@ -361,8 +411,10 @@ export function generateAxios(parsed) {
 
   const options = optionLines.map((line) => `  ${line}`).join(',\n');
 
-  return `${preamble}const response = await axios.request({\n${options},\n});\n`
+  const requestBlock = `${preamble}const response = await axios.request({\n${options},\n});\n`
     + 'console.log(response.data);';
+
+  return wrapInAsyncIife(requestBlock);
 }
 
 /**
