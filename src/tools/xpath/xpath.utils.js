@@ -63,13 +63,16 @@ function evaluateNodeSet(result) {
 }
 
 function evaluateScalar(result) {
-  const scalarTypes = {
-    [XPathResult.STRING_TYPE]: ['String', result.stringValue],
-    [XPathResult.NUMBER_TYPE]: ['Number', result.numberValue],
-    [XPathResult.BOOLEAN_TYPE]: ['Boolean', result.booleanValue],
-  };
-  const [type, value] = scalarTypes[result.resultType];
-  return { type, value, output: String(value) };
+  switch (result.resultType) {
+    case XPathResult.STRING_TYPE:
+      return { type: 'String', value: result.stringValue, output: result.stringValue };
+    case XPathResult.NUMBER_TYPE:
+      return { type: 'Number', value: result.numberValue, output: String(result.numberValue) };
+    case XPathResult.BOOLEAN_TYPE:
+      return { type: 'Boolean', value: result.booleanValue, output: String(result.booleanValue) };
+    default:
+      throw new Error(`Unsupported scalar result type: ${result.resultType}`);
+  }
 }
 
 /** Evaluates an XPath expression and returns its node-set or scalar result. */
