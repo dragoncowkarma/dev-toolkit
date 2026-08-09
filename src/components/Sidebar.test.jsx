@@ -370,7 +370,7 @@ describe('Sidebar Modal Dialog Accessibility', () => {
     expect(sidebar).not.toHaveAttribute('aria-modal');
   });
 
-  it('applies aria-hidden="true" to background elements while open and restores prior state', () => {
+  it('isolates background elements with aria-hidden="true" and restores state', () => {
     const activeBackground = document.createElement('button');
     const existingHidden = document.createElement('div');
     existingHidden.setAttribute('aria-hidden', 'false');
