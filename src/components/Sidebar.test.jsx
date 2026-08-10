@@ -431,7 +431,7 @@ describe('Sidebar Modal Dialog Accessibility', () => {
     document.body.removeChild(existingHidden);
   });
 
-  it('does not apply aria-hidden="true" to live-region announcer elements during background isolation', () => {
+  it('does not apply aria-hidden="true" to live regions during background isolation', () => {
     const liveRegion = document.createElement('div');
     liveRegion.setAttribute('role', 'status');
     liveRegion.textContent = 'Active tool: Base64';

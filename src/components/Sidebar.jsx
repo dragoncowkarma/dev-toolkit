@@ -275,7 +275,8 @@ export default function Sidebar({
 
   const categories = getToolCategories(tools);
   // If the selected category disappeared from the tools prop (e.g. tools list changed),
-  // fallback to ALL_CATEGORY so we don't display an empty state for a category that no longer exists.
+  // fallback to ALL_CATEGORY so we don't display an empty state for a category
+  // that no longer exists.
   const effectiveCategory =
     selectedCategory === ALL_CATEGORY || categories.includes(selectedCategory)
       ? selectedCategory

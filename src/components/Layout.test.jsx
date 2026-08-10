@@ -283,7 +283,7 @@ describe('Layout Integration & Focus Trap', () => {
     expect(document.activeElement).toBe(openMenuButton);
   });
 
-  it('announces active tool changes when selected from an open mobile drawer without status being aria-hidden', () => {
+  it('announces active tool changes when selected from an open drawer without aria-hidden', () => {
     const { container } = render(<Layout tools={TEST_TOOLS} defaultToolId="base64" />);
 
     const statusElement = container.querySelector('[role="status"]');
@@ -303,7 +303,7 @@ describe('Layout Integration & Focus Trap', () => {
     expect(statusElement).not.toHaveAttribute('aria-hidden');
   });
 
-  it('force-closes mobile drawer and clears aria-hidden from page when viewport resizes to desktop width', () => {
+  it('force-closes mobile drawer and clears aria-hidden when viewport becomes desktop width', () => {
     let changeHandler;
     const matchMediaSpy = vi.spyOn(window, 'matchMedia').mockImplementation((query) => ({
       matches: false,
