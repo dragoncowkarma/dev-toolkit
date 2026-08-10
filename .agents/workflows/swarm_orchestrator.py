@@ -450,19 +450,12 @@ class ProcessTracker:
         ]
         if any(record.status == ProcessStatus.RUNNING for record in attempts):
             return False, DISPATCH_RUNNING
-        provider_cooldowns = []
-        if ai_name:
-            for record in self.all_records:
-                if (
-                    record.status != ProcessStatus.DEFERRED
-                    or record.ai_name != ai_name
-                    or record.defer_scope != "provider"
-                    or not record.retry_after
-                ):
-                    continue
-                retry_at = datetime.fromisoformat(record.retry_after)
-                if datetime.now(timezone.utc) < retry_at:
-                    provider_cooldowns.append(retry_at)
+        provider_cooldowns = [
+            datetime.fromisoformat(record.retry_after)
+            for record in self.all_records
+            if record.ai_name == ai_name
+            and self._is_active_provider_cooldown(record)
+        ] if ai_name else []
         if provider_cooldowns:
             retry_at = max(provider_cooldowns).isoformat()
             return False, f"{DISPATCH_PROVIDER_COOLDOWN} until {retry_at}"
@@ -675,16 +668,64 @@ class ProcessTracker:
             return "event"
         return None
 
+    @staticmethod
+    def _is_active_provider_cooldown(record) -> bool:
+        """Whether `record` still represents an AI provider quota/rate-limit pause.
+
+        "Provider" scope (as opposed to "event" scope, e.g. a one-off CLI
+        timeout) means the limit belongs to the AI itself, not to a single
+        task, so it must keep blocking that AI's dispatches — across polling
+        cycles *and* across orchestrator restarts — until `retry_after`
+        passes.
+        """
+        if (
+            record.status != ProcessStatus.DEFERRED
+            or record.defer_scope != "provider"
+            or not record.retry_after
+        ):
+            return False
+        try:
+            retry_at = datetime.fromisoformat(record.retry_after)
+        except ValueError:
+            return False
+        return datetime.now(timezone.utc) < retry_at
+
 
 # Global tracker instance
 tracker = ProcessTracker()
 
 
 def reset_process_history():
-    """Start a fresh run with no persisted dispatch failures or active state."""
+    """Start a fresh run, but keep AI provider cooldowns that have not expired.
+
+    `run_loop` exits after a single idle cycle and `--once` is meant to be
+    re-invoked by an external scheduler, so the orchestrator process restarts
+    routinely. A plain wipe-everything reset would forget "AI X is over its
+    quota until <time>" on every one of those restarts and immediately
+    re-dispatch a prompt to an AI we already know will reject it — silently
+    reintroducing the failure the provider-cooldown check exists to prevent.
+
+    Only unexpired, provider-scoped DEFERRED records survive (these were
+    already reclassified from the persisted registry by
+    `_reclassify_deferred_failures` when `tracker` was constructed). Every
+    other kind of stale state — orphaned RUNNING records, exhausted crash
+    attempts, completed runs, expired or event-scope defers — is cleared
+    exactly as before.
+    """
     tracker._active.clear()
-    tracker._history.clear()
-    if PROCESS_REGISTRY_FILE.exists():
+    surviving = [
+        record for record in tracker._history
+        if tracker._is_active_provider_cooldown(record)
+    ]
+    for record in surviving:
+        log.info(
+            "⏸️ Preserving '%s' provider cooldown across restart (retry after %s).",
+            record.ai_name, record.retry_after,
+        )
+    tracker._history = surviving
+    if surviving:
+        tracker._save_registry()
+    elif PROCESS_REGISTRY_FILE.exists():
         PROCESS_REGISTRY_FILE.unlink()
 
 
