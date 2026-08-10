@@ -1,0 +1,186 @@
+.json-diff-tool {
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+}
+
+.json-diff-tool__intro,
+.json-diff-tool__controls,
+.json-diff-tool__pane,
+.json-diff-tool__results {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  padding: 1rem;
+}
+
+.json-diff-tool__eyebrow {
+  color: var(--color-accent);
+  font-size: .75rem;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.json-diff-tool__intro p:last-child,
+.json-diff-tool__empty {
+  color: var(--color-text-muted);
+  font-size: .9rem;
+}
+
+.json-diff-tool__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .65rem;
+  margin: 1rem 0;
+}
+
+.json-diff-tool button {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-code-bg);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: .85rem;
+  padding: .5rem .7rem;
+}
+
+.json-diff-tool button:hover:not(:disabled),
+.json-diff-tool button:focus-visible {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.json-diff-tool button:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
+.json-diff-tool__inputs,
+.json-diff-tool__values {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: .75rem;
+}
+
+.json-diff-tool__pane label {
+  display: block;
+  font-size: .85rem;
+  font-weight: 700;
+}
+
+.json-diff-tool textarea {
+  width: 100%;
+  min-height: 240px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-code-bg);
+  color: var(--color-primary-light);
+  font: .85rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  margin-top: .55rem;
+  padding: .75rem;
+  resize: vertical;
+}
+
+.json-diff-tool__results {
+  margin-top: 1rem;
+}
+
+.json-diff-tool__results-heading,
+.json-diff-tool__change-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+}
+
+.json-diff-tool__summary,
+.json-diff-tool__copy-status,
+.json-diff-tool__error {
+  border-radius: 8px;
+  margin-top: .75rem;
+  padding: .7rem .85rem;
+}
+
+.json-diff-tool__summary {
+  background: var(--color-code-bg);
+  color: var(--color-success);
+  font-size: .85rem;
+  font-weight: 700;
+}
+
+.json-diff-tool__change-list {
+  display: grid;
+  gap: .75rem;
+  list-style: none;
+  margin-top: .75rem;
+}
+
+.json-diff-tool__change {
+  border: 1px solid var(--color-border);
+  border-left: 4px solid var(--color-warning);
+  border-radius: 8px;
+  background: var(--color-code-bg);
+  padding: .8rem;
+}
+
+.json-diff-tool__change--added {
+  border-left-color: var(--color-success);
+}
+
+.json-diff-tool__change--removed {
+  border-left-color: var(--color-error);
+}
+
+.json-diff-tool__change-heading code {
+  color: var(--color-primary-light);
+  overflow-wrap: anywhere;
+}
+
+.json-diff-tool__change-heading span {
+  color: var(--color-text-muted);
+  font-size: .75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.json-diff-tool__values {
+  margin-top: .7rem;
+}
+
+.json-diff-tool__values strong {
+  display: block;
+  color: var(--color-text-muted);
+  font-size: .75rem;
+  margin-bottom: .25rem;
+}
+
+.json-diff-tool__values pre {
+  overflow-x: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.json-diff-tool__empty {
+  margin-top: .75rem;
+}
+
+.json-diff-tool__copy-status {
+  color: var(--color-success);
+  text-align: right;
+}
+
+.json-diff-tool__error {
+  border: 1px solid var(--color-error-border);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+}
+
+@media (min-width: 721px) {
+  .json-diff-tool__inputs,
+  .json-diff-tool__values {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
