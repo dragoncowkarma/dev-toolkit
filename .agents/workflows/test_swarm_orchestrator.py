@@ -1,6 +1,7 @@
 """Regression tests for the swarm lifecycle state machine."""
 
 import importlib.util
+import json
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -922,13 +923,97 @@ class RuntimeLifecycleTests(unittest.TestCase):
             original_history = list(tracker._history)
             try:
                 tracker._active["123"] = (None, SimpleNamespace())
-                tracker._history.append(SimpleNamespace())
+                tracker._history.append(
+                    record("issue#1:initial", "worker", swarm.ProcessStatus.FAILED)
+                )
                 with patch.object(swarm, "PROCESS_REGISTRY_FILE", registry):
                     swarm.reset_process_history()
 
                 self.assertFalse(registry.exists())
                 self.assertEqual({}, tracker._active)
                 self.assertEqual([], tracker._history)
+            finally:
+                tracker._active = original_active
+                tracker._history = original_history
+
+    def test_reset_process_history_preserves_active_provider_cooldown(self):
+        """A restart must not forget that an AI is still over its quota.
+
+        `run_loop` exits after one idle cycle and `--once` is meant to be
+        re-invoked by a scheduler, so `reset_process_history()` runs on every
+        orchestrator restart. If it wiped an unexpired provider cooldown, the
+        very next cycle would re-dispatch a prompt to an AI already known to
+        reject it.
+        """
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            registry = Path(tmp_dir) / "registry.json"
+            registry.write_text("{}", encoding="utf-8")
+
+            active_retry_after = (
+                datetime.now(timezone.utc) + timedelta(minutes=30)
+            ).isoformat()
+            expired_retry_after = (
+                datetime.now(timezone.utc) - timedelta(minutes=1)
+            ).isoformat()
+
+            active_cooldown = record(
+                "maintain#39-comment",
+                "maintainer",
+                swarm.ProcessStatus.DEFERRED,
+                retry_after=active_retry_after,
+                ai_name="antigravity",
+                defer_scope="provider",
+            )
+
+            tracker = swarm.tracker
+            original_active = dict(tracker._active)
+            original_history = list(tracker._history)
+            try:
+                tracker._active["123"] = (None, SimpleNamespace())
+                tracker._history = [
+                    active_cooldown,
+                    # Expired: no longer blocking anything, must not survive.
+                    record(
+                        "maintain#12-comment",
+                        "maintainer",
+                        swarm.ProcessStatus.DEFERRED,
+                        retry_after=expired_retry_after,
+                        ai_name="codex",
+                        defer_scope="provider",
+                    ),
+                    # Event-scope defer (e.g. a one-off CLI timeout) is not an
+                    # AI-wide limit and must not survive.
+                    record(
+                        "review#30-abc123",
+                        "reviewer",
+                        swarm.ProcessStatus.DEFERRED,
+                        retry_after=active_retry_after,
+                        ai_name="antigravity",
+                        defer_scope="event",
+                    ),
+                    # Ordinary crash attempt must not survive.
+                    record("issue#7:initial", "worker", swarm.ProcessStatus.FAILED),
+                ]
+
+                with patch.object(swarm, "PROCESS_REGISTRY_FILE", registry):
+                    swarm.reset_process_history()
+
+                    self.assertEqual({}, tracker._active)
+                    self.assertEqual([active_cooldown], tracker._history)
+                    self.assertTrue(registry.exists())
+                    persisted = json.loads(registry.read_text(encoding="utf-8"))
+                    self.assertEqual(1, len(persisted["history"]))
+                    self.assertEqual(
+                        "antigravity", persisted["history"][0]["ai_name"],
+                    )
+
+                    # And the preserved cooldown actually blocks a fresh
+                    # dispatch to that AI post-restart.
+                    allowed, reason = tracker.should_dispatch(
+                        "issue#99:initial", "worker", ai_name="antigravity",
+                    )
+                    self.assertFalse(allowed)
+                    self.assertIn(swarm.DISPATCH_PROVIDER_COOLDOWN, reason)
             finally:
                 tracker._active = original_active
                 tracker._history = original_history
