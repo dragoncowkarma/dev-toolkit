@@ -17,7 +17,8 @@ describe('inferType', () => {
       declaration: 'interface',
     });
     expect(output).toBe(
-      'export interface Profile {\n  account: {\n    id: number;\n    name: string;\n  };\n  zebra: boolean;\n}',
+      'export interface Profile {\n  account: {\n    id: number;\n' +
+        '    name: string;\n  };\n  zebra: boolean;\n}',
     );
     expect(formatTypeScript(value, {
       rootName: 'Profile',

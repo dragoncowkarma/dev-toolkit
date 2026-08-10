@@ -84,7 +84,8 @@ function writeType(type, level, options) {
       ? ' | undefined'
       : '';
     const propertyType = writeType(property.type, level + 1, options);
-    return `${nextIndent}${modifier}${propertyName(name)}${optional}: ${propertyType}${undefinedType};`;
+    const declaration = `${propertyName(name)}${optional}: ${propertyType}${undefinedType};`;
+    return `${nextIndent}${modifier}${declaration}`;
   }).join('\n')}\n${indent}}`;
 }
 
