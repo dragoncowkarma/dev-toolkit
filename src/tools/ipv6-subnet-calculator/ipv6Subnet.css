@@ -1,0 +1,106 @@
+.ipv6-subnet {
+  display: flex;
+  width: 100%;
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.ipv6-subnet__intro,
+.ipv6-subnet__input,
+.ipv6-subnet__results {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  padding: 1rem;
+}
+
+.ipv6-subnet__intro h2 {
+  font-size: 1.25rem;
+}
+
+.ipv6-subnet__intro > p:last-child,
+.ipv6-subnet__result > span {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.ipv6-subnet__eyebrow {
+  color: var(--color-primary-light);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.ipv6-subnet__input {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+}
+
+.ipv6-subnet__input input {
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: calc(var(--radius) - 5px);
+  background: var(--color-code-bg);
+  color: var(--color-text);
+  font: inherit;
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  padding: 0.6rem 0.7rem;
+}
+
+.ipv6-subnet__input input:focus {
+  outline: 0;
+  border-color: var(--color-primary);
+}
+
+.ipv6-subnet__error {
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+  font-size: 0.85rem;
+  padding: 0.75rem 1rem;
+}
+
+.ipv6-subnet__results {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+}
+
+.ipv6-subnet__result {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.35rem;
+  border: 1px solid var(--color-border);
+  border-radius: calc(var(--radius) - 4px);
+  background: var(--color-code-bg);
+  padding: 0.8rem;
+}
+
+.ipv6-subnet__result code {
+  overflow-x: auto;
+  color: var(--color-primary-light);
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 0.9rem;
+}
+
+@media (min-width: 650px) {
+  .ipv6-subnet__results {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 900px) {
+  .ipv6-subnet__results {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
