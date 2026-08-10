@@ -86,10 +86,15 @@ function hideBackgroundElements(sidebarEl) {
     if (!parent) break;
 
     Array.from(parent.children).forEach((child) => {
+      const isLiveRegion =
+        child.matches?.('[role="status"], [role="alert"], [aria-live]') ||
+        child.querySelector?.('[role="status"], [role="alert"], [aria-live]');
+
       if (
         child !== current &&
         child !== sidebarEl &&
         child !== backdrop &&
+        !isLiveRegion &&
         !child.contains(sidebarEl)
       ) {
         const hadAriaHidden = child.hasAttribute('aria-hidden');
@@ -151,6 +156,30 @@ export default function Sidebar({
   useEffect(() => {
     onCloseMobileRef.current = onCloseMobile;
   });
+
+  useEffect(() => {
+    if (!isMobileOpen || typeof window === 'undefined' || !window.matchMedia) return undefined;
+
+    const mediaQuery = window.matchMedia('(min-width: 769px)');
+    const handleMediaChange = (event) => {
+      if (event.matches) {
+        onCloseMobileRef.current();
+      }
+    };
+
+    if (mediaQuery.matches) {
+      onCloseMobileRef.current();
+    }
+
+    if (mediaQuery.addEventListener) {
+      mediaQuery.addEventListener('change', handleMediaChange);
+      return () => mediaQuery.removeEventListener('change', handleMediaChange);
+    } else if (mediaQuery.addListener) {
+      mediaQuery.addListener(handleMediaChange);
+      return () => mediaQuery.removeListener(handleMediaChange);
+    }
+    return undefined;
+  }, [isMobileOpen]);
 
   useEffect(() => {
     if (!isMobileOpen) return undefined;
@@ -245,6 +274,8 @@ export default function Sidebar({
     .join(' ');
 
   const categories = getToolCategories(tools);
+  // If the selected category disappeared from the tools prop (e.g. tools list changed),
+  // fallback to ALL_CATEGORY so we don't display an empty state for a category that no longer exists.
   const effectiveCategory =
     selectedCategory === ALL_CATEGORY || categories.includes(selectedCategory)
       ? selectedCategory

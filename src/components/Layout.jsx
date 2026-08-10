@@ -58,6 +58,30 @@ export default function Layout({ tools, defaultToolId }) {
     [activeToolId, tools],
   );
 
+  useEffect(() => {
+    if (!isMobileOpen || typeof window === 'undefined' || !window.matchMedia) return undefined;
+
+    const mediaQuery = window.matchMedia('(min-width: 769px)');
+    const handleMediaChange = (event) => {
+      if (event.matches) {
+        setIsMobileOpen(false);
+      }
+    };
+
+    if (mediaQuery.matches) {
+      setIsMobileOpen(false);
+    }
+
+    if (mediaQuery.addEventListener) {
+      mediaQuery.addEventListener('change', handleMediaChange);
+      return () => mediaQuery.removeEventListener('change', handleMediaChange);
+    } else if (mediaQuery.addListener) {
+      mediaQuery.addListener(handleMediaChange);
+      return () => mediaQuery.removeListener(handleMediaChange);
+    }
+    return undefined;
+  }, [isMobileOpen]);
+
   const handleSelectTool = (toolId) => {
     setActiveToolId(toolId);
     const expectedHash = `#/${toolId}`;

@@ -247,12 +247,51 @@ describe('Sidebar Mobile Focus Trap', () => {
 
     const closeButton = container.querySelector('.sidebar__mobile-close');
     const collapseButton = container.querySelector('.sidebar__collapse');
+    const githubLink = container.querySelector('.sidebar__github');
+
+    // On mobile viewports, .sidebar__collapse is display: none in CSS
+    collapseButton.style.display = 'none';
 
     expect(document.activeElement).toBe(closeButton);
 
     fireEvent.keyDown(document.activeElement, { key: 'Tab', shiftKey: true });
-    expect(document.activeElement).toBe(collapseButton);
+    expect(document.activeElement).toBe(githubLink);
 
+    fireEvent.keyDown(document.activeElement, { key: 'Tab', shiftKey: false });
+    expect(document.activeElement).toBe(closeButton);
+  });
+
+  it('skips elements styled with display: none or visibility: hidden from the focus trap', () => {
+    const { container } = render(
+      <Sidebar
+        tools={TOOLS}
+        activeToolId="base64"
+        isCollapsed={false}
+        isMobileOpen={true}
+        onSelectTool={() => {}}
+        onToggleCollapse={() => {}}
+        onCloseMobile={() => {}}
+      />,
+    );
+
+    const closeButton = container.querySelector('.sidebar__mobile-close');
+    const collapseButton = container.querySelector('.sidebar__collapse');
+    const githubLink = container.querySelector('.sidebar__github');
+
+    collapseButton.style.display = 'none';
+    githubLink.style.display = 'none';
+
+    const urlToolButton = screen.getByRole('button', { name: 'URL Encoder' });
+    urlToolButton.focus();
+
+    fireEvent.keyDown(document.activeElement, { key: 'Tab', shiftKey: false });
+    expect(document.activeElement).toBe(closeButton);
+
+    fireEvent.keyDown(document.activeElement, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(urlToolButton);
+
+    githubLink.style.display = 'block';
+    githubLink.style.visibility = 'hidden';
     fireEvent.keyDown(document.activeElement, { key: 'Tab', shiftKey: false });
     expect(document.activeElement).toBe(closeButton);
   });
@@ -390,5 +429,47 @@ describe('Sidebar Modal Dialog Accessibility', () => {
 
     document.body.removeChild(activeBackground);
     document.body.removeChild(existingHidden);
+  });
+
+  it('does not apply aria-hidden="true" to live-region announcer elements during background isolation', () => {
+    const liveRegion = document.createElement('div');
+    liveRegion.setAttribute('role', 'status');
+    liveRegion.textContent = 'Active tool: Base64';
+    document.body.appendChild(liveRegion);
+
+    const { unmount } = renderSidebar({ isMobileOpen: true });
+
+    expect(liveRegion).not.toHaveAttribute('aria-hidden');
+
+    unmount();
+    document.body.removeChild(liveRegion);
+  });
+
+  it('force-closes the drawer when viewport widens to desktop size (>= 769px)', () => {
+    let changeHandler;
+    const matchMediaSpy = vi.spyOn(window, 'matchMedia').mockImplementation((query) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: (listener) => {
+        changeHandler = listener;
+      },
+      removeListener: vi.fn(),
+      addEventListener: (type, listener) => {
+        if (type === 'change') changeHandler = listener;
+      },
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+
+    const { onCloseMobile } = renderSidebar({ isMobileOpen: true });
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    changeHandler({ matches: true });
+
+    expect(onCloseMobile).toHaveBeenCalledTimes(1);
+
+    matchMediaSpy.mockRestore();
   });
 });

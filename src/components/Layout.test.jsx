@@ -282,6 +282,59 @@ describe('Layout Integration & Focus Trap', () => {
     expect(pageContainer).not.toHaveAttribute('aria-hidden');
     expect(document.activeElement).toBe(openMenuButton);
   });
+
+  it('announces active tool changes when selected from an open mobile drawer without status being aria-hidden', () => {
+    const { container } = render(<Layout tools={TEST_TOOLS} defaultToolId="base64" />);
+
+    const statusElement = container.querySelector('[role="status"]');
+    expect(statusElement).toHaveTextContent('Active tool: Base64');
+
+    const openMenuButton = screen.getByRole('button', { name: 'Open tool navigation' });
+    fireEvent.click(openMenuButton);
+
+    expect(statusElement).not.toHaveAttribute('aria-hidden');
+
+    const dialog = screen.getByRole('dialog', { name: 'Developer tools' });
+    const jsonToolButton = within(dialog).getByRole('button', { name: 'JSON Formatter' });
+
+    fireEvent.click(jsonToolButton);
+
+    expect(statusElement).toHaveTextContent('Active tool: JSON Formatter');
+    expect(statusElement).not.toHaveAttribute('aria-hidden');
+  });
+
+  it('force-closes mobile drawer and clears aria-hidden from page when viewport resizes to desktop width', () => {
+    let changeHandler;
+    const matchMediaSpy = vi.spyOn(window, 'matchMedia').mockImplementation((query) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: (listener) => {
+        changeHandler = listener;
+      },
+      removeListener: vi.fn(),
+      addEventListener: (type, listener) => {
+        if (type === 'change') changeHandler = listener;
+      },
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+
+    const { container } = render(<Layout tools={TEST_TOOLS} defaultToolId="base64" />);
+
+    const openMenuButton = screen.getByRole('button', { name: 'Open tool navigation' });
+    fireEvent.click(openMenuButton);
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(container.querySelector('.layout__page')).toHaveAttribute('aria-hidden', 'true');
+
+    changeHandler({ matches: true });
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(container.querySelector('.layout__page')).not.toHaveAttribute('aria-hidden');
+
+    matchMediaSpy.mockRestore();
+  });
 });
 
 describe('Layout URL hash routing', () => {
