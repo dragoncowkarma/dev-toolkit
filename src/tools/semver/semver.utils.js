@@ -227,16 +227,24 @@ function isWildcard(str) {
  * @returns {Array<{ operator: string, semver: object }>|null} Array of comparators, or null.
  */
 function parsePrimitiveRange(op, verStr) {
-  if (isWildcard(verStr)) {
+  const plusIdx = verStr.indexOf('+');
+  let verNoBuild = verStr;
+  let buildStr = '';
+  if (plusIdx !== -1) {
+    verNoBuild = verStr.slice(0, plusIdx);
+    buildStr = verStr.slice(plusIdx);
+  }
+
+  if (isWildcard(verNoBuild)) {
     if (op === '<') {
       const sv = parseSemver('0.0.0-0');
       return sv ? [{ operator: '<', semver: sv }] : null;
     }
-    const sv = parseSemver('0.0.0');
+    const sv = parseSemver('0.0.0' + buildStr);
     return sv ? [{ operator: '>=', semver: sv }] : null;
   }
 
-  const mainVer = verStr.split(/[-+]/)[0];
+  const mainVer = verNoBuild.split('-')[0];
   const parts = mainVer.split('.');
 
   if (parts.length > 3) return null;
@@ -244,20 +252,20 @@ function parsePrimitiveRange(op, verStr) {
   if (parts.length === 1) {
     const mStr = parts[0];
     if (isWildcard(mStr)) {
-      const sv = parseSemver('0.0.0');
+      const sv = parseSemver('0.0.0' + buildStr);
       return sv ? [{ operator: '>=', semver: sv }] : null;
     }
     const mVal = parseInt(mStr, 10);
     if (Number.isNaN(mVal) || mVal < 0 || mStr !== String(mVal)) return null;
 
     if (op === '=') {
-      const lower = parseSemver(`${mVal}.0.0`);
+      const lower = parseSemver(`${mVal}.0.0${buildStr}`);
       const upper = parseSemver(`${mVal + 1}.0.0-0`);
       if (!lower || !upper) return null;
       return [{ operator: '>=', semver: lower }, { operator: '<', semver: upper }];
     }
     if (op === '>=') {
-      const lower = parseSemver(`${mVal}.0.0`);
+      const lower = parseSemver(`${mVal}.0.0${buildStr}`);
       return lower ? [{ operator: '>=', semver: lower }] : null;
     }
     if (op === '>') {
@@ -280,20 +288,20 @@ function parsePrimitiveRange(op, verStr) {
     if (Number.isNaN(mVal) || mVal < 0 || mStr !== String(mVal)) return null;
 
     if (isWildcard(nStr)) {
-      return parsePrimitiveRange(op, `${mVal}`);
+      return parsePrimitiveRange(op, `${mVal}${buildStr}`);
     }
 
     const nVal = parseInt(nStr, 10);
     if (Number.isNaN(nVal) || nVal < 0 || nStr !== String(nVal)) return null;
 
     if (op === '=') {
-      const lower = parseSemver(`${mVal}.${nVal}.0`);
+      const lower = parseSemver(`${mVal}.${nVal}.0${buildStr}`);
       const upper = parseSemver(`${mVal}.${nVal + 1}.0-0`);
       if (!lower || !upper) return null;
       return [{ operator: '>=', semver: lower }, { operator: '<', semver: upper }];
     }
     if (op === '>=') {
-      const lower = parseSemver(`${mVal}.${nVal}.0`);
+      const lower = parseSemver(`${mVal}.${nVal}.0${buildStr}`);
       return lower ? [{ operator: '>=', semver: lower }] : null;
     }
     if (op === '>') {
@@ -327,13 +335,13 @@ function parsePrimitiveRange(op, verStr) {
 
     if (isWildcard(pStr)) {
       if (op === '=') {
-        const lower = parseSemver(`${mVal}.${nVal}.0`);
+        const lower = parseSemver(`${mVal}.${nVal}.0${buildStr}`);
         const upper = parseSemver(`${mVal}.${nVal + 1}.0-0`);
         if (!lower || !upper) return null;
         return [{ operator: '>=', semver: lower }, { operator: '<', semver: upper }];
       }
       if (op === '>=') {
-        const lower = parseSemver(`${mVal}.${nVal}.0`);
+        const lower = parseSemver(`${mVal}.${nVal}.0${buildStr}`);
         return lower ? [{ operator: '>=', semver: lower }] : null;
       }
       if (op === '>') {
@@ -369,14 +377,22 @@ function parseCaretRange(verStr) {
     return sv ? [{ operator: '>=', semver: sv }] : null;
   }
 
-  const [main, prereleaseStr] = verStr.split('-');
+  const plusIdx = verStr.indexOf('+');
+  let verNoBuild = verStr;
+  let buildStr = '';
+  if (plusIdx !== -1) {
+    verNoBuild = verStr.slice(0, plusIdx);
+    buildStr = verStr.slice(plusIdx);
+  }
+
+  const [main, prereleaseStr] = verNoBuild.split('-');
   const mainParts = main.split('.');
   if (mainParts.length > 3) return null;
 
   const [majorStr, minorStr, patchStr] = mainParts;
 
   if (isWildcard(majorStr)) {
-    const sv = parseSemver('0.0.0');
+    const sv = parseSemver('0.0.0' + buildStr);
     return sv ? [{ operator: '>=', semver: sv }] : null;
   }
 
@@ -384,7 +400,7 @@ function parseCaretRange(verStr) {
   if (Number.isNaN(mVal) || mVal < 0 || majorStr !== String(mVal)) return null;
 
   if (isWildcard(minorStr)) {
-    const lower = parseSemver(`${mVal}.0.0`);
+    const lower = parseSemver(`${mVal}.0.0${buildStr}`);
     const upper = parseSemver(`${mVal + 1}.0.0-0`);
     if (!lower || !upper) return null;
     return [{ operator: '>=', semver: lower }, { operator: '<', semver: upper }];
@@ -395,12 +411,12 @@ function parseCaretRange(verStr) {
 
   if (isWildcard(patchStr)) {
     if (mVal > 0) {
-      const lower = parseSemver(`${mVal}.${nVal}.0`);
+      const lower = parseSemver(`${mVal}.${nVal}.0${buildStr}`);
       const upper = parseSemver(`${mVal + 1}.0.0-0`);
       if (!lower || !upper) return null;
       return [{ operator: '>=', semver: lower }, { operator: '<', semver: upper }];
     }
-    const lower = parseSemver(`0.${nVal}.0`);
+    const lower = parseSemver(`0.${nVal}.0${buildStr}`);
     const upper = parseSemver(`0.${nVal + 1}.0-0`);
     if (!lower || !upper) return null;
     return [{ operator: '>=', semver: lower }, { operator: '<', semver: upper }];
@@ -410,8 +426,8 @@ function parseCaretRange(verStr) {
   if (Number.isNaN(pVal) || pVal < 0 || patchStr !== String(pVal)) return null;
 
   const fullVer = prereleaseStr
-    ? `${mVal}.${nVal}.${pVal}-${prereleaseStr}`
-    : `${mVal}.${nVal}.${pVal}`;
+    ? `${mVal}.${nVal}.${pVal}-${prereleaseStr}${buildStr}`
+    : `${mVal}.${nVal}.${pVal}${buildStr}`;
   const lower = parseSemver(fullVer);
   if (!lower) return null;
 
@@ -442,14 +458,22 @@ function parseTildeRange(verStr) {
     return sv ? [{ operator: '>=', semver: sv }] : null;
   }
 
-  const [main, prereleaseStr] = verStr.split('-');
+  const plusIdx = verStr.indexOf('+');
+  let verNoBuild = verStr;
+  let buildStr = '';
+  if (plusIdx !== -1) {
+    verNoBuild = verStr.slice(0, plusIdx);
+    buildStr = verStr.slice(plusIdx);
+  }
+
+  const [main, prereleaseStr] = verNoBuild.split('-');
   const mainParts = main.split('.');
   if (mainParts.length > 3) return null;
 
   const [majorStr, minorStr, patchStr] = mainParts;
 
   if (isWildcard(majorStr)) {
-    const sv = parseSemver('0.0.0');
+    const sv = parseSemver('0.0.0' + buildStr);
     return sv ? [{ operator: '>=', semver: sv }] : null;
   }
 
@@ -457,7 +481,7 @@ function parseTildeRange(verStr) {
   if (Number.isNaN(mVal) || mVal < 0 || majorStr !== String(mVal)) return null;
 
   if (isWildcard(minorStr)) {
-    const lower = parseSemver(`${mVal}.0.0`);
+    const lower = parseSemver(`${mVal}.0.0${buildStr}`);
     const upper = parseSemver(`${mVal + 1}.0.0-0`);
     if (!lower || !upper) return null;
     return [{ operator: '>=', semver: lower }, { operator: '<', semver: upper }];
@@ -467,7 +491,7 @@ function parseTildeRange(verStr) {
   if (Number.isNaN(nVal) || nVal < 0 || minorStr !== String(nVal)) return null;
 
   if (isWildcard(patchStr)) {
-    const lower = parseSemver(`${mVal}.${nVal}.0`);
+    const lower = parseSemver(`${mVal}.${nVal}.0${buildStr}`);
     const upper = parseSemver(`${mVal}.${nVal + 1}.0-0`);
     if (!lower || !upper) return null;
     return [{ operator: '>=', semver: lower }, { operator: '<', semver: upper }];
@@ -477,8 +501,8 @@ function parseTildeRange(verStr) {
   if (Number.isNaN(pVal) || pVal < 0 || patchStr !== String(pVal)) return null;
 
   const fullVer = prereleaseStr
-    ? `${mVal}.${nVal}.${pVal}-${prereleaseStr}`
-    : `${mVal}.${nVal}.${pVal}`;
+    ? `${mVal}.${nVal}.${pVal}-${prereleaseStr}${buildStr}`
+    : `${mVal}.${nVal}.${pVal}${buildStr}`;
   const lower = parseSemver(fullVer);
   if (!lower) return null;
 
@@ -559,14 +583,31 @@ function parseSingleToken(token) {
  * @returns {Array<{ operator: string, semver: object }>|null} Comparators or null.
  */
 function expandLowerHyphen(verStr) {
-  let v = verStr;
+  let v = verStr.trim();
   if (v.startsWith('v') || v.startsWith('V')) v = v.slice(1);
-  const parts = v.split('.');
+  const mainVer = v.split(/[-+]/)[0];
+  const parts = mainVer.split('.');
+
+  if (isWildcard(parts[0])) {
+    return parseSingleToken('>=0.0.0');
+  }
+
   if (parts.length === 1) {
-    return parseSingleToken(`>=${parts[0]}.0.0`);
+    return parseSingleToken(`>=${v}.0.0`);
   }
   if (parts.length === 2) {
-    return parseSingleToken(`>=${parts[0]}.${parts[1]}.0`);
+    if (isWildcard(parts[1])) {
+      return parseSingleToken(`>=${parts[0]}.0.0`);
+    }
+    return parseSingleToken(`>=${v}.0`);
+  }
+  if (parts.length === 3) {
+    if (isWildcard(parts[1])) {
+      return parseSingleToken(`>=${parts[0]}.0.0`);
+    }
+    if (isWildcard(parts[2])) {
+      return parseSingleToken(`>=${parts[0]}.${parts[1]}.0`);
+    }
   }
   return parseSingleToken(`>=${v}`);
 }
@@ -578,20 +619,43 @@ function expandLowerHyphen(verStr) {
  * @returns {Array<{ operator: string, semver: object }>|null} Comparators or null.
  */
 function expandUpperHyphen(verStr) {
-  let v = verStr;
+  let v = verStr.trim();
   if (v.startsWith('v') || v.startsWith('V')) v = v.slice(1);
-  const parts = v.split('.');
+  const mainVer = v.split(/[-+]/)[0];
+  const parts = mainVer.split('.');
+
+  if (isWildcard(parts[0])) {
+    return [];
+  }
+
+  const mVal = parseInt(parts[0], 10);
+  if (Number.isNaN(mVal) || mVal < 0 || parts[0] !== String(mVal)) return null;
+
   if (parts.length === 1) {
-    const mVal = parseInt(parts[0], 10);
-    if (Number.isNaN(mVal)) return null;
     return parseSingleToken(`<${mVal + 1}.0.0-0`);
   }
+
   if (parts.length === 2) {
-    const mVal = parseInt(parts[0], 10);
+    if (isWildcard(parts[1])) {
+      return parseSingleToken(`<${mVal + 1}.0.0-0`);
+    }
     const nVal = parseInt(parts[1], 10);
-    if (Number.isNaN(mVal) || Number.isNaN(nVal)) return null;
+    if (Number.isNaN(nVal) || nVal < 0 || parts[1] !== String(nVal)) return null;
     return parseSingleToken(`<${mVal}.${nVal + 1}.0-0`);
   }
+
+  if (parts.length === 3) {
+    if (isWildcard(parts[1])) {
+      return parseSingleToken(`<${mVal + 1}.0.0-0`);
+    }
+    const nVal = parseInt(parts[1], 10);
+    if (Number.isNaN(nVal) || nVal < 0 || parts[1] !== String(nVal)) return null;
+
+    if (isWildcard(parts[2])) {
+      return parseSingleToken(`<${mVal}.${nVal + 1}.0-0`);
+    }
+  }
+
   return parseSingleToken(`<=${v}`);
 }
 

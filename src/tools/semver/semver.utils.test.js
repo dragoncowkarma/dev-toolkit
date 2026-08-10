@@ -165,6 +165,38 @@ describe('semver.utils', () => {
       expect(satisfiesRange('3.0.0', '^1.2.0 || ^2.0.0')).toBe(false);
     });
 
+    it('supports caret ^ and tilde ~ ranges with build metadata', () => {
+      expect(parseRange('^1.2.3+build.5')).not.toBeNull();
+      expect(parseRange('~1.2.3+build.5')).not.toBeNull();
+      expect(satisfiesRange('1.2.3', '^1.2.3+build.5')).toBe(true);
+      expect(satisfiesRange('1.9.0', '^1.2.3+build.5')).toBe(true);
+      expect(satisfiesRange('2.0.0', '^1.2.3+build.5')).toBe(false);
+      expect(satisfiesRange('1.2.3', '~1.2.3+build.5')).toBe(true);
+      expect(satisfiesRange('1.2.9', '~1.2.3+build.5')).toBe(true);
+      expect(satisfiesRange('1.3.0', '~1.2.3+build.5')).toBe(false);
+    });
+
+    it('supports hyphen ranges combined with partial wildcard endpoints', () => {
+      expect(parseRange('1.2.3 - 2.x')).not.toBeNull();
+      expect(parseRange('1.x - 2.3.4')).not.toBeNull();
+      expect(parseRange('1.2.x - 2.3.x')).not.toBeNull();
+
+      expect(satisfiesRange('1.2.3', '1.2.3 - 2.x')).toBe(true);
+      expect(satisfiesRange('2.9.9', '1.2.3 - 2.x')).toBe(true);
+      expect(satisfiesRange('3.0.0', '1.2.3 - 2.x')).toBe(false);
+      expect(satisfiesRange('1.2.2', '1.2.3 - 2.x')).toBe(false);
+
+      expect(satisfiesRange('1.0.0', '1.x - 2.3.4')).toBe(true);
+      expect(satisfiesRange('2.3.4', '1.x - 2.3.4')).toBe(true);
+      expect(satisfiesRange('2.3.5', '1.x - 2.3.4')).toBe(false);
+      expect(satisfiesRange('0.9.9', '1.x - 2.3.4')).toBe(false);
+
+      expect(satisfiesRange('1.2.0', '1.2.x - 2.3.x')).toBe(true);
+      expect(satisfiesRange('2.3.9', '1.2.x - 2.3.x')).toBe(true);
+      expect(satisfiesRange('2.4.0', '1.2.x - 2.3.x')).toBe(false);
+      expect(satisfiesRange('1.1.9', '1.2.x - 2.3.x')).toBe(false);
+    });
+
     it('returns null from parseRange for unsupported or invalid range syntax', () => {
       expect(parseRange('invalid range string')).toBeNull();
       expect(parseRange('1.2.3.4')).toBeNull();
