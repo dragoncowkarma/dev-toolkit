@@ -172,6 +172,6 @@ export function findMissingKeys(sourceEntries, exampleEntries) {
 export function maskValue(value, visibleChars = 4) {
   const text = String(value);
   const visible = Math.max(0, visibleChars);
-  if (text.length <= visible) return '•'.repeat(text.length);
+  if (visible === 0 || text.length <= visible) return '•'.repeat(text.length);
   return `${'•'.repeat(text.length - visible)}${text.slice(-visible)}`;
 }

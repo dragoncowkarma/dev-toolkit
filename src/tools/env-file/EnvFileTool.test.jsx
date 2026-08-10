@@ -1,8 +1,11 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import EnvFileTool from './EnvFileTool.jsx';
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 function enterSource(value = 'TOKEN=sk_live_abc123\nNAME=Ada') {
   fireEvent.change(screen.getByLabelText('.env source'), { target: { value } });
@@ -53,6 +56,6 @@ describe('EnvFileTool', () => {
     expect(screen.getByText('Missing in .env')).toBeInTheDocument();
     expect(screen.getByText('C')).toBeInTheDocument();
     expect(screen.getByText('Missing in .env.example')).toBeInTheDocument();
-    expect(screen.getByText('A')).toBeInTheDocument();
+    expect(screen.getAllByText('A')).toHaveLength(2);
   });
 });
