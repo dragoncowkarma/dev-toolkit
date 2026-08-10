@@ -1,0 +1,11 @@
+.graphql-formatter { max-width: 1100px; margin: 0 auto; padding: 0 1.25rem 2rem; }
+.graphql-formatter__options, .graphql-formatter__panels { display: grid; gap: 1rem; }
+.graphql-formatter__options { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 1rem; padding: 1rem; border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-surface); }
+.graphql-formatter__options label, .graphql-formatter__panel { display: grid; gap: .4rem; color: var(--color-text-muted); font-size: .8rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+.graphql-formatter select, .graphql-formatter button, .graphql-formatter textarea { border: 1px solid var(--color-border); border-radius: calc(var(--radius) - 4px); background: var(--color-code-bg); color: var(--color-text); font: inherit; }
+.graphql-formatter select, .graphql-formatter button { padding: .55rem .7rem; background: var(--color-surface); }
+.graphql-formatter button { cursor: pointer; }.graphql-formatter button:hover:not(:disabled) { border-color: var(--color-primary); color: var(--color-primary-light); }.graphql-formatter button:disabled { opacity: .5; cursor: not-allowed; }
+.graphql-formatter textarea { min-height: 320px; padding: 1rem; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; line-height: 1.5; text-transform: none; letter-spacing: normal; }
+.graphql-formatter__output-header { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }.graphql-formatter__error { min-height: 320px; padding: 1rem; border: 1px solid var(--color-error-border); border-radius: calc(var(--radius) - 4px); background: var(--color-error-bg); color: var(--color-error-light); text-transform: none; letter-spacing: normal; }.graphql-formatter__notice { min-height: 1.4rem; margin-top: .75rem; color: var(--color-text-muted); font-size: .825rem; }
+@media (min-width: 720px) { .graphql-formatter__panels { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 480px) { .graphql-formatter__options { grid-template-columns: 1fr; } }
