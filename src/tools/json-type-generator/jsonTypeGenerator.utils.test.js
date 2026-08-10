@@ -12,11 +12,17 @@ describe('inferType', () => {
 
   it('formats nested objects with stable property ordering', () => {
     const value = { zebra: true, account: { name: 'Ada', id: 1 } };
-    const output = formatTypeScript(value, { rootName: 'Profile', declaration: 'interface' });
+    const output = formatTypeScript(value, {
+      rootName: 'Profile',
+      declaration: 'interface',
+    });
     expect(output).toBe(
       'export interface Profile {\n  account: {\n    id: number;\n    name: string;\n  };\n  zebra: boolean;\n}',
     );
-    expect(formatTypeScript(value, { rootName: 'Profile', declaration: 'interface' })).toBe(output);
+    expect(formatTypeScript(value, {
+      rootName: 'Profile',
+      declaration: 'interface',
+    })).toBe(output);
   });
 
   it('merges compatible object-array shapes and makes missing fields optional', () => {
@@ -27,7 +33,9 @@ describe('inferType', () => {
 
   it('uses unions only for heterogeneous array values, including null', () => {
     expect(formatTypeScript([1, 2])).toBe('export type Root = number[];');
-    expect(formatTypeScript([1, 'two', null])).toBe('export type Root = (null | number | string)[];');
+    expect(formatTypeScript([1, 'two', null])).toBe(
+      'export type Root = (null | number | string)[];',
+    );
   });
 
   it('supports readonly, explicit undefined, and indentation settings', () => {
@@ -39,7 +47,10 @@ describe('inferType', () => {
   });
 
   it('returns malformed JSON errors without throwing', () => {
-    expect(generateTypeScript('{"id": }')).toMatchObject({ output: '', error: expect.stringContaining('Invalid JSON:') });
+    expect(generateTypeScript('{"id": }')).toMatchObject({
+      output: '',
+      error: expect.stringContaining('Invalid JSON:'),
+    });
     expect(generateTypeScript('')).toEqual({ output: '', error: '' });
   });
 });

@@ -71,15 +71,20 @@ function writeType(type, level, options) {
     const element = writeType(type.element, level, options);
     return type.element.kind === 'union' ? `(${element})[]` : `${element}[]`;
   }
-  if (type.kind === 'union') return type.types.map((item) => writeType(item, level, options)).join(' | ');
+  if (type.kind === 'union') {
+    return type.types.map((item) => writeType(item, level, options)).join(' | ');
+  }
   if (type.kind !== 'object') return type.kind === 'undefined' ? 'unknown' : type.kind;
   const entries = Object.entries(type.properties);
   if (!entries.length) return '{}';
   return `{\n${entries.map(([name, property]) => {
     const modifier = options.readonly ? 'readonly ' : '';
     const optional = property.optional && options.optionalProperties ? '?' : '';
-    const undefinedType = property.optional && !options.optionalProperties ? ' | undefined' : '';
-    return `${nextIndent}${modifier}${propertyName(name)}${optional}: ${writeType(property.type, level + 1, options)}${undefinedType};`;
+    const undefinedType = property.optional && !options.optionalProperties
+      ? ' | undefined'
+      : '';
+    const propertyType = writeType(property.type, level + 1, options);
+    return `${nextIndent}${modifier}${propertyName(name)}${optional}: ${propertyType}${undefinedType};`;
   }).join('\n')}\n${indent}}`;
 }
 
@@ -87,7 +92,8 @@ function writeType(type, level, options) {
  * Formats a JSON value as a deterministic TypeScript root declaration.
  *
  * @param {unknown} value JSON-compatible value.
- * @param {{ rootName?: string, declaration?: 'interface'|'type', optionalProperties?: boolean, readonly?: boolean, indent?: string }} [settings]
+ * @param {{ rootName?: string, declaration?: 'interface'|'type', optionalProperties?: boolean,
+ * readonly?: boolean, indent?: string }} [settings]
  * @returns {string} TypeScript declaration.
  */
 export function formatTypeScript(value, settings = {}) {

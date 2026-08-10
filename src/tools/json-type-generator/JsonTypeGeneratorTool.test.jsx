@@ -27,7 +27,8 @@ describe('JsonTypeGeneratorTool', () => {
     fireEvent.click(screen.getByLabelText('Optional properties'));
     fireEvent.click(screen.getByLabelText('Readonly properties'));
     expect(screen.getByLabelText('TypeScript declaration')).toHaveValue(
-      'export type Item = {\n    readonly id: number;\n    readonly label: string | undefined;\n}[];',
+      'export type Item = {\n    readonly id: number;\n'
+        + '    readonly label: string | undefined;\n}[];',
     );
   });
 
@@ -45,17 +46,25 @@ describe('JsonTypeGeneratorTool', () => {
     Object.assign(navigator, { clipboard: { writeText } });
     render(<JsonTypeGeneratorTool />);
     enterJson();
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Copy TypeScript declaration' })); await Promise.resolve(); });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy TypeScript declaration' }));
+      await Promise.resolve();
+    });
     expect(writeText).toHaveBeenCalled();
-    expect(screen.getByText('Type declaration copied to clipboard.')).toHaveAttribute('aria-live', 'polite');
+    expect(screen.getByText('Type declaration copied to clipboard.')).toHaveAttribute(
+      'aria-live',
+      'polite',
+    );
   });
 
   it('loads a representative sample and clears source and output', () => {
     render(<JsonTypeGeneratorTool />);
     fireEvent.click(screen.getByRole('button', { name: 'Load representative JSON sample' }));
-    expect(screen.getByLabelText('Sample JSON')).toHaveValue(expect.stringContaining('Ada Lovelace'));
+    expect(screen.getByLabelText('Sample JSON').value).toContain('Ada Lovelace');
     expect(screen.getByLabelText('TypeScript declaration')).not.toHaveValue('');
-    fireEvent.click(screen.getByRole('button', { name: 'Clear JSON input and generated declaration' }));
+    fireEvent.click(screen.getByRole('button', {
+      name: 'Clear JSON input and generated declaration',
+    }));
     expect(screen.getByLabelText('Sample JSON')).toHaveValue('');
     expect(screen.getByLabelText('TypeScript declaration')).toHaveValue('');
   });

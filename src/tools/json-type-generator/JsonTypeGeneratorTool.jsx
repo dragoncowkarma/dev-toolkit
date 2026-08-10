@@ -74,7 +74,8 @@ export default function JsonTypeGeneratorTool() {
         <button type="button" onClick={loadSample} aria-label="Load representative JSON sample">
           Load sample
         </button>
-        <button type="button" onClick={clearTool} aria-label="Clear JSON input and generated declaration">
+        <button type="button" onClick={clearTool}
+          aria-label="Clear JSON input and generated declaration">
           Clear
         </button>
       </div>
@@ -134,7 +135,11 @@ export default function JsonTypeGeneratorTool() {
         </div>
       </div>
       {error && <p className="json-type-generator__error" role="alert">{error}</p>}
-      {feedback && <p className="json-type-generator__status" role="status" aria-live="polite">{feedback}</p>}
+      {feedback && (
+        <p className="json-type-generator__status" role="status" aria-live="polite">
+          {feedback}
+        </p>
+      )}
     </section>
   );
 }
