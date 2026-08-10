@@ -26,7 +26,9 @@ describe('TimezoneTool Component Tests', () => {
     const selectEl = screen.getByLabelText('Select target timezone to add');
     fireEvent.change(selectEl, { target: { value: 'America/Chicago' } });
 
-    const addBtn = screen.getByRole('button', { name: '+ Add Timezone' });
+    const addBtn = screen.getByRole('button', {
+      name: 'Add selected timezone to comparison list',
+    });
     fireEvent.click(addBtn);
 
     await waitFor(() => {
@@ -54,7 +56,9 @@ describe('TimezoneTool Component Tests', () => {
     fireEvent.change(sourceInput, { target: { value: '2020-01-01T00:00' } });
     expect(sourceInput).toHaveValue('2020-01-01T00:00');
 
-    const nowBtn = screen.getByRole('button', { name: 'Now' });
+    const nowBtn = screen.getByRole('button', {
+      name: 'Reset to current time in source timezone',
+    });
     fireEvent.click(nowBtn);
 
     await waitFor(() => {
@@ -104,7 +108,9 @@ describe('TimezoneTool Component Tests', () => {
       expect(screen.queryByRole('heading', { name: 'Asia/Seoul' })).not.toBeInTheDocument();
     });
 
-    const resetBtn = screen.getByRole('button', { name: 'Reset Presets' });
+    const resetBtn = screen.getByRole('button', {
+      name: 'Reset target timezones to default presets',
+    });
     fireEvent.click(resetBtn);
 
     await waitFor(() => {
