@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react';
+import { useId, useState } from 'react';
 import {
   DEFAULT_PRESET_TIMEZONES,
   convertTimezone,
@@ -65,11 +65,8 @@ export default function TimezoneTool() {
     // Maintain equivalent moment in time when switching source timezone
     const result = convertTimezone(sourceDateTime, previousTz, newTz);
     if (result.isValid) {
-      const yr = String(result.utcDate ? result.localDate : '').trim();
-      if (yr) {
-        const { dateTimeStr } = getNowInTimezone(newTz, result.utcDate);
-        setSourceDateTime(dateTimeStr);
-      }
+      const { dateTimeStr } = getNowInTimezone(newTz, result.utcDate);
+      setSourceDateTime(dateTimeStr);
     }
   };
 

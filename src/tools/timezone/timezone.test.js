@@ -69,6 +69,34 @@ describe('timezone.utils.js unit tests', () => {
       expect(parseSourceToUtcDate('2026-08-10T25:70', 'UTC')).toBeNull();
       expect(parseSourceToUtcDate('', 'UTC')).toBeNull();
       expect(parseSourceToUtcDate('2026-08-10T14:30', 'Invalid/TZ')).toBeNull();
+      expect(parseSourceToUtcDate('2026-02-30T14:30', 'UTC')).toBeNull();
+      expect(parseSourceToUtcDate('2026-04-31T14:30', 'UTC')).toBeNull();
+      expect(parseSourceToUtcDate('2026-02-29T14:30', 'UTC')).toBeNull();
+      expect(parseSourceToUtcDate('2024-02-29T14:30', 'UTC')).not.toBeNull();
+    });
+  });
+
+  describe('getWallTimeParts & calculateDayDifference', () => {
+    it('extracts wall clock parts for a Date object in a timezone', () => {
+      const fixedDate = new Date('2026-08-10T12:30:45Z');
+      const parts = getWallTimeParts(fixedDate, 'Asia/Seoul');
+      expect(parts).toEqual({
+        year: 2026,
+        month: 8,
+        day: 10,
+        hour: 21,
+        minute: 30,
+        second: 45,
+      });
+    });
+
+    it('calculates calendar day difference between date parts', () => {
+      const src = { year: 2026, month: 8, day: 10 };
+      const tgtNext = { year: 2026, month: 8, day: 11 };
+      const tgtPrev = { year: 2026, month: 8, day: 9 };
+      expect(calculateDayDifference(src, tgtNext)).toBe(1);
+      expect(calculateDayDifference(src, tgtPrev)).toBe(-1);
+      expect(calculateDayDifference(src, src)).toBe(0);
     });
   });
 

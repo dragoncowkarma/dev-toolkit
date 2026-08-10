@@ -143,12 +143,18 @@ export function parseSourceToUtcDate(dateTimeStr, sourceTimezone) {
   const minute = miStr ? Number(miStr) : 0;
   const second = seStr ? Number(seStr) : 0;
 
+  const maxDaysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
   if (
-    month < 1 || month > 12 ||
-    day < 1 || day > 31 ||
-    hour < 0 || hour > 23 ||
-    minute < 0 || minute > 59 ||
-    second < 0 || second > 59
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > maxDaysInMonth ||
+    hour < 0 ||
+    hour > 23 ||
+    minute < 0 ||
+    minute > 59 ||
+    second < 0 ||
+    second > 59
   ) {
     return null;
   }
