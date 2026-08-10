@@ -46,7 +46,14 @@ function escapeCode(text, quoteStyle, escapeUnicode) {
   const quote = quoteStyle === 'single' ? "'" : '"';
   return Array.from(text)
     .map((character) => {
-      const common = { '\\': '\\\\', '\n': '\\n', '\r': '\\r', '\t': '\\t', '\b': '\\b', '\f': '\\f' };
+      const common = {
+        '\\': '\\\\',
+        '\n': '\\n',
+        '\r': '\\r',
+        '\t': '\\t',
+        '\b': '\\b',
+        '\f': '\\f',
+      };
       if (Object.hasOwn(common, character)) return common[character];
       if (character === quote) return `\\${quote}`;
       if (character.codePointAt(0) < 32 || (escapeUnicode && character.codePointAt(0) > 126)) {
@@ -65,7 +72,10 @@ function unescapeCode(text) {
         if (codePoint > 0x10ffff) return match;
         try { return String.fromCodePoint(codePoint); } catch { return match; }
       }
-      return { n: '\n', r: '\r', t: '\t', b: '\b', f: '\f', '\\': '\\', "'": "'", '"': '"' }[simple];
+      const simpleEscapes = {
+        n: '\n', r: '\r', t: '\t', b: '\b', f: '\f', '\\': '\\', "'": "'", '"': '"',
+      };
+      return simpleEscapes[simple];
     });
 }
 
@@ -73,7 +83,9 @@ function decodeHtml(text) {
   return text.replace(/&(?:#x[\da-f]+|#\d+|[a-z]+);/gi, (entity) => {
     const body = entity.slice(1, -1).toLowerCase();
     if (body.startsWith('#')) {
-      const codePoint = Number.parseInt(body.slice(body[1] === 'x' ? 2 : 1), body[1] === 'x' ? 16 : 10);
+      const radix = body[1] === 'x' ? 16 : 10;
+      const value = body.slice(body[1] === 'x' ? 2 : 1);
+      const codePoint = Number.parseInt(value, radix);
       if (!Number.isInteger(codePoint) || codePoint > 0x10ffff) return entity;
       try { return String.fromCodePoint(codePoint); } catch { return entity; }
     }
@@ -86,9 +98,11 @@ export function escapeString(text, language, options = {}) {
   assertInput(text, language);
   const quoteStyle = options.quoteStyle === 'single' ? 'single' : 'double';
   const escapeUnicode = Boolean(options.escapeUnicode);
-  if (language === LANGUAGES.HTML) return text.replace(/[&<>"'/]/g, (character) => HTML_ENTITIES[character]);
+  if (language === LANGUAGES.HTML) {
+    return text.replace(/[&<>"'/]/g, (character) => HTML_ENTITIES[character]);
+  }
   if (language === LANGUAGES.SQL) return text.replace(/\\/g, '\\\\').replace(/'/g, "''");
-  return escapeCode(text, language === LANGUAGES.JAVASCRIPT ? quoteStyle : quoteStyle, escapeUnicode);
+  return escapeCode(text, quoteStyle, escapeUnicode);
 }
 
 /** Unescapes a string representation for a supported target language or format. */
