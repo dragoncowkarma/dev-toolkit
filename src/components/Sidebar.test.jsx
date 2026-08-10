@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import Sidebar from './Sidebar.jsx';
@@ -446,20 +446,28 @@ describe('Sidebar Modal Dialog Accessibility', () => {
   });
 
   it('force-closes the drawer when viewport widens to desktop size (>= 769px)', () => {
-    let changeHandler;
+    const listeners = [];
     const originalMatchMedia = window.matchMedia;
     window.matchMedia = vi.fn().mockImplementation((query) => ({
       matches: false,
       media: query,
       onchange: null,
       addListener: (listener) => {
-        changeHandler = listener;
+        listeners.push(listener);
       },
-      removeListener: vi.fn(),
+      removeListener: (listener) => {
+        const idx = listeners.indexOf(listener);
+        if (idx !== -1) listeners.splice(idx, 1);
+      },
       addEventListener: (type, listener) => {
-        if (type === 'change') changeHandler = listener;
+        if (type === 'change') listeners.push(listener);
       },
-      removeEventListener: vi.fn(),
+      removeEventListener: (type, listener) => {
+        if (type === 'change') {
+          const idx = listeners.indexOf(listener);
+          if (idx !== -1) listeners.splice(idx, 1);
+        }
+      },
       dispatchEvent: vi.fn(),
     }));
 
@@ -467,7 +475,9 @@ describe('Sidebar Modal Dialog Accessibility', () => {
 
     expect(screen.getByRole('dialog')).toBeInTheDocument();
 
-    changeHandler({ matches: true });
+    act(() => {
+      listeners.forEach((listener) => listener({ matches: true }));
+    });
 
     expect(onCloseMobile).toHaveBeenCalledTimes(1);
 

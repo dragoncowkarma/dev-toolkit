@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Layout from './Layout.jsx';
@@ -304,20 +304,28 @@ describe('Layout Integration & Focus Trap', () => {
   });
 
   it('force-closes drawer and clears aria-hidden when viewport becomes desktop width', () => {
-    let changeHandler;
+    const listeners = [];
     const originalMatchMedia = window.matchMedia;
     window.matchMedia = vi.fn().mockImplementation((query) => ({
       matches: false,
       media: query,
       onchange: null,
       addListener: (listener) => {
-        changeHandler = listener;
+        listeners.push(listener);
       },
-      removeListener: vi.fn(),
+      removeListener: (listener) => {
+        const idx = listeners.indexOf(listener);
+        if (idx !== -1) listeners.splice(idx, 1);
+      },
       addEventListener: (type, listener) => {
-        if (type === 'change') changeHandler = listener;
+        if (type === 'change') listeners.push(listener);
       },
-      removeEventListener: vi.fn(),
+      removeEventListener: (type, listener) => {
+        if (type === 'change') {
+          const idx = listeners.indexOf(listener);
+          if (idx !== -1) listeners.splice(idx, 1);
+        }
+      },
       dispatchEvent: vi.fn(),
     }));
 
@@ -329,7 +337,9 @@ describe('Layout Integration & Focus Trap', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(container.querySelector('.layout__page')).toHaveAttribute('aria-hidden', 'true');
 
-    changeHandler({ matches: true });
+    act(() => {
+      listeners.forEach((listener) => listener({ matches: true }));
+    });
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(container.querySelector('.layout__page')).not.toHaveAttribute('aria-hidden');
