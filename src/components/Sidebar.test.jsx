@@ -447,7 +447,8 @@ describe('Sidebar Modal Dialog Accessibility', () => {
 
   it('force-closes the drawer when viewport widens to desktop size (>= 769px)', () => {
     let changeHandler;
-    const matchMediaSpy = vi.spyOn(window, 'matchMedia').mockImplementation((query) => ({
+    const originalMatchMedia = window.matchMedia;
+    window.matchMedia = vi.fn().mockImplementation((query) => ({
       matches: false,
       media: query,
       onchange: null,
@@ -470,6 +471,10 @@ describe('Sidebar Modal Dialog Accessibility', () => {
 
     expect(onCloseMobile).toHaveBeenCalledTimes(1);
 
-    matchMediaSpy.mockRestore();
+    if (originalMatchMedia) {
+      window.matchMedia = originalMatchMedia;
+    } else {
+      delete window.matchMedia;
+    }
   });
 });

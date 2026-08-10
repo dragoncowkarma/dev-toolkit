@@ -305,7 +305,8 @@ describe('Layout Integration & Focus Trap', () => {
 
   it('force-closes drawer and clears aria-hidden when viewport becomes desktop width', () => {
     let changeHandler;
-    const matchMediaSpy = vi.spyOn(window, 'matchMedia').mockImplementation((query) => ({
+    const originalMatchMedia = window.matchMedia;
+    window.matchMedia = vi.fn().mockImplementation((query) => ({
       matches: false,
       media: query,
       onchange: null,
@@ -333,7 +334,11 @@ describe('Layout Integration & Focus Trap', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(container.querySelector('.layout__page')).not.toHaveAttribute('aria-hidden');
 
-    matchMediaSpy.mockRestore();
+    if (originalMatchMedia) {
+      window.matchMedia = originalMatchMedia;
+    } else {
+      delete window.matchMedia;
+    }
   });
 });
 
