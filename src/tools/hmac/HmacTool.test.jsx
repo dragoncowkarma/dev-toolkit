@@ -6,8 +6,12 @@ describe('HmacTool', () => {
   afterEach(() => cleanup());
 
   function fillInputs(key = 'key', message = 'message') {
-    fireEvent.change(screen.getByRole('textbox', { name: 'Secret key' }), { target: { value: key } });
-    fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), { target: { value: message } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Secret key' }), {
+      target: { value: key },
+    });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
+      target: { value: message },
+    });
   }
   it('computes a signature in real time', async () => {
     render(<HmacTool />); fillInputs();
@@ -18,7 +22,9 @@ describe('HmacTool', () => {
     await waitFor(() => expect(screen.getByLabelText('HMAC signature')).not.toHaveTextContent('—'));
     const before = screen.getByLabelText('HMAC signature').textContent;
     fireEvent.change(screen.getByLabelText('HMAC algorithm'), { target: { value: 'SHA-512' } });
-    await waitFor(() => expect(screen.getByLabelText('HMAC signature').textContent).not.toBe(before));
+    await waitFor(() =>
+      expect(screen.getByLabelText('HMAC signature').textContent).not.toBe(before),
+    );
   });
   it('supports changing key encoding', async () => {
     render(<HmacTool />);
@@ -32,7 +38,11 @@ describe('HmacTool', () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });
     render(<HmacTool />); fillInputs();
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Copy HMAC signature' })).not.toBeDisabled());
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Copy HMAC signature' }),
+      ).not.toBeDisabled(),
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Copy HMAC signature' }));
     await waitFor(() => expect(writeText).toHaveBeenCalled());
     expect(screen.getByText('Signature copied to clipboard.')).toBeInTheDocument();
