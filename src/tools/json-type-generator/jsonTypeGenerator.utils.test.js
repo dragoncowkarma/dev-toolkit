@@ -26,6 +26,7 @@ describe('inferType', () => {
   });
 
   it('uses unions only for heterogeneous array values, including null', () => {
+    expect(formatTypeScript([1, 2])).toBe('export type Root = number[];');
     expect(formatTypeScript([1, 'two', null])).toBe('export type Root = (null | number | string)[];');
   });
 
