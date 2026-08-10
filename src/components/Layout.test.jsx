@@ -303,7 +303,7 @@ describe('Layout Integration & Focus Trap', () => {
     expect(statusElement).not.toHaveAttribute('aria-hidden');
   });
 
-  it('force-closes mobile drawer and clears aria-hidden when viewport becomes desktop width', () => {
+  it('force-closes drawer and clears aria-hidden when viewport becomes desktop width', () => {
     let changeHandler;
     const matchMediaSpy = vi.spyOn(window, 'matchMedia').mockImplementation((query) => ({
       matches: false,
