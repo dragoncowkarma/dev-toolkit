@@ -34,14 +34,66 @@ describe('cssGradient.utils', () => {
       expect(validateColor('hsla(180, 50%, 50%, 0.8)')).toBe(true);
     });
 
-    it('validates named colors and transparent', () => {
-      expect(validateColor('transparent')).toBe(true);
-      expect(validateColor('red')).toBe(true);
-      expect(validateColor('blue')).toBe(true);
+    it('validates previously missing named colors like indigo, coral, rebeccapurple', () => {
+      expect(validateColor('indigo')).toBe(true);
+      expect(validateColor('coral')).toBe(true);
+      expect(validateColor('rebeccapurple')).toBe(true);
+      expect(validateColor('aliceblue')).toBe(true);
+      expect(validateColor('chartreuse')).toBe(true);
     });
 
-    it('rejects invalid color strings', () => {
+    it('validates named colors, currentcolor, and transparent case-insensitively', () => {
+      expect(validateColor('transparent')).toBe(true);
+      expect(validateColor('TRANSPARENT')).toBe(true);
+      expect(validateColor('currentColor')).toBe(true);
+      expect(validateColor('CURRENTCOLOR')).toBe(true);
+      expect(validateColor('REBECCAPURPLE')).toBe(true);
+      expect(validateColor('CoRaL')).toBe(true);
+    });
+
+    it('validates all standard CSS named colors systematically for completeness', () => {
+      const allKeywords = [
+        'aliceblue', 'antiquewhite', 'aqua', 'aquamarine', 'azure',
+        'beige', 'bisque', 'black', 'blanchedalmond', 'blue',
+        'blueviolet', 'brown', 'burlywood', 'cadetblue', 'chartreuse',
+        'chocolate', 'coral', 'cornflowerblue', 'cornsilk', 'crimson',
+        'currentcolor', 'cyan', 'darkblue', 'darkcyan', 'darkgoldenrod',
+        'darkgray', 'darkgreen', 'darkgrey', 'darkkhaki', 'darkmagenta',
+        'darkolivegreen', 'darkorange', 'darkorchid', 'darkred', 'darksalmon',
+        'darkseagreen', 'darkslateblue', 'darkslategray', 'darkslategrey', 'darkturquoise',
+        'darkviolet', 'deeppink', 'deepskyblue', 'dimgray', 'dimgrey',
+        'dodgerblue', 'firebrick', 'floralwhite', 'forestgreen', 'fuchsia',
+        'gainsboro', 'ghostwhite', 'gold', 'goldenrod', 'gray',
+        'green', 'greenyellow', 'grey', 'honeydew', 'hotpink',
+        'indianred', 'indigo', 'ivory', 'khaki', 'lavender',
+        'lavenderblush', 'lawngreen', 'lemonchiffon', 'lightblue', 'lightcoral',
+        'lightcyan', 'lightgoldenrodyellow', 'lightgray', 'lightgreen', 'lightgrey',
+        'lightpink', 'lightsalmon', 'lightseagreen', 'lightskyblue', 'lightslategray',
+        'lightslategrey', 'lightsteelblue', 'lightyellow', 'lime', 'limegreen',
+        'linen', 'magenta', 'maroon', 'mediumaquamarine', 'mediumblue',
+        'mediumorchid', 'mediumpurple', 'mediumseagreen', 'mediumslateblue', 'mediumspringgreen',
+        'mediumturquoise', 'mediumvioletred', 'midnightblue', 'mintcream', 'mistyrose',
+        'moccasin', 'navajowhite', 'navy', 'oldlace', 'olive',
+        'olivedrab', 'orange', 'orangered', 'orchid', 'palegoldenrod',
+        'palegreen', 'paleturquoise', 'palevioletred', 'papayawhip', 'peachpuff',
+        'peru', 'pink', 'plum', 'powderblue', 'purple',
+        'rebeccapurple', 'red', 'rosybrown', 'royalblue', 'saddlebrown',
+        'salmon', 'sandybrown', 'seagreen', 'seashell', 'sienna',
+        'silver', 'skyblue', 'slateblue', 'slategray', 'slategrey',
+        'snow', 'springgreen', 'steelblue', 'tan', 'teal',
+        'thistle', 'tomato', 'transparent', 'turquoise', 'violet',
+        'wheat', 'white', 'whitesmoke', 'yellow', 'yellowgreen',
+      ];
+
+      for (const kw of allKeywords) {
+        expect(validateColor(kw)).toBe(true);
+      }
+    });
+
+    it('rejects invalid color strings and unknown identifiers', () => {
       expect(validateColor('invalid-color')).toBe(false);
+      expect(validateColor('not-a-color')).toBe(false);
+      expect(validateColor('rebeccapurple-extra')).toBe(false);
       expect(validateColor('#12')).toBe(false);
       expect(validateColor('#12345')).toBe(false);
       expect(validateColor('rgba(300, 0, 0, 1)')).toBe(false);
@@ -210,6 +262,96 @@ describe('cssGradient.utils', () => {
       expect(result.css).toBe('');
       expect(result.declaration).toBe('');
       expect(result.error).toBeTruthy();
+    });
+  });
+
+  describe('addStop collision-free insertion', () => {
+    it('yields position strictly between 0 and 100 when adding after [0, 100, 100]', () => {
+      const repeatedStops = [
+        { id: 's1', color: '#ff0000', position: 0 },
+        { id: 's2', color: '#00ff00', position: 100 },
+        { id: 's3', color: '#0000ff', position: 100 },
+      ];
+      const updated = addStop(repeatedStops);
+      expect(updated.length).toBe(4);
+      const newPos = updated[3].position;
+      expect(newPos).toBe(50);
+      expect(newPos).toBeGreaterThan(0);
+      expect(newPos).toBeLessThan(100);
+    });
+
+    it('selects largest interval correctly for unsorted stops', () => {
+      const unsortedStops = [
+        { id: 's1', color: '#fff', position: 100 },
+        { id: 's2', color: '#000', position: 0 },
+        { id: 's3', color: '#888', position: 80 },
+      ];
+      const updated = addStop(unsortedStops);
+      expect(updated[3].position).toBe(40);
+    });
+
+    it('applies stable tie-breaking when multiple max-width intervals exist', () => {
+      const tieStops = [
+        { id: 's1', color: '#111', position: 0 },
+        { id: 's2', color: '#222', position: 50 },
+        { id: 's3', color: '#333', position: 100 },
+      ];
+      const updated = addStop(tieStops);
+      expect(updated[3].position).toBe(25);
+    });
+
+    it('uses fallback position when all valid stop positions are identical', () => {
+      const all100Stops = [
+        { id: 's1', color: '#ff0000', position: 100 },
+        { id: 's2', color: '#00ff00', position: 100 },
+      ];
+      const updated100 = addStop(all100Stops);
+      expect(updated100[2].position).toBe(50);
+
+      const all50Stops = [
+        { id: 's1', color: '#ff0000', position: 50 },
+        { id: 's2', color: '#00ff00', position: 50 },
+      ];
+      const updated50 = addStop(all50Stops);
+      expect(updated50[2].position).toBe(100);
+
+      const all0Stops = [
+        { id: 's1', color: '#ff0000', position: 0 },
+        { id: 's2', color: '#00ff00', position: 0 },
+      ];
+      const updated0 = addStop(all0Stops);
+      expect(updated0[2].position).toBe(100);
+    });
+
+    it('uses fallback position when no valid positions exist or stops array is empty', () => {
+      const emptyUpdated = addStop([]);
+      expect(emptyUpdated.length).toBe(1);
+      expect(emptyUpdated[0].position).toBe(50);
+
+      const invalidStops = [{ id: 's1', color: 'red', position: 'invalid' }];
+      const invalidUpdated = addStop(invalidStops);
+      expect(invalidUpdated.length).toBe(2);
+      expect(invalidUpdated[1].position).toBe(50);
+    });
+
+    it('guarantees position is strictly inside small integer intervals', () => {
+      const smallInterval = [
+        { id: 's1', color: '#111', position: 50 },
+        { id: 's2', color: '#222', position: 51 },
+      ];
+      const updated = addStop(smallInterval);
+      expect(updated[2].position).toBe(50.5);
+    });
+
+    it('preserves existing stops and their relative order', () => {
+      const initialStops = [
+        { id: 's1', color: '#ff0000', position: 100 },
+        { id: 's2', color: '#00ff00', position: 0 },
+      ];
+      const updated = addStop(initialStops);
+      expect(updated[0]).toEqual(initialStops[0]);
+      expect(updated[1]).toEqual(initialStops[1]);
+      expect(updated.length).toBe(3);
     });
   });
 
