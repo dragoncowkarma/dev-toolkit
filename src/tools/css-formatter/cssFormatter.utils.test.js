@@ -1,0 +1,179 @@
+import { describe, expect, it } from 'vitest';
+import { formatCss, minifyCss } from './cssFormatter.utils.js';
+
+describe('formatCss', () => {
+  it('returns an empty, non-error result for empty input', () => {
+    expect(formatCss('')).toEqual({ output: '', warning: null });
+    expect(formatCss('   \n\t ')).toEqual({ output: '', warning: null });
+  });
+
+  it('formats a simple rule with 2-space indentation by default', () => {
+    const result = formatCss('.a{color:red;font-size:12px}');
+    expect(result.warning).toBeNull();
+    expect(result.output).toBe('.a {\n  color: red;\n  font-size: 12px;\n}');
+  });
+
+  it('formats with 4-space indentation when requested', () => {
+    const result = formatCss('.a{color:red}', { indentSize: 4 });
+    expect(result.output).toBe('.a {\n    color: red;\n}');
+  });
+
+  it('formats nested @media blocks with growing indentation', () => {
+    const css = '@media (max-width:600px){.a{padding:1px}}';
+    const result = formatCss(css);
+    expect(result.output).toBe(
+      '@media (max-width: 600px) {\n  .a {\n    padding: 1px;\n  }\n}',
+    );
+  });
+
+  it('splits comma-separated selector lists onto their own lines', () => {
+    const result = formatCss('.a, .b, .c { color: red; }');
+    expect(result.output).toBe('.a,\n.b,\n.c {\n  color: red;\n}');
+  });
+
+  it('does not split commas nested inside a selector function', () => {
+    const result = formatCss('.a:not(.b, .c) { color: red; }');
+    expect(result.output).toBe('.a:not(.b, .c) {\n  color: red;\n}');
+  });
+
+  it('preserves quoted strings verbatim, including internal spacing', () => {
+    const result = formatCss('.a { content: "  a   b  "; }');
+    expect(result.output).toBe('.a {\n  content: "  a   b  ";\n}');
+  });
+
+  it('preserves data: URLs untouched, including their internal semicolons', () => {
+    const css = '.a { background: url("data:image/png;base64,AAAA=="); }';
+    const result = formatCss(css);
+    expect(result.output).toBe(
+      '.a {\n  background: url("data:image/png;base64,AAAA==");\n}',
+    );
+  });
+
+  it('preserves calc() expressions and custom properties without corrupting them', () => {
+    const css = '.a { width: calc(var(--gap) * 2 - 1px); }';
+    const result = formatCss(css);
+    expect(result.output).toBe(
+      '.a {\n  width: calc(var(--gap) * 2 - 1px);\n}',
+    );
+  });
+
+  it('places a standalone comment on its own line', () => {
+    const css = '/* header */\n.a { color: red; }';
+    const result = formatCss(css);
+    expect(result.output).toBe('/* header */\n.a {\n  color: red;\n}');
+  });
+
+  it('keeps an inline comment attached to the declaration it annotates', () => {
+    const css = '.a { color: red /* note */; }';
+    const result = formatCss(css);
+    expect(result.output).toBe('.a {\n  color: red /* note */;\n}');
+  });
+
+  it('normalizes !important spacing', () => {
+    const result = formatCss('.a{color:red   !important;}');
+    expect(result.output).toBe('.a {\n  color: red !important;\n}');
+  });
+
+  it('formats an at-rule statement without a block', () => {
+    const result = formatCss('@charset "UTF-8"; .a { color: red; }');
+    expect(result.output).toBe('@charset "UTF-8";\n.a {\n  color: red;\n}');
+  });
+
+  it('adds a missing trailing semicolon on the last declaration in a block', () => {
+    const result = formatCss('.a { color: red; font-size: 12px }');
+    expect(result.output).toBe('.a {\n  color: red;\n  font-size: 12px;\n}');
+  });
+
+  it('falls back to the original input with a warning for unbalanced braces', () => {
+    const result = formatCss('.a { color: red;');
+    expect(result.output).toBe('.a { color: red;');
+    expect(result.warning).toMatch(/malformed|unbalanced/i);
+  });
+
+  it('falls back to the original input with a warning for a stray closing brace', () => {
+    const result = formatCss('.a { color: red; } }');
+    expect(result.output).toBe('.a { color: red; } }');
+    expect(result.warning).toMatch(/malformed|unbalanced/i);
+  });
+
+  it('never throws for non-string input and reports it as empty', () => {
+    expect(() => formatCss(undefined)).not.toThrow();
+    expect(formatCss(null)).toEqual({ output: '', warning: null });
+  });
+});
+
+describe('minifyCss', () => {
+  it('returns an empty, non-error result for empty input', () => {
+    expect(minifyCss('')).toEqual({ output: '', warning: null });
+  });
+
+  it('removes whitespace and redundant separators from a simple rule', () => {
+    const result = minifyCss('.a {\n  color: red;\n  font-size: 12px;\n}');
+    expect(result.output).toBe('.a{color:red;font-size:12px}');
+  });
+
+  it('drops the trailing semicolon before a closing brace', () => {
+    const result = minifyCss('.a { color: red; }');
+    expect(result.output).toBe('.a{color:red}');
+  });
+
+  it('strips regular comments entirely', () => {
+    const result = minifyCss('.a { color: red; /* drop me */ }');
+    expect(result.output).toBe('.a{color:red}');
+  });
+
+  it('preserves "important" /*! ... */ comments', () => {
+    const result = minifyCss('/*! keep me */\n.a { color: red; }');
+    expect(result.output).toBe('/*! keep me */.a{color:red}');
+  });
+
+  it('preserves quoted strings verbatim, including internal spacing', () => {
+    const result = minifyCss('.a { content: "  a   b  "; }');
+    expect(result.output).toBe('.a{content:"  a   b  "}');
+  });
+
+  it('preserves data: URLs untouched, including their internal semicolons', () => {
+    const css = '.a { background: url("data:image/png;base64,AAAA=="); }';
+    const result = minifyCss(css);
+    expect(result.output).toBe('.a{background:url("data:image/png;base64,AAAA==")}');
+  });
+
+  it('preserves calc() expressions, including required operator spacing', () => {
+    const css = '.a { width: calc(100% - 10px); }';
+    const result = minifyCss(css);
+    expect(result.output).toBe('.a{width:calc(100% - 10px)}');
+  });
+
+  it('preserves the descendant-combinator space between a compound and a pseudo-class', () => {
+    // `div :hover` (descendant of any :hover) and `div:hover` are different
+    // selectors - minification must never delete this token boundary.
+    const result = minifyCss('div :hover { color: blue; }');
+    expect(result.output).toBe('div :hover{color:blue}');
+  });
+
+  it('tightens spacing inside media feature parentheses', () => {
+    const result = minifyCss('@media ( max-width: 600px ) { .a { color: red; } }');
+    expect(result.output).toBe('@media (max-width:600px){.a{color:red}}');
+  });
+
+  it('removes spacing around !important', () => {
+    const result = minifyCss('.a { color: red   !important; }');
+    expect(result.output).toBe('.a{color:red!important}');
+  });
+
+  it('compacts comma-separated selector lists without a space', () => {
+    const result = minifyCss('.a, .b, .c { color: red; }');
+    expect(result.output).toBe('.a,.b,.c{color:red}');
+  });
+
+  it('falls back to the original input with a warning for unbalanced braces', () => {
+    const result = minifyCss('.a { color: red');
+    expect(result.output).toBe('.a { color: red');
+    expect(result.warning).toMatch(/malformed|unbalanced/i);
+  });
+
+  it('never throws for non-string input and reports it as empty', () => {
+    expect(() => minifyCss(42)).not.toThrow();
+    expect(minifyCss(undefined)).toEqual({ output: '', warning: null });
+  });
+});
