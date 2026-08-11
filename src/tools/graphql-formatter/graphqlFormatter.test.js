@@ -12,22 +12,56 @@ describe('GraphQL formatter', () => {
   });
 
   it('preserves variables, directives, aliases, and arguments', () => {
-    expect(formatGraphQL('query GetUser($id:ID!,$include:Boolean!=true){user:node(id:$id)@include(if:$include){id}}')).toBe(
-      'query GetUser($id: ID!, $include: Boolean! = true) {\n  user: node(id: $id)@include(if: $include) {\n    id\n  }\n}'
-    );
+    const input =
+      'query GetUser($id:ID!,$include:Boolean!=true){user:node(id:$id)@include(if:$include){id}}';
+    const expected = [
+      'query GetUser($id: ID!, $include: Boolean! = true) {',
+      '  user: node(id: $id)@include(if: $include) {',
+      '    id',
+      '  }',
+      '}',
+    ].join('\n');
+    expect(formatGraphQL(input)).toBe(expected);
   });
 
   it('formats named fragments, inline fragments, and fragment spreads', () => {
-    const input = 'fragment UserFields on User{id name}query{node(id:"1"){...UserFields ...on Admin{permissions}}}';
-    expect(formatGraphQL(input)).toBe(
-      'fragment UserFields on User {\n  id\n  name\n}\nquery {\n  node(id: "1") {\n    ...UserFields\n    ... on Admin {\n      permissions\n    }\n  }\n}'
-    );
+    const input = [
+      'fragment UserFields on User{id name}',
+      'query{node(id:"1"){...UserFields ...on Admin{permissions}}}',
+    ].join('');
+    const expected = [
+      'fragment UserFields on User {',
+      '  id',
+      '  name',
+      '}',
+      'query {',
+      '  node(id: "1") {',
+      '    ...UserFields',
+      '    ... on Admin {',
+      '      permissions',
+      '    }',
+      '  }',
+      '}',
+    ].join('\n');
+    expect(formatGraphQL(input)).toBe(expected);
   });
 
   it('formats multiple operations and SDL definitions', () => {
-    expect(formatGraphQL('query One{a}subscription Updates{changed{id}}type User{id:ID!}')).toBe(
-      'query One {\n  a\n}\nsubscription Updates {\n  changed {\n    id\n  }\n}\ntype User {\n  id: ID!\n}'
-    );
+    const input = 'query One{a}subscription Updates{changed{id}}type User{id:ID!}';
+    const expected = [
+      'query One {',
+      '  a',
+      '}',
+      'subscription Updates {',
+      '  changed {',
+      '    id',
+      '  }',
+      '}',
+      'type User {',
+      '  id: ID!',
+      '}',
+    ].join('\n');
+    expect(formatGraphQL(input)).toBe(expected);
   });
 
   it('minifies valid documents while keeping required token boundaries', () => {

@@ -26,7 +26,7 @@ function readString(input, start, block) {
       index += 2;
       continue;
     }
-    if (input.startsWith(block ? '\"\"\"' : '\"', index)) {
+    if (input.startsWith(block ? '"""' : '"', index)) {
       return index + delimiterLength;
     }
     index += 1;
@@ -61,8 +61,8 @@ function tokenize(input) {
       index += 3;
       continue;
     }
-    if (character === '\"') {
-      const block = input.startsWith('\"\"\"', index);
+    if (character === '"') {
+      const block = input.startsWith('"""', index);
       index = readString(input, index, block);
       tokens.push({ type: 'string', value: input.slice(start, index), start, end: index });
       continue;
@@ -74,7 +74,9 @@ function tokenize(input) {
       continue;
     }
     if (/-|[0-9]/.test(character)) {
-      const number = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?/.exec(input.slice(index));
+      const numberPattern =
+        /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?/;
+      const number = numberPattern.exec(input.slice(index));
       if (!number) throw syntaxError('invalid number', start);
       index += number[0].length;
       tokens.push({ type: 'number', value: number[0], start, end: index });
