@@ -29,6 +29,7 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Optional
+import uuid
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -232,6 +233,8 @@ class TrackedProcess:
     failure_reason: Optional[str] = None
     retry_after: Optional[str] = None
     defer_scope: Optional[str] = None
+    session_key: Optional[str] = None
+    session_id: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -314,7 +317,7 @@ class ProcessTracker:
 
     def register(self, proc: subprocess.Popen, role: str, ai_name: str,
                  model: str, reasoning: str, task_ref: str, branch: str,
-                 command: str, cwd: str, log_file: str) -> TrackedProcess:
+                 command: str, cwd: str, log_file: str, **kwargs) -> TrackedProcess:
         """Register a newly launched subprocess."""
         tracked = TrackedProcess(
             pid=proc.pid,
@@ -327,6 +330,8 @@ class ProcessTracker:
             command=command,
             cwd=cwd,
             log_file=log_file,
+            session_key=kwargs.get("session_key"),
+            session_id=kwargs.get("session_id"),
             started_at=datetime.now(timezone.utc).isoformat(),
         )
         self._active[proc.pid] = (proc, tracked)
@@ -675,6 +680,26 @@ class ProcessTracker:
             return "event"
         return None
 
+    def get_session_id(self, session_key: str, ai_name: str) -> Optional[str]:
+        """Find the latest session_id for a given session key and AI."""
+        for record in reversed(self._history):
+            if getattr(record, "session_key", None) == session_key and record.ai_name == ai_name:
+                if getattr(record, "session_id", None):
+                    return record.session_id
+                if ai_name == "codex" and record.log_file and Path(record.log_file).exists():
+                    try:
+                        with open(record.log_file, "r", encoding="utf-8") as f:
+                            for line in f:
+                                if "session id: " in line.lower():
+                                    parts = line.lower().split("session id: ")
+                                    if len(parts) > 1:
+                                        parsed = parts[1].split()[0].strip()
+                                        record.session_id = parsed
+                                        self._save_registry()
+                                        return parsed
+                    except OSError:
+                        pass
+        return None
 
 # Global tracker instance
 tracker = ProcessTracker()
@@ -1264,7 +1289,8 @@ _CODEX_MODEL_MAP: dict[str, str] = {
 
 
 def build_ai_argv(ai_name: str, model: str, reasoning: str,
-                  prompt_file: Path, cwd: str) -> list[str]:
+                  prompt_file: Path, cwd: str, session_id: Optional[str] = None,
+                  is_resume: bool = False) -> list[str]:
     """Build an argv list for a specific AI CLI tool.
 
     Each tool's actual flags (verified via CLI):
@@ -1285,14 +1311,22 @@ def build_ai_argv(ai_name: str, model: str, reasoning: str,
         # codex exec: -C workdir, prompt is positional
         # --dangerously-bypass-approvals-and-sandbox for autonomous mode
         # -s workspace-write to allow file edits
-        return [
-            "codex", "exec",
-            "-m", resolved_model,
-            "-C", cwd,
-            "-s", "workspace-write",
-            "--dangerously-bypass-approvals-and-sandbox",
-            prompt_text,
-        ]
+        if session_id and is_resume:
+            return [
+                "codex", "exec", "resume", session_id,
+                "-m", resolved_model,
+                "--dangerously-bypass-approvals-and-sandbox",
+                prompt_text,
+            ]
+        else:
+            return [
+                "codex", "exec",
+                "-m", resolved_model,
+                "-C", cwd,
+                "-s", "workspace-write",
+                "--dangerously-bypass-approvals-and-sandbox",
+                prompt_text,
+            ]
 
     elif ai_name == "antigravity":
         resolved_model = _resolve_agy_model(model, reasoning)
@@ -1306,8 +1340,10 @@ def build_ai_argv(ai_name: str, model: str, reasoning: str,
             "--dangerously-skip-permissions",
             "--model", resolved_model,
             "--print-timeout", ANTIGRAVITY_PRINT_TIMEOUT,
-            "-p", prompt_text,
         ]
+        if session_id:
+            argv.extend(["--conversation", session_id])
+        argv.extend(["-p", prompt_text])
         return argv
 
     elif ai_name == "claude":
@@ -1320,14 +1356,17 @@ def build_ai_argv(ai_name: str, model: str, reasoning: str,
         effort = _CLAUDE_EFFORT_MAP.get(
             reasoning.lower().strip(), "medium",
         )
-        return [
+        argv = [
             "claude",
             "-p",
             "--model", resolved_model,
             "--effort", effort,
             "--dangerously-skip-permissions",
-            prompt_text,
         ]
+        if session_id:
+            argv.extend(["--session-id", session_id])
+        argv.append(prompt_text)
+        return argv
 
     else:
         log.error("Unknown AI agent: %s", ai_name)
@@ -1395,8 +1434,15 @@ def dispatch_worker(
     )
 
     task_ref = task_ref or f"issue#{issue.number}:initial"
+    session_key = f"worker-{issue.number}"
+    session_id = tracker.get_session_id(session_key, worker.ai)
+    is_resume = bool(session_id)
+    if not session_id and worker.ai in ("agy", "claude", "antigravity"):
+        namespace = uuid.UUID("12345678-1234-5678-1234-567812345678")
+        session_id = str(uuid.uuid5(namespace, session_key))
+
     prompt_file = write_prompt_file(prompt, "worker", task_ref)
-    argv = build_ai_argv(worker.ai, worker.model, worker.reasoning, prompt_file, str(worktree_path))
+    argv = build_ai_argv(worker.ai, worker.model, worker.reasoning, prompt_file, str(worktree_path), session_id=session_id, is_resume=is_resume)
 
     if dry_run:
         log.info("[DRY RUN] Would execute: %s", _format_argv_for_log(argv))
@@ -1428,6 +1474,8 @@ def dispatch_worker(
             command=_format_argv_for_log(argv),
             cwd=str(worktree_path),
             log_file=str(log_path),
+            session_key=session_key,
+            session_id=session_id,
         )
     except FileNotFoundError:
         log.error("AI CLI '%s' not found in PATH. Is it installed?", argv[0])
@@ -1477,6 +1525,13 @@ def dispatch_reviewer(
     )
 
     task_ref = task_ref or f"review#{pr.number}-{pr.head_sha or 'initial'}"
+    session_key = f"reviewer-{pr.number}"
+    session_id = tracker.get_session_id(session_key, reviewer.ai)
+    is_resume = bool(session_id)
+    if not session_id and reviewer.ai in ("agy", "claude", "antigravity"):
+        namespace = uuid.UUID("12345678-1234-5678-1234-567812345678")
+        session_id = str(uuid.uuid5(namespace, session_key))
+
     prompt_file = write_prompt_file(prompt, "reviewer", task_ref)
     argv = build_ai_argv(
         reviewer.ai,
@@ -1484,6 +1539,8 @@ def dispatch_reviewer(
         reviewer.reasoning,
         prompt_file,
         str(REPO_ROOT),
+        session_id=session_id,
+        is_resume=is_resume,
     )
 
     if dry_run:
@@ -1558,6 +1615,13 @@ def dispatch_maintainer(
     )
 
     task_ref = task_ref or f"maintain#{pr.number}"
+    session_key = f"maintainer-{pr.number}"
+    session_id = tracker.get_session_id(session_key, maintainer.ai)
+    is_resume = bool(session_id)
+    if not session_id and maintainer.ai in ("agy", "claude", "antigravity"):
+        namespace = uuid.UUID("12345678-1234-5678-1234-567812345678")
+        session_id = str(uuid.uuid5(namespace, session_key))
+
     prompt_file = write_prompt_file(prompt, "maintainer", task_ref)
     argv = build_ai_argv(
         maintainer.ai,
@@ -1565,6 +1629,8 @@ def dispatch_maintainer(
         maintainer.reasoning,
         prompt_file,
         str(REPO_ROOT),
+        session_id=session_id,
+        is_resume=is_resume,
     )
 
     if dry_run:
@@ -1653,8 +1719,15 @@ def dispatch_worker_revision(
 
     if not task_ref:
         task_ref = f"revise#{pr.number}"
+    session_key = f"worker-{issue.number}"
+    session_id = tracker.get_session_id(session_key, worker.ai)
+    is_resume = bool(session_id)
+    if not session_id and worker.ai in ("agy", "claude", "antigravity"):
+        namespace = uuid.UUID("12345678-1234-5678-1234-567812345678")
+        session_id = str(uuid.uuid5(namespace, session_key))
+
     prompt_file = write_prompt_file(prompt, "worker-revise", task_ref)
-    argv = build_ai_argv(worker.ai, worker.model, worker.reasoning, prompt_file, str(worktree_path))
+    argv = build_ai_argv(worker.ai, worker.model, worker.reasoning, prompt_file, str(worktree_path), session_id=session_id, is_resume=is_resume)
 
     if dry_run:
         log.info("[DRY RUN] Would execute worker revision: %s", _format_argv_for_log(argv))
@@ -1685,6 +1758,8 @@ def dispatch_worker_revision(
             command=_format_argv_for_log(argv),
             cwd=str(worktree_path),
             log_file=str(log_path),
+            session_key=session_key,
+            session_id=session_id,
         )
     except FileNotFoundError:
         log.error("AI CLI '%s' not found in PATH. Is it installed?", argv[0])
