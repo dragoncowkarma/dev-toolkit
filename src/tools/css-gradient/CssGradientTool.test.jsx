@@ -75,4 +75,20 @@ describe('CssGradientTool Component', () => {
 
     expect(screen.getByText(/background: radial-gradient/i)).toBeInTheDocument();
   });
+
+  it('inserts a stop strictly inside interval when repeated positions exist', () => {
+    render(<CssGradientTool />);
+    const posInputs = screen.getAllByLabelText(/Position percentage for stop/i);
+
+    fireEvent.change(posInputs[0], { target: { value: '0' } });
+    fireEvent.change(posInputs[1], { target: { value: '100' } });
+    fireEvent.change(posInputs[2], { target: { value: '100' } });
+
+    const addBtn = screen.getByRole('button', { name: /\+ Add Stop/i });
+    fireEvent.click(addBtn);
+
+    expect(screen.getByText(/Color Stops \(4\)/i)).toBeInTheDocument();
+    const updatedPosInputs = screen.getAllByLabelText(/Position percentage for stop/i);
+    expect(updatedPosInputs[3].value).toBe('50');
+  });
 });
