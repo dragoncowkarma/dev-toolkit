@@ -33,7 +33,7 @@ describe('CertificateDecoderTool', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Load sample certificate' }));
 
     expect(screen.getByLabelText('PEM certificate')).toHaveValue(SAMPLE_CERTIFICATE);
-    // Subject and issuer are identical because the fixture is self-signed.
+    // Subject and issuer are identical because the fixture is self-issued.
     expect(screen.getAllByText(SAMPLE_DN)).toHaveLength(2);
     expect(
       screen.getByText('18:FA:A9:45:B4:DD:E0:AC:19:6A:16:67:F1:65:B8:5D:69:8F:C5:F7'),

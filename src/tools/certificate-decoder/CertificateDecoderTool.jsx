@@ -182,7 +182,11 @@ function CertificateCard({ entry, referenceTime }) {
             }
           />
         )}
-        <Field label="Self-signed" value={certificate.isSelfSigned ? 'Yes' : 'No'} />
+        <Field
+          label="Subject matches issuer"
+          value={certificate.subjectMatchesIssuer ? 'Yes' : 'No'}
+          note="Name comparison only — signatures are not verified."
+        />
       </dl>
 
       {extensions.subjectAltNames.length > 0 && (

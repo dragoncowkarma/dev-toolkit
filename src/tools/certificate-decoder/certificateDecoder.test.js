@@ -144,13 +144,14 @@ describe('getIntegerBitLength', () => {
 describe('parseCertificate with the RSA sample fixture', () => {
   const certificate = decodeOne(SAMPLE_CERTIFICATE).certificate;
 
-  it('decodes version, serial number, and self-signed status', () => {
+  it('decodes version, serial number, and subject/issuer name equality', () => {
     expect(certificate.version).toBe(3);
     expect(certificate.serialNumber).toBe('18FAA945B4DDE0AC196A1667F165B85D698FC5F7');
     expect(certificate.serialNumberGrouped).toBe(
       '18:FA:A9:45:B4:DD:E0:AC:19:6A:16:67:F1:65:B8:5D:69:8F:C5:F7',
     );
-    expect(certificate.isSelfSigned).toBe(true);
+    expect(certificate.subjectMatchesIssuer).toBe(true);
+    expect(certificate).not.toHaveProperty('isSelfSigned');
   });
 
   it('parses subject and issuer distinguished name fields', () => {
