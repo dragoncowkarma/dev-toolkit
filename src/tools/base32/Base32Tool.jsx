@@ -69,6 +69,27 @@ export default function Base32Tool() {
   }, [input, mode, padded, inputType, outputType, file]);
 
   useEffect(() => {
+    if (!file) return;
+    let cancelled = false;
+    fileToBase32(file, { padded })
+      .then((result) => {
+        if (!cancelled) {
+          setOutput(result);
+          setError('');
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setOutput('');
+          setError(err.message);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [file, padded]);
+
+  useEffect(() => {
     if (!copied) return;
     const timer = setTimeout(() => setCopied(false), 1500);
     return () => clearTimeout(timer);
@@ -130,21 +151,16 @@ export default function Base32Tool() {
     }
   }
 
-  async function handleFileChange(event) {
+  function handleFileChange(event) {
     const selected = event.target.files?.[0];
     if (!selected) return;
-    const requestId = (fileRequestRef.current += 1);
-    try {
-      const base32 = await fileToBase32(selected, { padded });
-      if (fileRequestRef.current !== requestId) return;
-      setMode(MODES.ENCODE);
-      setFile(selected);
-      setInput(`📁 ${selected.name} (${formatFileSize(selected.size)})`);
-      setOutput(base32);
-      setError('');
-    } catch (err) {
-      if (fileRequestRef.current !== requestId) return;
-      setError(err.message);
+    fileRequestRef.current += 1;
+    setMode(MODES.ENCODE);
+    setFile(selected);
+    setInput(`📁 ${selected.name} (${formatFileSize(selected.size)})`);
+    setError('');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
   }
 
@@ -202,32 +218,34 @@ export default function Base32Tool() {
                 </button>
               </div>
 
-              <div
-                className="option-toggle"
-                role="group"
-                aria-label="Input format"
-              >
-                <button
-                  type="button"
-                  aria-pressed={inputType === FORMATS.TEXT}
-                  className={`opt-btn ${
-                    inputType === FORMATS.TEXT ? 'active' : ''
-                  }`}
-                  onClick={() => setInputType(FORMATS.TEXT)}
+              {!file && (
+                <div
+                  className="option-toggle"
+                  role="group"
+                  aria-label="Input format"
                 >
-                  Text
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={inputType === FORMATS.HEX}
-                  className={`opt-btn ${
-                    inputType === FORMATS.HEX ? 'active' : ''
-                  }`}
-                  onClick={() => setInputType(FORMATS.HEX)}
-                >
-                  Hex
-                </button>
-              </div>
+                  <button
+                    type="button"
+                    aria-pressed={inputType === FORMATS.TEXT}
+                    className={`opt-btn ${
+                      inputType === FORMATS.TEXT ? 'active' : ''
+                    }`}
+                    onClick={() => setInputType(FORMATS.TEXT)}
+                  >
+                    Text
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={inputType === FORMATS.HEX}
+                    className={`opt-btn ${
+                      inputType === FORMATS.HEX ? 'active' : ''
+                    }`}
+                    onClick={() => setInputType(FORMATS.HEX)}
+                  >
+                    Hex
+                  </button>
+                </div>
+              )}
             </>
           )}
 

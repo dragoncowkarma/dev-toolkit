@@ -55,6 +55,8 @@ export function encodeBytesToBase32(bytes, padded = true) {
   let output = '';
 
   for (let i = 0; i < bytes.length; i += 1) {
+    // Accumulate bytes into buffer. Note: buffer may overflow int32 after 4 bytes,
+    // but bits <= 12 so low 12 bits needed by bitwise shift remain intact.
     buffer = (buffer << 8) | bytes[i];
     bits += 8;
     while (bits >= 5) {
@@ -98,6 +100,8 @@ export function encodeToBase32(
 
 /**
  * Decodes a Base32 string to Uint8Array bytes.
+ * Note: Non-zero trailing bits in partial blocks are accepted leniently per
+ * standard browser tool conventions.
  * @param {string} base32
  * @returns {Uint8Array}
  */

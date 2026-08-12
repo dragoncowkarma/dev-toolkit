@@ -219,4 +219,58 @@ describe('Base32Tool File Upload & Stale Reads', () => {
     expect(screen.getByLabelText('Text')).toHaveValue('');
     expect(screen.getByLabelText('Base32')).toHaveValue('');
   });
+
+  it('updates file output when clicking Unpadded option', async () => {
+    render(<Base32Tool />);
+    const file = new File(['foo'], 'foo.txt', { type: 'text/plain' });
+    const fileInput = screen.getByLabelText('Convert a file to Base32');
+    await act(async () => selectFile(fileInput, file));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Base32')).toHaveValue('MZXW6===');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Unpadded' }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Base32')).toHaveValue('MZXW6');
+      expect(screen.getByLabelText('Base32').value).not.toContain('=');
+    });
+  });
+
+  it('resets file input value allowing re-selection of the same file', async () => {
+    render(<Base32Tool />);
+    const file = new File(['foo'], 'foo.txt', { type: 'text/plain' });
+    const fileInput = screen.getByLabelText('Convert a file to Base32');
+    await act(async () => selectFile(fileInput, file));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Base32')).toHaveValue('MZXW6===');
+    });
+
+    expect(fileInput.value).toBe('');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
+    expect(screen.getByLabelText('Text')).toHaveValue('');
+
+    await act(async () => selectFile(fileInput, file));
+    await waitFor(() => {
+      expect(screen.getByLabelText('Base32')).toHaveValue('MZXW6===');
+    });
+  });
+
+  it('hides input format toggles when a file is loaded', async () => {
+    render(<Base32Tool />);
+    expect(screen.getByRole('group', { name: 'Input format' })).toBeInTheDocument();
+
+    const file = new File(['foo'], 'foo.txt', { type: 'text/plain' });
+    const fileInput = screen.getByLabelText('Convert a file to Base32');
+    await act(async () => selectFile(fileInput, file));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Text')).toHaveValue('📁 foo.txt (3 B)');
+    });
+
+    expect(screen.queryByRole('group', { name: 'Input format' })).not.toBeInTheDocument();
+  });
 });
