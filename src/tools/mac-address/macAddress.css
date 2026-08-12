@@ -1,0 +1,141 @@
+.mac-address {
+  display: flex;
+  width: 100%;
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.mac-address__intro,
+.mac-address__input-panel,
+.mac-address__results,
+.mac-address__details {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  padding: 1rem;
+}
+
+.mac-address__intro h2 {
+  font-size: 1.25rem;
+}
+
+.mac-address__intro > p:last-child,
+.mac-address__result > span,
+.mac-address__inspection > span,
+.mac-address__privacy {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.mac-address__eyebrow {
+  color: var(--color-primary-light);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.mac-address__input-panel,
+.mac-address__input,
+.mac-address__actions,
+.mac-address__result,
+.mac-address__inspection {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.mac-address__input {
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+}
+
+.mac-address__input input {
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: calc(var(--radius) - 5px);
+  background: var(--color-code-bg);
+  color: var(--color-text);
+  font: inherit;
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  padding: 0.6rem 0.7rem;
+}
+
+.mac-address__input input:focus {
+  outline: 0;
+  border-color: var(--color-primary);
+}
+
+.mac-address button {
+  align-self: flex-start;
+  border: 1px solid var(--color-border);
+  border-radius: calc(var(--radius) - 5px);
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 0.45rem 0.65rem;
+}
+
+.mac-address button:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.mac-address__actions {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+
+.mac-address__results,
+.mac-address__details {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+}
+
+.mac-address__result,
+.mac-address__inspection {
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: calc(var(--radius) - 4px);
+  background: var(--color-code-bg);
+  padding: 0.8rem;
+}
+
+.mac-address__result code,
+.mac-address__inspection code,
+.mac-address__inspection strong {
+  overflow-x: auto;
+  color: var(--color-primary-light);
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 0.9rem;
+}
+
+.mac-address__error {
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+  font-size: 0.85rem;
+  padding: 0.75rem 1rem;
+}
+
+.mac-address__status {
+  min-height: 1.5rem;
+  color: var(--color-success);
+  font-size: 0.85rem;
+}
+
+@media (min-width: 650px) {
+  .mac-address__results,
+  .mac-address__details {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
