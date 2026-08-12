@@ -41,19 +41,24 @@ export function textToHex(text) {
 /**
  * Parses a hexadecimal byte stream, allowing ordinary ASCII whitespace
  * (spaces, tabs, newlines, carriage returns, form feeds, vertical tabs)
- * between bytes.
+ * only *between* complete bytes — contiguous pairs such as "4865" are also
+ * accepted, but whitespace inside a byte (e.g. "4 8") is rejected rather
+ * than silently reinterpreted as a different byte stream.
  *
  * @param {string} input - The hexadecimal text to parse.
  * @returns {Uint8Array} The parsed bytes, in their original order.
  * @throws {TypeError} When `input` is not a string.
- * @throws {Error} When the input contains a non-hex character, or an odd
- *   number of hex digits (each byte requires exactly two digits).
+ * @throws {Error} When the input contains a non-hex character, whitespace
+ *   splits a byte pair in two, or the input has an odd number of hex digits
+ *   (each byte requires exactly two digits).
  */
 export function parseHexBytes(input) {
   if (typeof input !== 'string') {
     throw new TypeError('Input must be a string.');
   }
-  const digits = input.replace(/[ \t\n\r\f\v]/g, '');
+  const hasWhitespace = /[ \t\n\r\f\v]/.test(input);
+  const segments = input.split(/[ \t\n\r\f\v]+/).filter((segment) => segment.length > 0);
+  const digits = segments.join('');
   if (digits.length === 0) {
     return new Uint8Array(0);
   }
@@ -63,6 +68,15 @@ export function parseHexBytes(input) {
     throw new Error(
       `Invalid character "${invalidChar[0]}" in hex input. Use only 0-9, A-F, and whitespace.`
     );
+  }
+  if (hasWhitespace) {
+    const splitByte = segments.find((segment) => segment.length % 2 !== 0);
+    if (splitByte) {
+      throw new Error(
+        `Whitespace must only separate complete bytes; "${splitByte}" is not a full byte. ` +
+          'Each byte needs exactly two hex digits before the next whitespace.'
+      );
+    }
   }
   if (digits.length % 2 !== 0) {
     throw new Error(

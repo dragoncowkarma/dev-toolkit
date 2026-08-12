@@ -79,6 +79,11 @@ describe('parseHexBytes', () => {
     expect(() => parseHexBytes('ABC')).toThrow(/odd number of digits/);
   });
 
+  it('rejects whitespace that splits a byte pair in two, rather than silently reparsing it', () => {
+    expect(() => parseHexBytes('4 8')).toThrow(/not a full byte/);
+    expect(() => parseHexBytes('4\t8')).toThrow(/not a full byte/);
+  });
+
   it('rejects non-hex characters with a precise, user-facing message', () => {
     expect(() => parseHexBytes('4Z')).toThrow(/Invalid character "Z"/);
   });
