@@ -262,6 +262,37 @@ const SCRIPT_DEFINITIONS = [
 ];
 
 /**
+ * Standard augmented script groups per Unicode IDNA recommendations.
+ * Scripts in these groups can co-occur within a label without triggering homograph warnings.
+ */
+const AUGMENTED_SCRIPT_GROUPS = [
+  new Set(['Han', 'Hiragana', 'Katakana']), // Japanese
+  new Set(['Hangul', 'Han']),              // Korean
+  new Set(['Han', 'Bopomofo']),            // Chinese (Han + Bopomofo)
+];
+
+/**
+ * Evaluates whether a set of detected scripts indicates a homograph risk.
+ * Labels mixing multiple scripts outside single allowed script sets trigger a warning.
+ *
+ * @param {string[]} scripts Array of detected script names.
+ * @returns {boolean} True if homograph risk is detected.
+ */
+export function hasHomographRisk(scripts) {
+  if (!scripts || scripts.length <= 1) {
+    return false;
+  }
+
+  for (const group of AUGMENTED_SCRIPT_GROUPS) {
+    if (scripts.every((script) => group.has(script))) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
  * Detects distinct non-neutral Unicode scripts in a string.
  * Common/Inherited script characters (digits, hyphens, punctuation) are ignored.
  *
@@ -310,6 +341,94 @@ function getByteLength(str) {
 }
 
 /**
+ * Validates a single label record (hyphens, LDH compliance, max byte length, homograph risk)
+ * and accumulates errors and warnings.
+ *
+ * @param {string} rawLabel Original raw label string.
+ * @param {string} asciiLabel Encoded ASCII / ACE label.
+ * @param {string} unicodeLabel Normalized Unicode label.
+ * @param {string[]} errors Accumulated domain errors.
+ * @param {string[]} warnings Accumulated domain warnings.
+ * @returns {object} Label metadata object.
+ */
+function processLabelRecord(rawLabel, asciiLabel, unicodeLabel, errors, warnings) {
+  const hasInvalidHyphen =
+    rawLabel.startsWith('-') ||
+    rawLabel.endsWith('-') ||
+    unicodeLabel.startsWith('-') ||
+    unicodeLabel.endsWith('-') ||
+    asciiLabel.startsWith('-') ||
+    asciiLabel.endsWith('-');
+
+  if (hasInvalidHyphen) {
+    errors.push(`Label "${rawLabel}" cannot begin or end with a hyphen.`);
+  }
+
+  const invalidLdhMatch = asciiLabel.match(/[^a-z0-9-]/i);
+  if (invalidLdhMatch) {
+    errors.push(
+      `Label "${rawLabel}" contains character "${invalidLdhMatch[0]}" ` +
+        `not allowed in a domain label.`,
+    );
+  }
+
+  const asciiLen = getByteLength(asciiLabel);
+  if (asciiLen > 63) {
+    errors.push(
+      `Encoded label "${asciiLabel}" exceeds maximum length of 63 bytes (${asciiLen} bytes).`,
+    );
+  }
+
+  const scripts = detectScripts(unicodeLabel);
+  const isRisk = hasHomographRisk(scripts);
+
+  if (isRisk) {
+    const scriptList = scripts.join(', ');
+    warnings.push(
+      `Label "${unicodeLabel}" mixes multiple scripts (${scriptList}), ` +
+        `which may indicate a homograph risk.`,
+    );
+  }
+
+  return {
+    original: rawLabel,
+    ascii: asciiLabel,
+    unicode: unicodeLabel,
+    asciiLength: asciiLen,
+    scripts,
+    hasHomographRisk: isRisk,
+  };
+}
+
+/**
+ * Finalizes domain conversion results after processing all labels.
+ *
+ * @param {object[]} labels Processed label metadata objects.
+ * @param {string[]} errors Domain error messages.
+ * @param {string[]} warnings Domain warning messages.
+ * @returns {object} Conversion result object.
+ */
+function finalizeDomainResult(labels, errors, warnings) {
+  const fullAscii = labels.map((l) => l.ascii).join('.');
+  const fullUnicode = labels.map((l) => l.unicode).join('.');
+
+  if (labels.length > 0 && getByteLength(fullAscii) > 253) {
+    const asciiByteLen = getByteLength(fullAscii);
+    errors.push(
+      `Total encoded domain length (${asciiByteLen} bytes) exceeds maximum limit of 253 bytes.`,
+    );
+  }
+
+  return {
+    ascii: errors.length > 0 ? '' : fullAscii,
+    unicode: errors.length > 0 ? '' : fullUnicode,
+    labels,
+    errors,
+    warnings,
+  };
+}
+
+/**
  * Converts a domain name from Unicode (IDN) to ASCII Punycode (ACE).
  * Applies NFC normalization, lowercase folding, per-label encoding,
  * IDNA length checks, structural validation, and homograph detection.
@@ -334,10 +453,6 @@ export function toASCII(domain) {
   for (const rawLabel of rawLabels) {
     if (rawLabel === '') continue;
 
-    if (rawLabel.startsWith('-') || rawLabel.endsWith('-')) {
-      errors.push(`Label "${rawLabel}" cannot begin or end with a hyphen.`);
-    }
-
     const normLabel = rawLabel.normalize('NFC').toLowerCase();
     let asciiLabel = normLabel;
 
@@ -350,52 +465,10 @@ export function toASCII(domain) {
       }
     }
 
-    const asciiLen = getByteLength(asciiLabel);
-    if (asciiLen > 63) {
-      errors.push(
-        `Encoded label "${asciiLabel}" exceeds maximum length of 63 bytes (${asciiLen} bytes).`,
-      );
-    }
-
-    const scripts = detectScripts(normLabel);
-    const hasHomographRisk = scripts.length > 1;
-
-    if (hasHomographRisk) {
-      const scriptList = scripts.join(', ');
-      warnings.push(
-        `Label "${normLabel}" mixes multiple scripts (${scriptList}), ` +
-          `which may indicate a homograph risk.`,
-      );
-    }
-
-    labels.push({
-      original: rawLabel,
-      ascii: asciiLabel,
-      unicode: normLabel,
-      asciiLength: asciiLen,
-      unicodeLength: Array.from(normLabel).length,
-      scripts,
-      hasHomographRisk,
-    });
+    labels.push(processLabelRecord(rawLabel, asciiLabel, normLabel, errors, warnings));
   }
 
-  const fullAscii = labels.map((l) => l.ascii).join('.');
-  const fullUnicode = labels.map((l) => l.unicode).join('.');
-
-  if (labels.length > 0 && getByteLength(fullAscii) > 253) {
-    const asciiByteLen = getByteLength(fullAscii);
-    errors.push(
-      `Total encoded domain length (${asciiByteLen} bytes) exceeds maximum limit of 253 bytes.`,
-    );
-  }
-
-  return {
-    ascii: errors.length > 0 ? '' : fullAscii,
-    unicode: errors.length > 0 ? '' : fullUnicode,
-    labels,
-    errors,
-    warnings,
-  };
+  return finalizeDomainResult(labels, errors, warnings);
 }
 
 /**
@@ -449,60 +522,8 @@ export function toUnicode(domain) {
       }
     }
 
-    const hasInvalidHyphen =
-      unicodeLabel.startsWith('-') ||
-      unicodeLabel.endsWith('-') ||
-      asciiLabel.startsWith('-') ||
-      asciiLabel.endsWith('-');
-
-    if (hasInvalidHyphen) {
-      errors.push(`Label "${rawLabel}" cannot begin or end with a hyphen.`);
-    }
-
-    const asciiLen = getByteLength(asciiLabel);
-    if (asciiLen > 63) {
-      errors.push(
-        `Encoded label "${asciiLabel}" exceeds maximum length of 63 bytes (${asciiLen} bytes).`,
-      );
-    }
-
-    const scripts = detectScripts(unicodeLabel);
-    const hasHomographRisk = scripts.length > 1;
-
-    if (hasHomographRisk) {
-      const scriptList = scripts.join(', ');
-      warnings.push(
-        `Label "${unicodeLabel}" mixes multiple scripts (${scriptList}), ` +
-          `which may indicate a homograph risk.`,
-      );
-    }
-
-    labels.push({
-      original: rawLabel,
-      ascii: asciiLabel,
-      unicode: unicodeLabel,
-      asciiLength: asciiLen,
-      unicodeLength: Array.from(unicodeLabel).length,
-      scripts,
-      hasHomographRisk,
-    });
+    labels.push(processLabelRecord(rawLabel, asciiLabel, unicodeLabel, errors, warnings));
   }
 
-  const fullAscii = labels.map((l) => l.ascii).join('.');
-  const fullUnicode = labels.map((l) => l.unicode).join('.');
-
-  if (labels.length > 0 && getByteLength(fullAscii) > 253) {
-    const asciiByteLen = getByteLength(fullAscii);
-    errors.push(
-      `Total encoded domain length (${asciiByteLen} bytes) exceeds maximum limit of 253 bytes.`,
-    );
-  }
-
-  return {
-    ascii: errors.length > 0 ? '' : fullAscii,
-    unicode: errors.length > 0 ? '' : fullUnicode,
-    labels,
-    errors,
-    warnings,
-  };
+  return finalizeDomainResult(labels, errors, warnings);
 }

@@ -169,6 +169,46 @@ describe('Punycode Utilities (RFC 3492)', () => {
       expect(res.warnings[0]).toContain('Cyrillic, Latin');
       expect(res.errors).toHaveLength(0);
     });
+
+    it('does not flag Japanese domains mixing Han/Kana as homograph risk', () => {
+      const res1 = toASCII('みんなの銀行.jp');
+      expect(res1.ascii).toBe('xn--q9ji3c6d1727c01m.jp');
+      expect(res1.warnings).toHaveLength(0);
+      expect(res1.errors).toHaveLength(0);
+
+      const res2 = toASCII('日本語ドメイン名.jp');
+      expect(res2.ascii).toBe('xn--eckwd4c7c777u7mwo4bc84j.jp');
+      expect(res2.warnings).toHaveLength(0);
+      expect(res2.errors).toHaveLength(0);
+    });
+
+    it('does not flag standard Korean domains mixing Hangul and Hanja as homograph risk', () => {
+      const res = toASCII('한국.대한민국');
+      expect(res.warnings).toHaveLength(0);
+      expect(res.errors).toHaveLength(0);
+    });
+
+    it('rejects labels containing non-LDH characters (URLs, spaces, symbols)', () => {
+      const resUrl1 = toASCII('münchen.de/path');
+      expect(resUrl1.errors.some((e) => e.includes('contains character "/"'))).toBe(true);
+      expect(resUrl1.ascii).toBe('');
+
+      const resUrl2 = toASCII('http://例え.テスト');
+      expect(resUrl2.errors.some((e) => e.includes('contains character ":"'))).toBe(true);
+      expect(resUrl2.ascii).toBe('');
+
+      const resUrl3 = toASCII('user@münchen.de');
+      expect(resUrl3.errors.some((e) => e.includes('contains character "@"'))).toBe(true);
+      expect(resUrl3.ascii).toBe('');
+
+      const resSpace = toASCII('hello world.com');
+      expect(resSpace.errors.some((e) => e.includes('contains character " "'))).toBe(true);
+      expect(resSpace.ascii).toBe('');
+
+      const resSymbol = toASCII('a!b.com');
+      expect(resSymbol.errors.some((e) => e.includes('contains character "!"'))).toBe(true);
+      expect(resSymbol.ascii).toBe('');
+    });
   });
 
   describe('toUnicode', () => {
@@ -200,13 +240,19 @@ describe('Punycode Utilities (RFC 3492)', () => {
 
     it('reports clear error for malformed ACE payload (invalid base-36 digit)', () => {
       const res = toUnicode('xn--invalid_digit!.com');
-      expect(res.errors.some((e) => e.includes('Failed to decode ACE label'))).toBe(true);
+      expect(res.errors.some((e) => e.includes('contains character'))).toBe(true);
       expect(res.unicode).toBe('');
     });
 
     it('reports clear error for xn-- with empty payload', () => {
       const res = toUnicode('xn--.com');
       expect(res.errors.some((e) => e.includes('empty payload'))).toBe(true);
+    });
+
+    it('rejects non-LDH inputs in toUnicode decoding', () => {
+      const res = toUnicode('münchen.de/path');
+      expect(res.errors.some((e) => e.includes('contains character "/"'))).toBe(true);
+      expect(res.unicode).toBe('');
     });
   });
 });
