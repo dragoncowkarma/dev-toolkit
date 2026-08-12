@@ -30,6 +30,7 @@ export default function Base32Tool() {
   const [inputType, setInputType] = useState(FORMATS.TEXT);
   const [outputType, setOutputType] = useState(FORMATS.TEXT);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [copyError, setCopyError] = useState('');
   const [file, setFile] = useState(null);
   const [copied, setCopied] = useState(false);
@@ -41,6 +42,7 @@ export default function Base32Tool() {
     if (input === '') {
       setOutput('');
       setError('');
+      setNotice('');
       return;
     }
     try {
@@ -48,22 +50,27 @@ export default function Base32Tool() {
         const result = encodeToBase32(input, { padded, inputType });
         setOutput(result);
         setError('');
+        setNotice('');
       } else {
         const details = decodeBase32Details(input);
         if (outputType === FORMATS.HEX) {
           setOutput(details.hex);
           setError('');
+          setNotice('');
         } else if (!details.isUtf8) {
           setOutput(details.hex);
-          setError('Decoded data is binary (non-UTF-8). Displaying Hex view.');
+          setError('');
+          setNotice('Decoded data is binary (non-UTF-8). Displaying Hex view.');
         } else {
           setOutput(details.text ?? '');
           setError('');
+          setNotice('');
         }
       }
     } catch (err) {
       setOutput('');
       setError(err.message);
+      setNotice('');
     }
   }, [input, mode, padded, inputType, outputType, file]);
 
@@ -75,12 +82,14 @@ export default function Base32Tool() {
         if (!cancelled) {
           setOutput(result);
           setError('');
+          setNotice('');
         }
       })
       .catch((err) => {
         if (!cancelled) {
           setOutput('');
           setError(err.message);
+          setNotice('');
         }
       });
     return () => {
@@ -103,10 +112,12 @@ export default function Base32Tool() {
       setOutput('');
     }
     setError('');
+    setNotice('');
   }
 
   function handleInputChange(event) {
     setFile(null);
+    setNotice('');
     setInput(event.target.value);
   }
 
@@ -120,14 +131,21 @@ export default function Base32Tool() {
     if (nextMode === MODES.DECODE) {
       setOutputType(FORMATS.TEXT);
     } else {
-      setInputType(outputType === FORMATS.HEX ? FORMATS.HEX : FORMATS.TEXT);
+      setInputType(
+        outputType === FORMATS.HEX || Boolean(notice)
+          ? FORMATS.HEX
+          : FORMATS.TEXT
+      );
     }
+    setError('');
+    setNotice('');
   }
 
   function handleClear() {
     setInput('');
     setOutput('');
     setError('');
+    setNotice('');
     setCopyError('');
     setFile(null);
     if (fileInputRef.current) {
@@ -155,6 +173,7 @@ export default function Base32Tool() {
     setInput(`📁 ${selected.name} (${formatFileSize(selected.size)})`);
     setOutput('');
     setError('');
+    setNotice('');
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -342,9 +361,11 @@ export default function Base32Tool() {
             >
               {copied ? '✓ Copied' : 'Copy'}
             </button>
-            <div className="sr-only" role="status">
-              {copied ? 'Copied to clipboard' : ''}
-            </div>
+            {copied && (
+              <div className="sr-only" role="status">
+                Copied to clipboard
+              </div>
+            )}
           </div>
           <textarea
             id="base32-output"
@@ -357,11 +378,15 @@ export default function Base32Tool() {
         </div>
       </div>
 
-      {alertMessage && (
+      {alertMessage ? (
         <div className="base32-error" role="alert">
           ⚠ {alertMessage}
         </div>
-      )}
+      ) : notice ? (
+        <div className="base32-notice" role="status" aria-live="polite">
+          ℹ {notice}
+        </div>
+      ) : null}
     </section>
   );
 }

@@ -171,6 +171,15 @@
   font-size: 0.875rem;
 }
 
+.base32-tool .base32-notice {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-info);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+}
+
 @media (min-width: 768px) {
   .base32-tool {
     padding: 0 2rem 3rem;
