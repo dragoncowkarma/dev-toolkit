@@ -37,7 +37,7 @@ function isIdentBoundary(char) {
  * placeholder tokens so later passes can treat the rest of the text as plain
  * structural CSS without risking corrupting their contents.
  *
- * @param {string} input - Raw CSS source.
+ * @param {string} rawInput - Raw CSS source.
  * @returns {{ text: string, store: ProtectedEntry[], unterminated: boolean }}
  * The placeholder text, the table of extracted regions it references, and
  * whether an unterminated (EOF-closed) comment or string - one that never
@@ -45,11 +45,19 @@ function isIdentBoundary(char) {
  * newline - was encountered - such input is malformed and should not be
  * treated as a normal protected region.
  */
-export function extractProtectedRegions(input) {
+export function extractProtectedRegions(rawInput) {
   const store = [];
   let out = '';
   let i = 0;
   let unterminated = false;
+  // CSS input preprocessing normalizes CR, FF, and CRLF newline forms to a
+  // single LF before tokenization even begins (see the CSS Syntax Module's
+  // "preprocessing the input stream" step). Doing the same here - rather
+  // than only ever checking for '\n' - keeps unescaped-newline "bad string"
+  // detection correct for all CSS newline forms, while an escaped `\` +
+  // CRLF continuation collapses to `\` + LF first and is still consumed as
+  // a single escaped unit below, so it never falsely trips that check.
+  const input = rawInput.replace(/\r\n?|\f/g, '\n');
   const { length: n } = input;
 
   const push = (kind, raw) => {

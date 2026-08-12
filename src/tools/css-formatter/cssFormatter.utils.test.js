@@ -133,6 +133,55 @@ describe('formatCss', () => {
     expect(result.warning).toMatch(/malformed|unbalanced/i);
   });
 
+  it('falls back to the original input with a warning for a string left open by a CR', () => {
+    // CSS input preprocessing treats a bare CR exactly like an LF, so an
+    // unescaped CR before the closing quote must also be a bad string.
+    const css = '.a { content: "unterminated\r; color: red; }';
+    const result = formatCss(css);
+    expect(result.output).toBe(css);
+    expect(result.warning).toMatch(/malformed|unbalanced/i);
+  });
+
+  it('falls back to the original input with a warning for a string left open by a CRLF', () => {
+    const css = '.a { content: "unterminated\r\n; color: red; }';
+    const result = formatCss(css);
+    expect(result.output).toBe(css);
+    expect(result.warning).toMatch(/malformed|unbalanced/i);
+  });
+
+  it('falls back with a warning for a string left open by a form feed', () => {
+    const css = '.a { content: "unterminated\f; color: red; }';
+    const result = formatCss(css);
+    expect(result.output).toBe(css);
+    expect(result.warning).toMatch(/malformed|unbalanced/i);
+  });
+
+  it('treats an escaped CRLF line continuation inside a string as valid, not unterminated', () => {
+    // A backslash immediately followed by a newline is a valid in-string
+    // line continuation, regardless of which CSS newline form (LF, CR,
+    // FF, or CRLF) it uses - it must not trip "bad string" detection. CSS
+    // input preprocessing normalizes CR/FF/CRLF to LF before tokenization,
+    // so the preserved string content comes back with a plain LF.
+    const css = '.a { content: "line\\\r\nbreak"; }';
+    const result = formatCss(css);
+    expect(result.warning).toBeNull();
+    expect(result.output).toBe('.a {\n  content: "line\\\nbreak";\n}');
+  });
+
+  it('treats an escaped lone CR line continuation inside a string as valid', () => {
+    const css = '.a { content: "line\\\rbreak"; }';
+    const result = formatCss(css);
+    expect(result.warning).toBeNull();
+    expect(result.output).toBe('.a {\n  content: "line\\\nbreak";\n}');
+  });
+
+  it('treats an escaped form feed line continuation inside a string as valid', () => {
+    const css = '.a { content: "line\\\fbreak"; }';
+    const result = formatCss(css);
+    expect(result.warning).toBeNull();
+    expect(result.output).toBe('.a {\n  content: "line\\\nbreak";\n}');
+  });
+
   it('never throws for non-string input and reports it as empty', () => {
     expect(() => formatCss(undefined)).not.toThrow();
     expect(formatCss(null)).toEqual({ output: '', warning: null });
@@ -257,6 +306,48 @@ describe('minifyCss', () => {
     const result = minifyCss(css);
     expect(result.output).toBe(css);
     expect(result.warning).toMatch(/malformed|unbalanced/i);
+  });
+
+  it('falls back to the original input with a warning for a string left open by a CR', () => {
+    const css = '.a { content: "unterminated\r; color: red; }';
+    const result = minifyCss(css);
+    expect(result.output).toBe(css);
+    expect(result.warning).toMatch(/malformed|unbalanced/i);
+  });
+
+  it('falls back to the original input with a warning for a string left open by a CRLF', () => {
+    const css = '.a { content: "unterminated\r\n; color: red; }';
+    const result = minifyCss(css);
+    expect(result.output).toBe(css);
+    expect(result.warning).toMatch(/malformed|unbalanced/i);
+  });
+
+  it('falls back with a warning for a string left open by a form feed', () => {
+    const css = '.a { content: "unterminated\f; color: red; }';
+    const result = minifyCss(css);
+    expect(result.output).toBe(css);
+    expect(result.warning).toMatch(/malformed|unbalanced/i);
+  });
+
+  it('treats an escaped CRLF line continuation inside a string as valid, not unterminated', () => {
+    const css = '.a { content: "line\\\r\nbreak"; }';
+    const result = minifyCss(css);
+    expect(result.warning).toBeNull();
+    expect(result.output).toBe('.a{content:"line\\\nbreak"}');
+  });
+
+  it('treats an escaped lone CR line continuation inside a string as valid', () => {
+    const css = '.a { content: "line\\\rbreak"; }';
+    const result = minifyCss(css);
+    expect(result.warning).toBeNull();
+    expect(result.output).toBe('.a{content:"line\\\nbreak"}');
+  });
+
+  it('treats an escaped form feed line continuation inside a string as valid', () => {
+    const css = '.a { content: "line\\\fbreak"; }';
+    const result = minifyCss(css);
+    expect(result.warning).toBeNull();
+    expect(result.output).toBe('.a{content:"line\\\nbreak"}');
   });
 
   it('never throws for non-string input and reports it as empty', () => {
