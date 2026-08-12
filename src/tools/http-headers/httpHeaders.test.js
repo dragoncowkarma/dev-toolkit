@@ -162,6 +162,15 @@ describe('normalizeHeaderFieldName and buildNormalizedOutput', () => {
     expect(buildNormalizedOutput(parsed)).toBe(output);
   });
 
+  it('preserves every hyphen separator so distinct field names are not coalesced', () => {
+    expect(normalizeHeaderFieldName('X--Trace')).toBe('X--Trace');
+    expect(normalizeHeaderFieldName('X-Trace')).toBe('X-Trace');
+    expect(normalizeHeaderFieldName('X--Trace')).not.toBe(normalizeHeaderFieldName('X-Trace'));
+
+    const parsed = parseHttpHeaders('X--Trace: alpha\nX-Trace: beta\n');
+    expect(buildNormalizedOutput(parsed)).toBe('X--Trace: alpha\nX-Trace: beta');
+  });
+
   it('includes the start line when present', () => {
     const parsed = parseHttpHeaders('GET / HTTP/1.1\nHost: example.com\n');
     expect(buildNormalizedOutput(parsed)).toBe('GET / HTTP/1.1\nHost: example.com');
