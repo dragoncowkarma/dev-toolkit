@@ -88,6 +88,15 @@ src/
 2. Add `meta.js` with a default export (`id`, `name`, `description`, `icon`, `category`) — this
    alone makes the tool discoverable and adds it to the sidebar list; selecting it renders the
    `ToolPlaceholder`, whose body displays the "Planned" status.
+   - `category` **must be one of `TOOL_CATEGORIES`**, the canonical vocabulary exported from
+     `src/components/sidebar.utils.js`. Names are PascalCase, singular, English nouns, except for
+     established acronyms such as `JSON` and `CSS`, which keep their all-caps spelling.
+   - The sidebar derives its category filter row from these raw strings and matches them exactly,
+     so a case or plural variant (`converters`, `Converters`, `text`) would split one category into
+     several near-identical buttons and hide tools behind the wrong one. A contract test in
+     `src/App.test.jsx` fails the build for any `category` outside the vocabulary.
+   - Introducing a **new** category is a deliberate change to `TOOL_CATEGORIES`: add the entry
+     there in the same PR. Do not reuse an existing name with different casing or pluralization.
 3. Add `<Name>Tool.jsx` implementing the tool's UI; once present, auto-discovery picks it up and
    selecting the tool renders that component instead of the placeholder.
 4. Add the utility module, styles, and unit tests alongside the component.

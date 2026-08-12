@@ -1,4 +1,4 @@
-import { cleanup, render } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('./components/Layout.jsx', () => ({
@@ -6,6 +6,8 @@ vi.mock('./components/Layout.jsx', () => ({
 }));
 
 import Layout from './components/Layout.jsx';
+import Sidebar from './components/Sidebar.jsx';
+import { TOOL_CATEGORIES } from './components/sidebar.utils.js';
 import App from './App.jsx';
 
 afterEach(() => {
@@ -189,6 +191,133 @@ describe('Tool catalog auto-discovery contract', () => {
     const { tools } = Layout.mock.calls[0][0];
     const placeholderTools = tools.filter((tool) => typeof tool.component === 'function');
     expect(placeholderTools.length, 'Catalog must contain zero placeholder tools').toBe(0);
+  });
+
+  it('asserts every metadata category belongs to the TOOL_CATEGORIES vocabulary', () => {
+    // Without this invariant nothing rejects a new spelling, and the sidebar's
+    // derived filter row silently splits one category across several buttons.
+    metaEntries.forEach(([path, mod]) => {
+      const category = mod.default?.category;
+      expect(
+        TOOL_CATEGORIES.includes(category),
+        `Category "${category}" in ${path} is not in TOOL_CATEGORIES ` +
+          `(allowed: ${TOOL_CATEGORIES.join(', ')})`,
+      ).toBe(true);
+    });
+  });
+
+  it('asserts TOOL_CATEGORIES entries never collide by case or a trailing "s"', () => {
+    // Guards the constant itself against reintroducing the ambiguity it exists
+    // to prevent: "Converter"/"Converters"/"converters" must stay impossible.
+    const keyOf = (name) => name.toLowerCase().replace(/s$/, '');
+    const seen = new Map();
+
+    TOOL_CATEGORIES.forEach((name) => {
+      const key = keyOf(name);
+      expect(
+        seen.has(key),
+        `TOOL_CATEGORIES entries "${seen.get(key)}" and "${name}" differ only by case ` +
+          'or a trailing "s"',
+      ).toBe(false);
+      seen.set(key, name);
+    });
+  });
+});
+
+describe('Sidebar category filter over the real catalog', () => {
+  const metaModules = import.meta.glob('./tools/*/meta.js', { eager: true });
+  const catalog = Object.values(metaModules)
+    .map((mod) => mod.default)
+    .sort((a, b) => a.id.localeCompare(b.id));
+
+  function renderSidebar() {
+    return render(
+      <Sidebar
+        tools={catalog}
+        activeToolId="base64"
+        isCollapsed={false}
+        isMobileOpen={false}
+        onSelectTool={() => {}}
+        onToggleCollapse={() => {}}
+        onCloseMobile={() => {}}
+      />,
+    );
+  }
+
+  function categoryGroup() {
+    return screen.getByRole('group', { name: 'Filter tools by category' });
+  }
+
+  function listedToolNames() {
+    const nav = screen.getByRole('navigation', { name: 'Tool list' });
+    return within(nav)
+      .getAllByRole('listitem')
+      .map((item) => item.querySelector('.sidebar__tool-name').textContent.trim());
+  }
+
+  function namesOfCategory(category) {
+    return catalog.filter((tool) => tool.category === category).map((tool) => tool.name);
+  }
+
+  it('renders the All reset plus exactly one control per distinct catalog category', () => {
+    renderSidebar();
+
+    const labels = within(categoryGroup())
+      .getAllByRole('button')
+      .map((button) => button.getAttribute('aria-label') ?? button.textContent.trim());
+    const categoryLabels = labels.filter((label) => label !== 'All categories');
+    const distinctCategories = new Set(catalog.map((tool) => tool.category));
+
+    expect(labels).toHaveLength(distinctCategories.size + 1);
+    expect([...categoryLabels].sort()).toEqual([...distinctCategories].sort());
+    categoryLabels.forEach((label) => {
+      expect(TOOL_CATEGORIES, `Rendered category control "${label}"`).toContain(label);
+    });
+  });
+
+  it('never renders two category controls that differ only by case or a trailing "s"', () => {
+    renderSidebar();
+
+    const categoryLabels = within(categoryGroup())
+      .getAllByRole('button')
+      .map((button) => button.textContent.trim())
+      .filter((label) => label !== 'All');
+    const collapsed = categoryLabels.map((label) => label.toLowerCase().replace(/s$/, ''));
+
+    expect(new Set(collapsed).size, `Ambiguous category controls: ${categoryLabels.join(', ')}`)
+      .toBe(categoryLabels.length);
+  });
+
+  it('lists every conversion tool under the single Converter control', () => {
+    renderSidebar();
+
+    fireEvent.click(within(categoryGroup()).getByRole('button', { name: 'Converter' }));
+
+    const listed = listedToolNames();
+    expect(listed).toEqual(namesOfCategory('Converter'));
+    expect(listed).toEqual(
+      expect.arrayContaining(
+        ['base-converter', 'color', 'csv', 'curl-converter', 'timestamp', 'unit-converter'].map(
+          (id) => catalog.find((tool) => tool.id === id).name,
+        ),
+      ),
+    );
+  });
+
+  it('lists every text tool under the single Text control', () => {
+    renderSidebar();
+
+    fireEvent.click(within(categoryGroup()).getByRole('button', { name: 'Text' }));
+
+    const listed = listedToolNames();
+    expect(listed).toEqual(namesOfCategory('Text'));
+    expect(listed).toEqual(
+      expect.arrayContaining(
+        ['string-escaper', 'unicode', 'word-counter'].map(
+          (id) => catalog.find((tool) => tool.id === id).name,
+        ),
+      ),
+    );
   });
 });
 
