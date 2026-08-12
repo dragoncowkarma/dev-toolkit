@@ -40,8 +40,10 @@ function isIdentBoundary(char) {
  * @param {string} input - Raw CSS source.
  * @returns {{ text: string, store: ProtectedEntry[], unterminated: boolean }}
  * The placeholder text, the table of extracted regions it references, and
- * whether an unterminated (EOF-closed) comment was encountered - such input
- * is malformed and should not be treated as a normal protected region.
+ * whether an unterminated (EOF-closed) comment or string - one that never
+ * reaches its closing `*\/` or matching quote before EOF or an unescaped
+ * newline - was encountered - such input is malformed and should not be
+ * treated as a normal protected region.
  */
 export function extractProtectedRegions(input) {
   const store = [];
@@ -73,6 +75,10 @@ export function extractProtectedRegions(input) {
       while (j < n && input[j] !== quote && input[j] !== '\n') {
         j += input[j] === '\\' ? 2 : 1;
       }
+      // Reaching EOF or an unescaped newline before the closing quote is
+      // malformed CSS (an unterminated string), not a normally-closed one -
+      // record it so callers fall back instead of rendering bogus output.
+      if (j >= n || input[j] !== quote) unterminated = true;
       j = Math.min(j + 1, n);
       push('string', input.slice(i, j));
       i = j;

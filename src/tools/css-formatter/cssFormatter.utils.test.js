@@ -123,6 +123,16 @@ describe('formatCss', () => {
     expect(result.warning).toMatch(/malformed|unbalanced/i);
   });
 
+  it('falls back to the original input with a warning for a string left open by a newline', () => {
+    // An unescaped newline before the closing quote makes this an
+    // unterminated string, not a normally-closed one - it must not be
+    // silently "closed" at the newline and rendered as if it were valid.
+    const css = '.a { content: "unterminated\n; color: red; }';
+    const result = formatCss(css);
+    expect(result.output).toBe(css);
+    expect(result.warning).toMatch(/malformed|unbalanced/i);
+  });
+
   it('never throws for non-string input and reports it as empty', () => {
     expect(() => formatCss(undefined)).not.toThrow();
     expect(formatCss(null)).toEqual({ output: '', warning: null });
@@ -239,6 +249,13 @@ describe('minifyCss', () => {
   it('falls back with a warning for a rule followed by an unterminated comment', () => {
     const result = minifyCss('.a{} /* unterminated');
     expect(result.output).toBe('.a{} /* unterminated');
+    expect(result.warning).toMatch(/malformed|unbalanced/i);
+  });
+
+  it('falls back to the original input with a warning for a string left open by a newline', () => {
+    const css = '.a { content: "unterminated\n; color: red; }';
+    const result = minifyCss(css);
+    expect(result.output).toBe(css);
     expect(result.warning).toMatch(/malformed|unbalanced/i);
   });
 
