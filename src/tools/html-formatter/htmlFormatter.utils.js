@@ -466,6 +466,50 @@ function isWhitespaceOnlyText(node) {
   return node.type === 'text' && WHITESPACE_ONLY.test(node.value);
 }
 
+/**
+ * Inline `white-space` values under which browsers render runs of spaces verbatim instead of
+ * collapsing them, so a text node's whitespace is significant even outside of `pre`/`textarea`.
+ */
+const PRESERVING_WHITE_SPACE_VALUES = new Set(['pre', 'pre-wrap', 'break-spaces']);
+
+/**
+ * Reads the `white-space` declaration out of an element's inline `style` attribute, if any.
+ * Only the last declaration is honored (later ones win in CSS), and only inline styles are
+ * considered: a standalone formatter cannot resolve `<style>` blocks or external stylesheets,
+ * so those are out of scope by design rather than by oversight.
+ *
+ * @param {object} node An element node.
+ * @returns {string|null} The lower-cased property value, or `null` if not declared inline.
+ */
+function getInlineWhiteSpace(node) {
+  const styleAttr = node.attrs.find(
+    (attr) => attr.hasValue && attr.value !== null && attr.name.toLowerCase() === 'style'
+  );
+  if (!styleAttr) return null;
+
+  const matches = [...styleAttr.value.matchAll(/white-space\s*:\s*([^;]+)/gi)];
+  if (matches.length === 0) return null;
+
+  return matches[matches.length - 1][1].replace(/!important/gi, '').trim().toLowerCase();
+}
+
+/**
+ * Whether whitespace-only text nodes that are direct children of `node` must be preserved
+ * verbatim rather than collapsed/dropped during minification. An element's own inline
+ * `white-space` declaration takes precedence (it is an inherited CSS property); absent one, the
+ * parent's resolved state is inherited unchanged, matching normal CSS inheritance as far as it
+ * can be determined from inline styles alone.
+ *
+ * @param {object} node An element node.
+ * @param {boolean} inherited Whether the parent element resolved to a preserving value.
+ * @returns {boolean} Whether whitespace inside `node` must be kept verbatim.
+ */
+function resolvesToPreservingWhiteSpace(node, inherited) {
+  const value = getInlineWhiteSpace(node);
+  if (value === null) return inherited;
+  return PRESERVING_WHITE_SPACE_VALUES.has(value);
+}
+
 function serializeStartTag(node) {
   let out = `<${node.tagName}`;
   for (const attr of node.attrs) {
@@ -522,7 +566,7 @@ function joinFormatted(nodes, depth, indentUnit) {
   return out;
 }
 
-function minifyNode(node) {
+function minifyNode(node, preserveWhitespace) {
   switch (node.type) {
     case 'doctype':
     case 'comment':
@@ -533,7 +577,8 @@ function minifyNode(node) {
       const open = serializeStartTag(node);
       if (node.void) return open;
       if (node.raw !== null) return open + node.raw + serializeEndTag(node);
-      return open + joinMinified(node.children) + serializeEndTag(node);
+      const childPreserve = resolvesToPreservingWhiteSpace(node, preserveWhitespace);
+      return open + joinMinified(node.children, childPreserve) + serializeEndTag(node);
     }
     default:
       return '';
@@ -553,8 +598,16 @@ function minifyNode(node) {
  * nodes (whitespace text, comments, doctypes) are grouped into one run at a time; the run emits
  * at most one collapsed space, positioned at the first whitespace-only text node in it, so a
  * run with several whitespace nodes around a comment doesn't produce duplicate spaces.
+ *
+ * `preserveWhitespace` overrides all of the above: it is `true` when `nodes`' parent resolved
+ * (via {@link resolvesToPreservingWhiteSpace}) to an inline `white-space` value of `pre`,
+ * `pre-wrap`, or `break-spaces`, under which browsers render runs of spaces verbatim instead of
+ * collapsing them. In that case every whitespace-only text node is emitted unchanged instead of
+ * being dropped or collapsed to one space, regardless of block-boundary position, since this
+ * tool cannot know whether an anonymous box actually swallows it without a full layout engine —
+ * emitting it verbatim is the conservative choice that never removes something that renders.
  */
-function joinMinified(nodes) {
+function joinMinified(nodes, preserveWhitespace = false) {
   let out = '';
   let index = 0;
 
@@ -562,7 +615,7 @@ function joinMinified(nodes) {
     const node = nodes[index];
 
     if (!isNonRenderingNode(node)) {
-      out += minifyNode(node);
+      out += minifyNode(node, preserveWhitespace);
       index += 1;
       continue;
     }
@@ -585,13 +638,15 @@ function joinMinified(nodes) {
     for (let i = index; i < runEnd; i += 1) {
       const runNode = nodes[i];
       if (isWhitespaceOnlyText(runNode)) {
-        if (needsSpace && !spaceEmitted) {
+        if (preserveWhitespace) {
+          out += runNode.value;
+        } else if (needsSpace && !spaceEmitted) {
           out += ' ';
           spaceEmitted = true;
         }
         continue;
       }
-      out += minifyNode(runNode);
+      out += minifyNode(runNode, preserveWhitespace);
     }
 
     index = runEnd;
@@ -625,7 +680,7 @@ export function formatHtmlTree(nodes, indent = HTML_INDENT_OPTIONS.TWO_SPACES) {
  * @returns {string} The minified HTML.
  */
 export function minifyHtmlTree(nodes) {
-  return joinMinified(nodes);
+  return joinMinified(nodes, false);
 }
 
 /**
@@ -648,6 +703,14 @@ export function formatHtml(source, indent = HTML_INDENT_OPTIONS.TWO_SPACES) {
  * Minifies an HTML string by removing structurally insignificant whitespace between tags,
  * while preserving text, attributes, comments, doctypes, and the raw contents of `script`,
  * `style`, `textarea`, and `pre` elements exactly.
+ *
+ * Whitespace-only text nodes between inline content are collapsed to a single space rather than
+ * dropped, and that collapsing itself backs off whenever an ancestor element's inline `style`
+ * attribute declares a whitespace-preserving `white-space` value (`pre`, `pre-wrap`, or
+ * `break-spaces`) — see {@link resolvesToPreservingWhiteSpace}. This tool parses markup only: it
+ * cannot resolve `<style>` blocks, external stylesheets, or the default user-agent stylesheet, so
+ * whitespace significance driven by CSS it cannot see (including a `pre`-like `display` on a
+ * `<style>`-only rule) is outside what it can preserve.
  *
  * @param {string} source The HTML text to minify.
  * @returns {{ok: true, result: string}|{ok: false, error: {message: string, line: number,

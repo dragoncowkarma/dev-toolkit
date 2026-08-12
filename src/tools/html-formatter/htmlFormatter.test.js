@@ -264,6 +264,87 @@ describe('minifyHtml', () => {
   });
 });
 
+describe('minifyHtml - inline white-space CSS', () => {
+  it('keeps a multi-space word-boundary run verbatim under white-space: pre', () => {
+    // Regression test: collapsing this run to one space changes the rendered text, since
+    // `white-space: pre` (unlike the default `normal`) renders runs of spaces verbatim.
+    const input = '<p style="white-space: pre"><span>Hello</span>  <span>world</span></p>';
+    const result = minifyHtml(input);
+    expect(result.ok).toBe(true);
+    expect(result.result).toBe(input);
+  });
+
+  it('keeps whitespace verbatim under white-space: pre-wrap', () => {
+    const input = '<p style="white-space: pre-wrap"><span>Hello</span>   <span>world</span></p>';
+    const result = minifyHtml(input);
+    expect(result.result).toBe(input);
+  });
+
+  it('keeps whitespace verbatim under white-space: break-spaces', () => {
+    const input = '<p style="white-space: break-spaces"><span>Hello</span>  <span>world</span></p>';
+    const result = minifyHtml(input);
+    expect(result.result).toBe(input);
+  });
+
+  it('still collapses whitespace when white-space is a non-preserving value', () => {
+    const input = '<p style="white-space: normal"><span>Hello</span>  <span>world</span></p>';
+    const result = minifyHtml(input);
+    expect(result.result).toBe(
+      '<p style="white-space: normal"><span>Hello</span> <span>world</span></p>'
+    );
+  });
+
+  it('still collapses whitespace when the style attribute has no white-space declaration', () => {
+    const input = '<p style="color: red"><span>Hello</span>  <span>world</span></p>';
+    const result = minifyHtml(input);
+    expect(result.result).toBe('<p style="color: red"><span>Hello</span> <span>world</span></p>');
+  });
+
+  it('inherits a preserving white-space value into nested elements without their own style', () => {
+    const input = '<div style="white-space: pre">'
+      + '<p><span>Hello</span>  <span>world</span></p>'
+      + '</div>';
+    const result = minifyHtml(input);
+    expect(result.result).toBe(input);
+  });
+
+  it('lets a nested element override an inherited preserving white-space value', () => {
+    const input = '<div style="white-space: pre">'
+      + '<p style="white-space: normal"><span>Hello</span>  <span>world</span></p>'
+      + '</div>';
+    const result = minifyHtml(input);
+    expect(result.result).toBe(
+      '<div style="white-space: pre">'
+        + '<p style="white-space: normal"><span>Hello</span> <span>world</span></p>'
+        + '</div>'
+    );
+  });
+
+  it('honors the last white-space declaration when the attribute repeats the property', () => {
+    const input = '<p style="white-space: pre; white-space: normal">'
+      + '<span>Hello</span>  <span>world</span></p>';
+    const result = minifyHtml(input);
+    expect(result.result).toBe(
+      '<p style="white-space: pre; white-space: normal">'
+        + '<span>Hello</span> <span>world</span></p>'
+    );
+  });
+
+  it('preserves whitespace-only text at a block-element boundary under white-space: pre', () => {
+    // Even though <p> is block-level (normally a hard boundary for minification), a preserving
+    // white-space value means this tool cannot safely assume the whitespace is invisible.
+    const input = '<div style="white-space: pre">  <p>Hello</p>  </div>';
+    const result = minifyHtml(input);
+    expect(result.result).toBe(input);
+  });
+
+  it('treats white-space: pre matching case-insensitively', () => {
+    const input = '<p style="WHITE-SPACE: PRE"><span>Hello</span>  <span>world</span></p>';
+    const result = minifyHtml(input);
+    expect(result.result).toBe(input);
+  });
+});
+
 describe('format/minify round trips', () => {
   const source = [
     '<!DOCTYPE html>',
