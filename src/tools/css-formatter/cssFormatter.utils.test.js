@@ -111,6 +111,18 @@ describe('formatCss', () => {
     );
   });
 
+  it('falls back to the original input with a warning for an unterminated comment', () => {
+    const result = formatCss('/* unterminated');
+    expect(result.output).toBe('/* unterminated');
+    expect(result.warning).toMatch(/malformed|unbalanced/i);
+  });
+
+  it('falls back to the original input with a warning for a rule followed by an unterminated comment', () => {
+    const result = formatCss('.a{} /* unterminated');
+    expect(result.output).toBe('.a{} /* unterminated');
+    expect(result.warning).toMatch(/malformed|unbalanced/i);
+  });
+
   it('never throws for non-string input and reports it as empty', () => {
     expect(() => formatCss(undefined)).not.toThrow();
     expect(formatCss(null)).toEqual({ output: '', warning: null });
@@ -201,6 +213,18 @@ describe('minifyCss', () => {
     const result = minifyCss(css);
     expect(result.warning).toBeNull();
     expect(result.output).toBe('.a{--theme:{ color: red; };color:blue}');
+  });
+
+  it('falls back to the original input with a warning for an unterminated comment', () => {
+    const result = minifyCss('/* unterminated');
+    expect(result.output).toBe('/* unterminated');
+    expect(result.warning).toMatch(/malformed|unbalanced/i);
+  });
+
+  it('falls back to the original input with a warning for a rule followed by an unterminated comment', () => {
+    const result = minifyCss('.a{} /* unterminated');
+    expect(result.output).toBe('.a{} /* unterminated');
+    expect(result.warning).toMatch(/malformed|unbalanced/i);
   });
 
   it('never throws for non-string input and reports it as empty', () => {

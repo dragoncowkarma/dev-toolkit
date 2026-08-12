@@ -38,13 +38,16 @@ function isIdentBoundary(char) {
  * structural CSS without risking corrupting their contents.
  *
  * @param {string} input - Raw CSS source.
- * @returns {{ text: string, store: ProtectedEntry[] }} The placeholder text
- * and the table of extracted regions it references.
+ * @returns {{ text: string, store: ProtectedEntry[], unterminated: boolean }}
+ * The placeholder text, the table of extracted regions it references, and
+ * whether an unterminated (EOF-closed) comment was encountered - such input
+ * is malformed and should not be treated as a normal protected region.
  */
 export function extractProtectedRegions(input) {
   const store = [];
   let out = '';
   let i = 0;
+  let unterminated = false;
   const { length: n } = input;
 
   const push = (kind, raw) => {
@@ -57,6 +60,7 @@ export function extractProtectedRegions(input) {
 
     if (char === '/' && input[i + 1] === '*') {
       const close = input.indexOf('*/', i + 2);
+      if (close === -1) unterminated = true;
       const end = close === -1 ? n : close + 2;
       push('comment', input.slice(i, end));
       i = end;
@@ -102,7 +106,7 @@ export function extractProtectedRegions(input) {
     i += 1;
   }
 
-  return { text: out, store };
+  return { text: out, store, unterminated };
 }
 
 /**
@@ -495,9 +499,9 @@ export function formatCss(input, options = {}) {
   }
 
   try {
-    const { text, store } = extractProtectedRegions(input);
+    const { text, store, unterminated } = extractProtectedRegions(input);
     const { events, balanced } = parseCssEvents(text, store);
-    if (!balanced) {
+    if (unterminated || !balanced) {
       return { output: input.trim(), warning: malformedWarning('formatted') };
     }
     const rendered = renderFormatted(events, ' '.repeat(indentSize));
@@ -526,9 +530,9 @@ export function minifyCss(input) {
   }
 
   try {
-    const { text, store } = extractProtectedRegions(input);
+    const { text, store, unterminated } = extractProtectedRegions(input);
     const { events, balanced } = parseCssEvents(text, store);
-    if (!balanced) {
+    if (unterminated || !balanced) {
       return { output: input.trim(), warning: malformedWarning('minified') };
     }
     const rendered = renderMinified(events, store);
