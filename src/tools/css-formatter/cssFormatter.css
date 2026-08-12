@@ -78,7 +78,7 @@
 .css-formatter-tool select:focus {
   border-color: var(--color-primary-light);
   background: var(--color-primary);
-  color: var(--color-text-inverse);
+  color: #fff;
 }
 
 .css-formatter-tool button:disabled {
@@ -146,8 +146,8 @@
 }
 
 .css-formatter-tool__status {
-  border: 1px solid var(--color-success-border);
-  background: var(--color-success-bg);
+  border: 1px solid var(--color-success);
+  background: rgba(52, 211, 153, 0.1);
   color: var(--color-success);
 }
 
