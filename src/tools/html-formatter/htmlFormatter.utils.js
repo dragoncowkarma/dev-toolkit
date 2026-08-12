@@ -33,6 +33,34 @@ export const HTML_INDENT_OPTIONS = {
 const WHITESPACE_ONLY = /^[ \t\r\n\f]*$/;
 
 /**
+ * Elements that render inline, i.e. participate in the surrounding text flow rather than
+ * starting a new block box. Whitespace-only text sitting between two of these (or between one
+ * of these and non-whitespace text) is significant: it is the only thing separating two words
+ * that would otherwise run together, so minification must collapse it to a single space rather
+ * than delete it. Whitespace next to a block-level element (or at the start/end of a parent's
+ * children) sits at a block boundary the browser already collapses away, so it stays safe to
+ * drop entirely.
+ */
+const INLINE_ELEMENTS = new Set([
+  'a', 'abbr', 'audio', 'b', 'bdi', 'bdo', 'br', 'button', 'canvas', 'cite', 'code', 'data',
+  'dfn', 'em', 'i', 'iframe', 'img', 'input', 'kbd', 'label', 'map', 'mark', 'object', 'output',
+  'picture', 'q', 'rp', 'rt', 'ruby', 's', 'samp', 'select', 'small', 'span', 'strong', 'sub',
+  'sup', 'svg', 'textarea', 'time', 'u', 'var', 'video', 'wbr',
+]);
+
+/**
+ * Whether a node carries visible inline content, meaning whitespace touching it can affect
+ * the rendered text. Non-whitespace text and inline elements qualify; block elements, void
+ * non-inline elements, comments, and doctypes do not (a comment or doctype never renders, and
+ * a block element establishes its own box, so whitespace at its edge is never a word boundary).
+ */
+function isInlineContentNode(node) {
+  if (node.type === 'text') return !WHITESPACE_ONLY.test(node.value);
+  if (node.type === 'element') return INLINE_ELEMENTS.has(node.tagName.toLowerCase());
+  return false;
+}
+
+/**
  * Internal error type carrying a one-based line/column so callers can render a precise
  * diagnostic. It is caught at the public API boundary and converted into a plain,
  * non-throwing result object.
@@ -497,13 +525,26 @@ function minifyNode(node) {
   }
 }
 
-/** Joins sibling nodes for minification: whitespace-only text nodes are dropped entirely. */
+/**
+ * Joins sibling nodes for minification. A whitespace-only text node is dropped entirely when it
+ * sits at a block boundary (the start/end of the parent, or next to a block-level element),
+ * since browsers already collapse that whitespace away. When it instead separates two inline
+ * content nodes (e.g. `<span>Hello</span> <span>world</span>`), dropping it would run the
+ * rendered words together, so it is collapsed to a single space instead.
+ */
 function joinMinified(nodes) {
   let out = '';
-  for (const node of nodes) {
-    if (isWhitespaceOnlyText(node)) continue;
+  nodes.forEach((node, index) => {
+    if (isWhitespaceOnlyText(node)) {
+      const prev = nodes[index - 1];
+      const next = nodes[index + 1];
+      if (prev && next && isInlineContentNode(prev) && isInlineContentNode(next)) {
+        out += ' ';
+      }
+      return;
+    }
     out += minifyNode(node);
-  }
+  });
   return out;
 }
 

@@ -186,6 +186,26 @@ describe('minifyHtml', () => {
     expect(result.result).toBe('<p>Hello <b>World</b>!</p>');
   });
 
+  it('collapses whitespace between adjacent inline elements to a single space', () => {
+    const input = '<p><span>Hello</span> <span>world</span></p>';
+    const result = minifyHtml(input);
+    expect(result.ok).toBe(true);
+    expect(result.result).toBe('<p><span>Hello</span> <span>world</span></p>');
+  });
+
+  it('collapses whitespace between adjacent anchor elements to a single space', () => {
+    const input = '<p><a href="/a">a</a> <a href="/b">b</a></p>';
+    const result = minifyHtml(input);
+    expect(result.result).toBe('<p><a href="/a">a</a> <a href="/b">b</a></p>');
+  });
+
+  it('still drops whitespace between block-level elements entirely', () => {
+    const input = '<div><span>Hi</span> <p>World</p></div>';
+    const result = minifyHtml(input);
+    // <p> is block-level, so the space at its boundary is not a word-boundary and is dropped.
+    expect(result.result).toBe('<div><span>Hi</span><p>World</p></div>');
+  });
+
   it('preserves comments while minifying', () => {
     const input = '<div>\n  <!-- keep me -->\n  <p>Hi</p>\n</div>';
     const result = minifyHtml(input);
