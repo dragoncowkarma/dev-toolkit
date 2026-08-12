@@ -6,10 +6,13 @@
   --color-border: #1e1e2e;
   --color-text: #e4e4ef;
   --color-text-muted: #8888a0;
+  --color-text-inverse: #ffffff;
   --color-primary: #6366f1;
   --color-primary-light: #818cf8;
   --color-accent: #a78bfa;
   --color-success: #34d399;
+  --color-success-bg: rgba(52, 211, 153, 0.1);
+  --color-success-border: rgba(52, 211, 153, 0.35);
   --color-warning: #fbbf24;
   --color-error: #ef4444;
   --color-error-light: #f87171;

@@ -96,6 +96,21 @@ describe('formatCss', () => {
     expect(result.warning).toMatch(/malformed|unbalanced/i);
   });
 
+  it('falls back to the original input with a warning for a stray closing parenthesis', () => {
+    const result = formatCss('.a { color: rgb(1, 2, 3)); }');
+    expect(result.output).toBe('.a { color: rgb(1, 2, 3)); }');
+    expect(result.warning).toMatch(/malformed|unbalanced/i);
+  });
+
+  it('preserves a balanced brace block inside a custom property value', () => {
+    const css = '.a { --theme: { color: red; }; color: blue; }';
+    const result = formatCss(css);
+    expect(result.warning).toBeNull();
+    expect(result.output).toBe(
+      '.a {\n  --theme: { color: red; };\n  color: blue;\n}',
+    );
+  });
+
   it('never throws for non-string input and reports it as empty', () => {
     expect(() => formatCss(undefined)).not.toThrow();
     expect(formatCss(null)).toEqual({ output: '', warning: null });
@@ -170,6 +185,22 @@ describe('minifyCss', () => {
     const result = minifyCss('.a { color: red');
     expect(result.output).toBe('.a { color: red');
     expect(result.warning).toMatch(/malformed|unbalanced/i);
+  });
+
+  it('falls back to the original input with a warning for a stray closing parenthesis', () => {
+    const result = minifyCss('.a { color: rgb(1, 2, 3)); }');
+    expect(result.output).toBe('.a { color: rgb(1, 2, 3)); }');
+    expect(result.warning).toMatch(/malformed|unbalanced/i);
+  });
+
+  it('preserves a balanced brace block inside a custom property value', () => {
+    // The `{ color: red; }` block is opaque value content for the `--theme`
+    // custom property, not a nested rule - it must survive intact and the
+    // following `color: blue` declaration must stay a sibling declaration.
+    const css = '.a { --theme: { color: red; }; color: blue; }';
+    const result = minifyCss(css);
+    expect(result.warning).toBeNull();
+    expect(result.output).toBe('.a{--theme:{ color: red; };color:blue}');
   });
 
   it('never throws for non-string input and reports it as empty', () => {

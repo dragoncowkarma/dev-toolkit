@@ -60,7 +60,10 @@
   cursor: pointer;
   font: inherit;
   font-size: 0.85rem;
-  transition: background var(--transition), border-color var(--transition), color var(--transition);
+  transition:
+    background var(--transition),
+    border-color var(--transition),
+    color var(--transition);
 }
 
 .css-formatter-tool button {
@@ -75,7 +78,7 @@
 .css-formatter-tool select:focus {
   border-color: var(--color-primary-light);
   background: var(--color-primary);
-  color: white;
+  color: var(--color-text-inverse);
 }
 
 .css-formatter-tool button:disabled {
@@ -143,8 +146,8 @@
 }
 
 .css-formatter-tool__status {
-  border: 1px solid rgba(52, 211, 153, 0.35);
-  background: rgba(52, 211, 153, 0.1);
+  border: 1px solid var(--color-success-border);
+  background: var(--color-success-bg);
   color: var(--color-success);
 }
 

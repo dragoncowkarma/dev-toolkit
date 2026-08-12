@@ -208,6 +208,18 @@ function splitTopLevelCommas(text) {
 }
 
 /**
+ * Detects whether `buffer` (the text accumulated since the last statement
+ * boundary) looks like the start of a custom-property declaration, e.g.
+ * `--theme: ` or `--theme: some-value `. Used to tell a `{` that opens a
+ * balanced block inside a custom property's value (valid per the CSS custom
+ * property "declaration-value" grammar, e.g. `--theme: { color: red; };`)
+ * apart from a `{` that opens a nested rule.
+ */
+function looksLikeCustomPropertyDeclaration(buffer) {
+  return /^--[^\s:{}][^:{}]*:/.test(buffer.trimStart());
+}
+
+/**
  * Parses placeholder-substituted CSS text into a flat, renderer-agnostic
  * event stream. Never throws - unbalanced braces are reported via
  * `balanced: false` instead so callers can fall back conservatively.
@@ -223,6 +235,10 @@ export function parseCssEvents(text, store) {
   let buffer = '';
   let parenDepth = 0;
   let braceDepth = 0;
+  // Tracks nesting inside a custom-property value's balanced `{...}` block
+  // (e.g. `--theme: { color: red; };`), which is opaque token content, not
+  // structural rule nesting - see `looksLikeCustomPropertyDeclaration`.
+  let valueBlockDepth = 0;
   let balanced = true;
 
   const flush = (type) => {
@@ -262,13 +278,35 @@ export function parseCssEvents(text, store) {
     }
 
     if (char === ')') {
-      parenDepth = Math.max(0, parenDepth - 1);
+      // An unmatched closing paren has no opener to balance against; record
+      // it as unbalanced instead of silently clamping depth back to zero.
+      if (parenDepth === 0) {
+        balanced = false;
+      } else {
+        parenDepth -= 1;
+      }
       buffer += char;
       i += 1;
       continue;
     }
 
     if (parenDepth === 0 && char === '{') {
+      if (valueBlockDepth > 0) {
+        // Nested block inside a custom property's `{...}` value content.
+        valueBlockDepth += 1;
+        buffer += char;
+        i += 1;
+        continue;
+      }
+      if (braceDepth > 0 && looksLikeCustomPropertyDeclaration(buffer)) {
+        // The opening brace of a balanced block inside a custom property's
+        // value (e.g. `--theme: { color: red; };`) - keep it as opaque
+        // declaration content rather than starting a nested rule.
+        valueBlockDepth = 1;
+        buffer += char;
+        i += 1;
+        continue;
+      }
       events.push({ type: 'rule-start', prelude: buffer });
       buffer = '';
       braceDepth += 1;
@@ -277,6 +315,12 @@ export function parseCssEvents(text, store) {
     }
 
     if (parenDepth === 0 && char === '}') {
+      if (valueBlockDepth > 0) {
+        valueBlockDepth -= 1;
+        buffer += char;
+        i += 1;
+        continue;
+      }
       flush(braceDepth > 0 ? 'declaration' : 'statement');
       if (braceDepth === 0) {
         balanced = false;
@@ -289,6 +333,11 @@ export function parseCssEvents(text, store) {
     }
 
     if (parenDepth === 0 && char === ';') {
+      if (valueBlockDepth > 0) {
+        buffer += char;
+        i += 1;
+        continue;
+      }
       flush(braceDepth > 0 ? 'declaration' : 'statement');
       i += 1;
       continue;
@@ -302,7 +351,7 @@ export function parseCssEvents(text, store) {
     flush(braceDepth > 0 ? 'declaration' : 'statement');
     balanced = false;
   }
-  if (braceDepth !== 0 || parenDepth !== 0) {
+  if (braceDepth !== 0 || parenDepth !== 0 || valueBlockDepth !== 0) {
     balanced = false;
   }
 
