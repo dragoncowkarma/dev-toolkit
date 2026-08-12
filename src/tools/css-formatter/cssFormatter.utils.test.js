@@ -117,7 +117,7 @@ describe('formatCss', () => {
     expect(result.warning).toMatch(/malformed|unbalanced/i);
   });
 
-  it('falls back to the original input with a warning for a rule followed by an unterminated comment', () => {
+  it('falls back with a warning for a rule followed by an unterminated comment', () => {
     const result = formatCss('.a{} /* unterminated');
     expect(result.output).toBe('.a{} /* unterminated');
     expect(result.warning).toMatch(/malformed|unbalanced/i);
@@ -147,6 +147,21 @@ describe('minifyCss', () => {
   it('strips regular comments entirely', () => {
     const result = minifyCss('.a { color: red; /* drop me */ }');
     expect(result.output).toBe('.a{color:red}');
+  });
+
+  it('does not turn a comment between selector tokens into a descendant combinator', () => {
+    // `.item/* note */:hover` targets a hovered `.item` itself. Stripping the
+    // comment must not introduce a space, which would instead select a
+    // hovered descendant of `.item` - a different selector entirely.
+    const result = minifyCss('.item/* note */:hover { color: red; }');
+    expect(result.output).toBe('.item:hover{color:red}');
+  });
+
+  it('keeps a token boundary when a comment sits directly between two identifiers', () => {
+    // Deleting the comment outright here would fuse "red" and "blue" into a
+    // single token ("redblue"), so a single space must be reintroduced.
+    const result = minifyCss('.a { color: red/* c */blue; }');
+    expect(result.output).toBe('.a{color:red blue}');
   });
 
   it('preserves "important" /*! ... */ comments', () => {
@@ -221,7 +236,7 @@ describe('minifyCss', () => {
     expect(result.warning).toMatch(/malformed|unbalanced/i);
   });
 
-  it('falls back to the original input with a warning for a rule followed by an unterminated comment', () => {
+  it('falls back with a warning for a rule followed by an unterminated comment', () => {
     const result = minifyCss('.a{} /* unterminated');
     expect(result.output).toBe('.a{} /* unterminated');
     expect(result.warning).toMatch(/malformed|unbalanced/i);

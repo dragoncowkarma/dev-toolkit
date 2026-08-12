@@ -129,15 +129,22 @@ export function restoreProtectedRegions(text, store, { stripComments = false } =
 }
 
 /**
- * Removes non-important comment placeholders in-place (replacing them with a
- * single space so surrounding whitespace collapses cleanly), leaving string
- * and url placeholders untouched for later restoration.
+ * Removes non-important comment placeholders in-place, leaving string and
+ * url placeholders untouched for later restoration.
+ *
+ * A CSS comment is not an implicit token separator - `.a/* c *\/.b` must
+ * stay adjacent as `.a.b`, not become the descendant selector `.a .b`. A
+ * single space is only reintroduced when the comment sits directly between
+ * two identifier characters (e.g. `foo/* c *\/bar`), where deleting it
+ * outright would fuse two separate tokens into one (`foobar`).
  */
 function stripMinifiableComments(text, store) {
-  return text.replace(PLACEHOLDER_RE, (match, idText) => {
+  return text.replace(PLACEHOLDER_RE, (match, idText, offset, full) => {
     const entry = store[Number(idText)];
-    if (entry && entry.kind === 'comment' && !entry.important) return ' ';
-    return match;
+    if (!entry || entry.kind !== 'comment' || entry.important) return match;
+    const before = full[offset - 1];
+    const after = full[offset + match.length];
+    return !isIdentBoundary(before) && !isIdentBoundary(after) ? ' ' : '';
   });
 }
 
