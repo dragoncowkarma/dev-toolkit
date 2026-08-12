@@ -760,6 +760,11 @@ function parseExtensions(node) {
 /**
  * Decodes a DER-encoded X.509 certificate into a plain inspection object.
  *
+ * The decoder never verifies signatures, so `subjectMatchesIssuer` only reports
+ * distinguished-name equality. A matching pair means the certificate is
+ * self-issued; proving it is self-signed requires checking the signature
+ * against the subject public key.
+ *
  * @param {Uint8Array} der DER bytes of a single `Certificate` structure.
  * @returns {object} Version, serial, issuer, subject, validity, key, and extension details.
  * @throws {Error} When the DER structure does not describe an X.509 certificate.
@@ -835,7 +840,7 @@ export function parseCertificate(der) {
     ),
     publicKey,
     extensions,
-    isSelfSigned: issuer.text === subject.text,
+    subjectMatchesIssuer: issuer.text === subject.text,
   };
 }
 
