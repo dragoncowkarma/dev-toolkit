@@ -33,6 +33,42 @@ export function filterTools(tools, query) {
 export const ALL_CATEGORY = null;
 
 /**
+ * Canonical vocabulary for the `category` field of every `src/tools/<slug>/meta.js`.
+ * Names are PascalCase, singular, English nouns; established acronyms (e.g. `JSON`)
+ * keep their conventional all-caps spelling.
+ *
+ * This is a build/test-time contract on the catalog data, enforced by the tool
+ * catalog contract tests — it is deliberately NOT a runtime allowlist.
+ * `getToolCategories()` still derives the rendered controls from the tools it is
+ * given, and `filterToolsByCategory()` still compares with exact `===`, so a
+ * miscased category surfaces as a failing test rather than being silently
+ * folded into a neighbouring button at runtime.
+ *
+ * Adding a category is a deliberate change to this constant, not something a new
+ * tool may do implicitly by inventing a spelling.
+ *
+ * @type {ReadonlyArray<string>}
+ */
+export const TOOL_CATEGORIES = Object.freeze([
+  'Calculator',
+  'Comparison',
+  'Converter',
+  'Crypto',
+  'CSS',
+  'Decoder',
+  'Encoder',
+  'Formatter',
+  'Generator',
+  'Inspector',
+  'JSON',
+  'Reference',
+  'Scheduler',
+  'Tester',
+  'Text',
+  'Utility',
+]);
+
+/**
  * Derives the sorted list of distinct, non-empty tool categories present in
  * a tools array. Used to render category controls without maintaining a
  * hard-coded category list.
