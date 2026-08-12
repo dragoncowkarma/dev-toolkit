@@ -273,4 +273,32 @@ describe('Base32Tool File Upload & Stale Reads', () => {
 
     expect(screen.queryByRole('group', { name: 'Input format' })).not.toBeInTheDocument();
   });
+
+  it('clears output and disables Copy button while a file read is pending', async () => {
+    const deferred = createDeferred();
+    base32Utils.fileToBase32.mockReturnValueOnce(deferred.promise);
+
+    render(<Base32Tool />);
+    fireEvent.change(screen.getByLabelText('Text'), {
+      target: { value: 'foo' },
+    });
+    await waitFor(() => {
+      expect(screen.getByLabelText('Base32')).toHaveValue('MZXW6===');
+    });
+
+    const file = new File(['big data'], 'big.bin', { type: 'application/octet-stream' });
+    const fileInput = screen.getByLabelText('Convert a file to Base32');
+    selectFile(fileInput, file);
+
+    expect(screen.getByLabelText('Base32')).toHaveValue('');
+    expect(screen.getByRole('button', { name: 'Copy' })).toBeDisabled();
+
+    await act(async () => {
+      deferred.resolve('NBSWY3DP');
+      await Promise.resolve();
+    });
+
+    expect(screen.getByLabelText('Base32')).toHaveValue('NBSWY3DP');
+    expect(screen.getByRole('button', { name: 'Copy' })).not.toBeDisabled();
+  });
 });

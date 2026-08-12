@@ -35,7 +35,6 @@ export default function Base32Tool() {
   const [copied, setCopied] = useState(false);
 
   const fileInputRef = useRef(null);
-  const fileRequestRef = useRef(0);
 
   useEffect(() => {
     if (file) return;
@@ -97,7 +96,6 @@ export default function Base32Tool() {
 
   function handleModeChange(nextMode) {
     if (nextMode === mode) return;
-    fileRequestRef.current += 1;
     setMode(nextMode);
     if (file) {
       setFile(null);
@@ -108,14 +106,12 @@ export default function Base32Tool() {
   }
 
   function handleInputChange(event) {
-    fileRequestRef.current += 1;
     setFile(null);
     setInput(event.target.value);
   }
 
   function handleSwap() {
     if (error || !output) return;
-    fileRequestRef.current += 1;
     setFile(null);
     setInput(output);
     const nextMode = mode === MODES.ENCODE ? MODES.DECODE : MODES.ENCODE;
@@ -129,7 +125,6 @@ export default function Base32Tool() {
   }
 
   function handleClear() {
-    fileRequestRef.current += 1;
     setInput('');
     setOutput('');
     setError('');
@@ -154,10 +149,11 @@ export default function Base32Tool() {
   function handleFileChange(event) {
     const selected = event.target.files?.[0];
     if (!selected) return;
-    fileRequestRef.current += 1;
     setMode(MODES.ENCODE);
+    setInputType(FORMATS.TEXT);
     setFile(selected);
     setInput(`📁 ${selected.name} (${formatFileSize(selected.size)})`);
+    setOutput('');
     setError('');
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -308,7 +304,7 @@ export default function Base32Tool() {
         <div className="panel">
           <label className="panel-label" htmlFor="base32-input">
             {mode === MODES.ENCODE
-              ? inputType === FORMATS.HEX
+              ? (!file && inputType === FORMATS.HEX)
                 ? 'Hex Bytes'
                 : 'Text'
               : 'Base32'}
