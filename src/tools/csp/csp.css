@@ -1,0 +1,161 @@
+.csp-tool {
+  margin: 0 auto;
+  max-width: 1000px;
+  padding: 0 1.25rem 2rem;
+}
+
+.csp-tool__intro,
+.csp-tool__panel,
+.csp-tool__assessment,
+.csp-tool__findings {
+  margin-top: 1rem;
+}
+
+.csp-tool__eyebrow,
+.csp-tool label,
+.csp-tool__directive legend {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.csp-tool__intro p:last-child,
+.csp-tool__assessment p,
+.csp-tool__copy-status {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+.csp-tool__mode,
+.csp-tool__actions,
+.csp-tool__presets,
+.csp-tool__output-label {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.csp-tool__mode,
+.csp-tool__presets,
+.csp-tool__actions {
+  margin-top: 1rem;
+}
+
+.csp-tool button {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 0.45rem 0.75rem;
+}
+
+.csp-tool button:hover,
+.csp-tool__mode button[aria-selected='true'] {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.csp-tool__panel > label,
+.csp-tool__output-label > label {
+  display: block;
+  margin-top: 1rem;
+}
+
+.csp-tool__textarea,
+.csp-tool__directive input[type='text'] {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  font: 0.85rem/1.5 'SF Mono', 'Fira Code', Consolas, monospace;
+  padding: 0.75rem;
+  width: 100%;
+}
+
+.csp-tool__textarea {
+  min-height: 150px;
+  margin-top: 0.5rem;
+  resize: vertical;
+}
+
+.csp-tool__textarea--output { min-height: 110px; }
+
+.csp-tool__textarea:focus,
+.csp-tool__directive input:focus { border-color: var(--color-primary); outline: none; }
+
+.csp-tool__error {
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  color: var(--color-error-light);
+  margin-top: 1rem;
+  padding: 0.75rem;
+}
+
+.csp-tool__assessment {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.85rem;
+}
+
+.csp-tool__assessment--HIGH { border-color: var(--color-error); }
+.csp-tool__assessment--MEDIUM { border-color: var(--color-warning); }
+.csp-tool__assessment--PASS { border-color: var(--color-success); }
+
+.csp-tool__badge {
+  background: var(--color-surface-hover);
+  border-radius: 999px;
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  margin: 0.5rem 0;
+  padding: 0.15rem 0.5rem;
+}
+
+.csp-tool__table-wrap { margin-top: 1rem; overflow-x: auto; }
+.csp-tool__table { border-collapse: collapse; width: 100%; }
+.csp-tool__table th,
+.csp-tool__table td { border-bottom: 1px solid var(--color-border); padding: 0.5rem; text-align: left; }
+.csp-tool__table td:last-child { overflow-wrap: anywhere; }
+
+.csp-tool__builder {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: 1fr;
+  margin-top: 1rem;
+}
+
+.csp-tool__directive {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.75rem;
+}
+
+.csp-tool__directive label,
+.csp-tool__switch {
+  align-items: center;
+  display: flex;
+  gap: 0.45rem;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.csp-tool__switch { margin-top: 0.25rem; }
+.csp-tool__output-label { justify-content: space-between; margin-top: 1rem; }
+.csp-tool__findings ul { display: grid; gap: 0.5rem; list-style: none; }
+.csp-tool__finding { border-radius: var(--radius); padding: 0.65rem; }
+.csp-tool__finding--HIGH { background: var(--color-error-bg); }
+.csp-tool__finding--MEDIUM { background: color-mix(in srgb, var(--color-warning) 14%, transparent); }
+.csp-tool__finding--LOW { background: color-mix(in srgb, var(--color-info) 14%, transparent); }
+
+@media (min-width: 768px) {
+  .csp-tool { padding: 0 2rem 3rem; }
+  .csp-tool__builder { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
