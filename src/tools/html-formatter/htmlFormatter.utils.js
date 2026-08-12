@@ -61,6 +61,16 @@ function isInlineContentNode(node) {
 }
 
 /**
+ * Whether a node never renders anything itself, so it can never be a word boundary and should
+ * be looked through when deciding whether whitespace elsewhere in the same run is significant.
+ * Whitespace-only text is included because a run of it collapses with adjacent comments/doctypes
+ * into a single logical gap between whatever content nodes bracket the run.
+ */
+function isNonRenderingNode(node) {
+  return isWhitespaceOnlyText(node) || node.type === 'comment' || node.type === 'doctype';
+}
+
+/**
  * Internal error type carrying a one-based line/column so callers can render a precise
  * diagnostic. It is caught at the public API boundary and converted into a plain,
  * non-throwing result object.
@@ -531,20 +541,57 @@ function minifyNode(node) {
  * since browsers already collapse that whitespace away. When it instead separates two inline
  * content nodes (e.g. `<span>Hello</span> <span>world</span>`), dropping it would run the
  * rendered words together, so it is collapsed to a single space instead.
+ *
+ * The word-boundary check looks past comments and doctypes rather than only the immediate
+ * siblings: none of those nodes render, so `<span>Hello</span> <!-- x --> <span>world</span>`
+ * is just as much a word boundary as `<span>Hello</span> <span>world</span>` is. Non-rendering
+ * nodes (whitespace text, comments, doctypes) are grouped into one run at a time; the run emits
+ * at most one collapsed space, positioned at the first whitespace-only text node in it, so a
+ * run with several whitespace nodes around a comment doesn't produce duplicate spaces.
  */
 function joinMinified(nodes) {
   let out = '';
-  nodes.forEach((node, index) => {
-    if (isWhitespaceOnlyText(node)) {
-      const prev = nodes[index - 1];
-      const next = nodes[index + 1];
-      if (prev && next && isInlineContentNode(prev) && isInlineContentNode(next)) {
-        out += ' ';
-      }
-      return;
+  let index = 0;
+
+  while (index < nodes.length) {
+    const node = nodes[index];
+
+    if (!isNonRenderingNode(node)) {
+      out += minifyNode(node);
+      index += 1;
+      continue;
     }
-    out += minifyNode(node);
-  });
+
+    let runEnd = index;
+    while (runEnd < nodes.length && isNonRenderingNode(nodes[runEnd])) runEnd += 1;
+
+    const prev = nodes[index - 1];
+    const next = nodes[runEnd];
+    const runHasWhitespace = nodes
+      .slice(index, runEnd)
+      .some((runNode) => isWhitespaceOnlyText(runNode));
+    const needsSpace = runHasWhitespace
+      && prev !== undefined
+      && next !== undefined
+      && isInlineContentNode(prev)
+      && isInlineContentNode(next);
+
+    let spaceEmitted = false;
+    for (let i = index; i < runEnd; i += 1) {
+      const runNode = nodes[i];
+      if (isWhitespaceOnlyText(runNode)) {
+        if (needsSpace && !spaceEmitted) {
+          out += ' ';
+          spaceEmitted = true;
+        }
+        continue;
+      }
+      out += minifyNode(runNode);
+    }
+
+    index = runEnd;
+  }
+
   return out;
 }
 

@@ -199,6 +199,19 @@ describe('minifyHtml', () => {
     expect(result.result).toBe('<p><a href="/a">a</a> <a href="/b">b</a></p>');
   });
 
+  it('preserves a word-boundary space across a comment between inline elements', () => {
+    const input = '<p><span>Hello</span> <!-- separator --> <span>world</span></p>';
+    const result = minifyHtml(input);
+    expect(result.ok).toBe(true);
+    expect(result.result).toBe('<p><span>Hello</span> <!-- separator --><span>world</span></p>');
+  });
+
+  it('does not invent a space across a comment when the source has no whitespace', () => {
+    const input = '<p><span>Hello</span><!-- separator --><span>world</span></p>';
+    const result = minifyHtml(input);
+    expect(result.result).toBe('<p><span>Hello</span><!-- separator --><span>world</span></p>');
+  });
+
   it('still drops whitespace between block-level elements entirely', () => {
     const input = '<div><span>Hi</span> <p>World</p></div>';
     const result = minifyHtml(input);
