@@ -212,6 +212,25 @@ describe('minifyHtml', () => {
     expect(result.result).toBe('<p><span>Hello</span><!-- separator --><span>world</span></p>');
   });
 
+  it('preserves a word-boundary space between del and ins elements', () => {
+    // Regression test: del/ins are ordinary inline/phrasing elements but were previously
+    // missing from the inline allowlist, so the space between them was incorrectly dropped.
+    const input = '<p><del>Hello</del> <ins>world</ins></p>';
+    const result = minifyHtml(input);
+    expect(result.ok).toBe(true);
+    expect(result.result).toBe('<p><del>Hello</del> <ins>world</ins></p>');
+  });
+
+  it('conservatively treats an unrecognized/custom element as inline', () => {
+    // General rule: word-boundary preservation is based on a denylist of known block-level
+    // elements, so any tag not on that list (including custom elements) is treated as inline
+    // and its surrounding whitespace is preserved rather than dropped.
+    const input = '<p><my-widget>Hello</my-widget> <my-widget>world</my-widget></p>';
+    const result = minifyHtml(input);
+    expect(result.ok).toBe(true);
+    expect(result.result).toBe('<p><my-widget>Hello</my-widget> <my-widget>world</my-widget></p>');
+  });
+
   it('still drops whitespace between block-level elements entirely', () => {
     const input = '<div><span>Hi</span> <p>World</p></div>';
     const result = minifyHtml(input);

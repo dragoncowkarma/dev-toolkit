@@ -33,30 +33,35 @@ export const HTML_INDENT_OPTIONS = {
 const WHITESPACE_ONLY = /^[ \t\r\n\f]*$/;
 
 /**
- * Elements that render inline, i.e. participate in the surrounding text flow rather than
- * starting a new block box. Whitespace-only text sitting between two of these (or between one
- * of these and non-whitespace text) is significant: it is the only thing separating two words
- * that would otherwise run together, so minification must collapse it to a single space rather
- * than delete it. Whitespace next to a block-level element (or at the start/end of a parent's
- * children) sits at a block boundary the browser already collapses away, so it stays safe to
- * drop entirely.
+ * Elements that always start a new block box, i.e. never participate in the surrounding text
+ * flow. This is a denylist rather than an allowlist of inline elements on purpose: an allowlist
+ * that omits a legitimate inline/phrasing element (e.g. `del`, `ins`, or any custom element)
+ * would silently treat it as a block boundary and drop a word-separating space, running two
+ * words together. A denylist instead only has to be complete about the well-known block-level
+ * elements; anything not listed here — including every ordinary inline/phrasing element and any
+ * unrecognized or custom tag — is conservatively treated as inline, so its surrounding
+ * whitespace is preserved (collapsed to one space) rather than risk deleting a meaningful
+ * separator.
  */
-const INLINE_ELEMENTS = new Set([
-  'a', 'abbr', 'audio', 'b', 'bdi', 'bdo', 'br', 'button', 'canvas', 'cite', 'code', 'data',
-  'dfn', 'em', 'i', 'iframe', 'img', 'input', 'kbd', 'label', 'map', 'mark', 'object', 'output',
-  'picture', 'q', 'rp', 'rt', 'ruby', 's', 'samp', 'select', 'small', 'span', 'strong', 'sub',
-  'sup', 'svg', 'textarea', 'time', 'u', 'var', 'video', 'wbr',
+const BLOCK_ELEMENTS = new Set([
+  'html', 'head', 'body', 'title', 'meta', 'link', 'base', 'style', 'script', 'noscript',
+  'template', 'address', 'article', 'aside', 'blockquote', 'details', 'dialog', 'dd', 'div',
+  'dl', 'dt', 'fieldset', 'figcaption', 'figure', 'footer', 'form', 'h1', 'h2', 'h3', 'h4', 'h5',
+  'h6', 'header', 'hgroup', 'hr', 'li', 'main', 'menu', 'nav', 'ol', 'p', 'pre', 'section',
+  'summary', 'table', 'caption', 'colgroup', 'col', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th',
+  'ul',
 ]);
 
 /**
  * Whether a node carries visible inline content, meaning whitespace touching it can affect
- * the rendered text. Non-whitespace text and inline elements qualify; block elements, void
- * non-inline elements, comments, and doctypes do not (a comment or doctype never renders, and
- * a block element establishes its own box, so whitespace at its edge is never a word boundary).
+ * the rendered text. Non-whitespace text and non-block elements qualify; block elements, comments,
+ * and doctypes do not (a comment or doctype never renders, and a block element establishes its
+ * own box, so whitespace at its edge is never a word boundary). See {@link BLOCK_ELEMENTS} for
+ * why elements are classified by denylist rather than allowlist.
  */
 function isInlineContentNode(node) {
   if (node.type === 'text') return !WHITESPACE_ONLY.test(node.value);
-  if (node.type === 'element') return INLINE_ELEMENTS.has(node.tagName.toLowerCase());
+  if (node.type === 'element') return !BLOCK_ELEMENTS.has(node.tagName.toLowerCase());
   return false;
 }
 
