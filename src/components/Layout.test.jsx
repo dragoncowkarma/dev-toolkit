@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Layout from './Layout.jsx';
@@ -257,6 +257,98 @@ describe('Layout Integration & Focus Trap', () => {
     fireEvent.click(collapseButton);
 
     expect(document.activeElement).toBe(collapseButton);
+  });
+
+  it('handles mobile drawer dialog lifecycle, background isolation, and focus restoration', () => {
+    const { container } = render(<Layout tools={TEST_TOOLS} defaultToolId="base64" />);
+
+    const openMenuButton = screen.getByRole('button', { name: 'Open tool navigation' });
+    const pageContainer = container.querySelector('.layout__page');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(pageContainer).not.toHaveAttribute('aria-hidden');
+
+    openMenuButton.focus();
+    fireEvent.click(openMenuButton);
+
+    const dialog = screen.getByRole('dialog', { name: 'Developer tools' });
+    expect(dialog).toBeInTheDocument();
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    expect(pageContainer).toHaveAttribute('aria-hidden', 'true');
+
+    const closeButton = within(dialog).getByRole('button', { name: 'Close tool navigation' });
+    fireEvent.click(closeButton);
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(pageContainer).not.toHaveAttribute('aria-hidden');
+    expect(document.activeElement).toBe(openMenuButton);
+  });
+
+  it('announces active tool changes when selected from an open drawer without aria-hidden', () => {
+    const { container } = render(<Layout tools={TEST_TOOLS} defaultToolId="base64" />);
+
+    const statusElement = container.querySelector('[role="status"]');
+    expect(statusElement).toHaveTextContent('Active tool: Base64');
+
+    const openMenuButton = screen.getByRole('button', { name: 'Open tool navigation' });
+    fireEvent.click(openMenuButton);
+
+    expect(statusElement).not.toHaveAttribute('aria-hidden');
+
+    const dialog = screen.getByRole('dialog', { name: 'Developer tools' });
+    const jsonToolButton = within(dialog).getByRole('button', { name: 'JSON Formatter' });
+
+    fireEvent.click(jsonToolButton);
+
+    expect(statusElement).toHaveTextContent('Active tool: JSON Formatter');
+    expect(statusElement).not.toHaveAttribute('aria-hidden');
+  });
+
+  it('force-closes drawer and clears aria-hidden when viewport becomes desktop width', () => {
+    const listeners = [];
+    const originalMatchMedia = window.matchMedia;
+    window.matchMedia = vi.fn().mockImplementation((query) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: (listener) => {
+        listeners.push(listener);
+      },
+      removeListener: (listener) => {
+        const idx = listeners.indexOf(listener);
+        if (idx !== -1) listeners.splice(idx, 1);
+      },
+      addEventListener: (type, listener) => {
+        if (type === 'change') listeners.push(listener);
+      },
+      removeEventListener: (type, listener) => {
+        if (type === 'change') {
+          const idx = listeners.indexOf(listener);
+          if (idx !== -1) listeners.splice(idx, 1);
+        }
+      },
+      dispatchEvent: vi.fn(),
+    }));
+
+    const { container } = render(<Layout tools={TEST_TOOLS} defaultToolId="base64" />);
+
+    const openMenuButton = screen.getByRole('button', { name: 'Open tool navigation' });
+    fireEvent.click(openMenuButton);
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(container.querySelector('.layout__page')).toHaveAttribute('aria-hidden', 'true');
+
+    act(() => {
+      listeners.forEach((listener) => listener({ matches: true }));
+    });
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(container.querySelector('.layout__page')).not.toHaveAttribute('aria-hidden');
+
+    if (originalMatchMedia) {
+      window.matchMedia = originalMatchMedia;
+    } else {
+      delete window.matchMedia;
+    }
   });
 });
 

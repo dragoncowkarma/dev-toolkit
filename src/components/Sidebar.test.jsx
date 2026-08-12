@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import Sidebar from './Sidebar.jsx';
@@ -74,7 +74,7 @@ describe('Sidebar mobile drawer toggle', () => {
     const user = userEvent.setup();
     const { onCloseMobile } = renderSidebar({ isMobileOpen: true });
 
-    const sidebarLandmark = screen.getByRole('complementary', { name: 'Developer tools' });
+    const sidebarLandmark = screen.getByRole('dialog', { name: 'Developer tools' });
     await user.click(
       within(sidebarLandmark).getByRole('button', { name: 'Close tool navigation' }),
     );
@@ -222,10 +222,11 @@ describe('Sidebar keyboard navigation', () => {
     expect(container.querySelector('.sidebar-backdrop')).toHaveAttribute('tabindex', '-1');
   });
 
-  it('includes the backdrop in the tab order when the drawer is open', () => {
+  it('ensures the backdrop is intentionally non-focusable when the drawer is open', () => {
     const { container } = renderSidebar({ isMobileOpen: true });
 
-    expect(container.querySelector('.sidebar-backdrop')).toHaveAttribute('tabindex', '0');
+    expect(container.querySelector('.sidebar-backdrop')).toHaveAttribute('tabindex', '-1');
+    expect(container.querySelector('.sidebar-backdrop')).toHaveAttribute('aria-hidden', 'true');
   });
 });
 
@@ -246,12 +247,51 @@ describe('Sidebar Mobile Focus Trap', () => {
 
     const closeButton = container.querySelector('.sidebar__mobile-close');
     const collapseButton = container.querySelector('.sidebar__collapse');
+    const githubLink = container.querySelector('.sidebar__github');
+
+    // On mobile viewports, .sidebar__collapse is display: none in CSS
+    collapseButton.style.display = 'none';
 
     expect(document.activeElement).toBe(closeButton);
 
     fireEvent.keyDown(document.activeElement, { key: 'Tab', shiftKey: true });
-    expect(document.activeElement).toBe(collapseButton);
+    expect(document.activeElement).toBe(githubLink);
 
+    fireEvent.keyDown(document.activeElement, { key: 'Tab', shiftKey: false });
+    expect(document.activeElement).toBe(closeButton);
+  });
+
+  it('skips elements styled with display: none or visibility: hidden from the focus trap', () => {
+    const { container } = render(
+      <Sidebar
+        tools={TOOLS}
+        activeToolId="base64"
+        isCollapsed={false}
+        isMobileOpen={true}
+        onSelectTool={() => {}}
+        onToggleCollapse={() => {}}
+        onCloseMobile={() => {}}
+      />,
+    );
+
+    const closeButton = container.querySelector('.sidebar__mobile-close');
+    const collapseButton = container.querySelector('.sidebar__collapse');
+    const githubLink = container.querySelector('.sidebar__github');
+
+    collapseButton.style.display = 'none';
+    githubLink.style.display = 'none';
+
+    const urlToolButton = screen.getByRole('button', { name: 'URL Encoder' });
+    urlToolButton.focus();
+
+    fireEvent.keyDown(document.activeElement, { key: 'Tab', shiftKey: false });
+    expect(document.activeElement).toBe(closeButton);
+
+    fireEvent.keyDown(document.activeElement, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(urlToolButton);
+
+    githubLink.style.display = 'block';
+    githubLink.style.visibility = 'hidden';
     fireEvent.keyDown(document.activeElement, { key: 'Tab', shiftKey: false });
     expect(document.activeElement).toBe(closeButton);
   });
@@ -320,5 +360,131 @@ describe('Sidebar Mobile Focus Trap', () => {
 
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(handleClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('recovers focus when focus is programmatically moved outside the drawer', () => {
+    const outsideButton = document.createElement('button');
+    outsideButton.textContent = 'Outside Target';
+    document.body.appendChild(outsideButton);
+
+    const { container } = render(
+      <Sidebar
+        tools={TOOLS}
+        activeToolId="base64"
+        isCollapsed={false}
+        isMobileOpen={true}
+        onSelectTool={() => {}}
+        onToggleCollapse={() => {}}
+        onCloseMobile={() => {}}
+      />,
+    );
+
+    const closeButton = container.querySelector('.sidebar__mobile-close');
+    expect(document.activeElement).toBe(closeButton);
+
+    outsideButton.focus();
+    fireEvent.focusIn(outsideButton);
+
+    expect(document.activeElement).toBe(closeButton);
+    document.body.removeChild(outsideButton);
+  });
+});
+
+describe('Sidebar Modal Dialog Accessibility', () => {
+  it('exposes role="dialog" and aria-modal="true" only while mobile drawer is open', () => {
+    renderSidebar({ isMobileOpen: true });
+
+    const dialog = screen.getByRole('dialog', { name: 'Developer tools' });
+    expect(dialog).toBeInTheDocument();
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    expect(screen.queryByRole('complementary')).not.toBeInTheDocument();
+  });
+
+  it('retains role="complementary" without modal attributes on desktop or when closed', () => {
+    renderSidebar({ isMobileOpen: false });
+
+    const sidebar = screen.getByRole('complementary', { name: 'Developer tools' });
+    expect(sidebar).toBeInTheDocument();
+    expect(sidebar).not.toHaveAttribute('role', 'dialog');
+    expect(sidebar).not.toHaveAttribute('aria-modal');
+  });
+
+  it('isolates background elements with aria-hidden="true" and restores state', () => {
+    const activeBackground = document.createElement('button');
+    const existingHidden = document.createElement('div');
+    existingHidden.setAttribute('aria-hidden', 'false');
+
+    document.body.appendChild(activeBackground);
+    document.body.appendChild(existingHidden);
+
+    const { unmount } = renderSidebar({ isMobileOpen: true });
+
+    expect(activeBackground).toHaveAttribute('aria-hidden', 'true');
+    expect(existingHidden).toHaveAttribute('aria-hidden', 'true');
+
+    unmount();
+
+    expect(activeBackground).not.toHaveAttribute('aria-hidden');
+    expect(existingHidden).toHaveAttribute('aria-hidden', 'false');
+
+    document.body.removeChild(activeBackground);
+    document.body.removeChild(existingHidden);
+  });
+
+  it('does not apply aria-hidden="true" to live regions during background isolation', () => {
+    const liveRegion = document.createElement('div');
+    liveRegion.setAttribute('role', 'status');
+    liveRegion.textContent = 'Active tool: Base64';
+    document.body.appendChild(liveRegion);
+
+    const { unmount } = renderSidebar({ isMobileOpen: true });
+
+    expect(liveRegion).not.toHaveAttribute('aria-hidden');
+
+    unmount();
+    document.body.removeChild(liveRegion);
+  });
+
+  it('force-closes the drawer when viewport widens to desktop size (>= 769px)', () => {
+    const listeners = [];
+    const originalMatchMedia = window.matchMedia;
+    window.matchMedia = vi.fn().mockImplementation((query) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: (listener) => {
+        listeners.push(listener);
+      },
+      removeListener: (listener) => {
+        const idx = listeners.indexOf(listener);
+        if (idx !== -1) listeners.splice(idx, 1);
+      },
+      addEventListener: (type, listener) => {
+        if (type === 'change') listeners.push(listener);
+      },
+      removeEventListener: (type, listener) => {
+        if (type === 'change') {
+          const idx = listeners.indexOf(listener);
+          if (idx !== -1) listeners.splice(idx, 1);
+        }
+      },
+      dispatchEvent: vi.fn(),
+    }));
+
+    const { onCloseMobile } = renderSidebar({ isMobileOpen: true });
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    act(() => {
+      listeners.forEach((listener) => listener({ matches: true }));
+    });
+
+    expect(onCloseMobile).toHaveBeenCalledTimes(1);
+
+    if (originalMatchMedia) {
+      window.matchMedia = originalMatchMedia;
+    } else {
+      delete window.matchMedia;
+    }
   });
 });
