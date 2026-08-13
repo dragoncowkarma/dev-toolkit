@@ -912,6 +912,87 @@ class CleanupTests(unittest.TestCase):
         cleanup_worktree.assert_called_once_with(7, "worker/7-codex-json")
 
 
+class MainSyncRestartTests(unittest.TestCase):
+    def test_successful_fast_forward_restarts_with_same_arguments(self):
+        with (
+            patch.object(
+                swarm,
+                "orchestrator_fingerprint",
+                side_effect=["before", "after"],
+            ),
+            patch.object(swarm, "sync_main_branch", return_value=True),
+            patch.object(swarm.os, "execv") as execv,
+            patch.object(swarm.sys, "argv", ["orchestrator.py", "--interval", "15"]),
+        ):
+            swarm.sync_main_and_restart_if_updated()
+
+        execv.assert_called_once_with(
+            swarm.sys.executable,
+            [swarm.sys.executable, "orchestrator.py", "--interval", "15"],
+        )
+
+    def test_dry_run_logs_restart_without_exec(self):
+        with (
+            patch.object(
+                swarm,
+                "orchestrator_fingerprint",
+                side_effect=["before", "after"],
+            ),
+            patch.object(swarm, "sync_main_branch", return_value=True),
+            patch.object(swarm.os, "execv") as execv,
+            self.assertLogs("swarm", level="INFO") as captured,
+        ):
+            swarm.sync_main_and_restart_if_updated(dry_run=True)
+
+        execv.assert_not_called()
+        self.assertIn(
+            "[DRY RUN] Would restart orchestrator",
+            "\n".join(captured.output),
+        )
+
+    def test_no_fast_forward_does_not_compare_or_restart(self):
+        with (
+            patch.object(
+                swarm,
+                "orchestrator_fingerprint",
+                return_value="unchanged",
+            ) as fingerprint,
+            patch.object(swarm, "sync_main_branch", return_value=False),
+            patch.object(swarm.os, "execv") as execv,
+        ):
+            swarm.sync_main_and_restart_if_updated()
+
+        fingerprint.assert_called_once_with()
+        execv.assert_not_called()
+
+    def test_fingerprint_failure_warns_and_skips_restart(self):
+        missing_path = Path(tempfile.mkdtemp()) / "missing.py"
+        with (
+            patch.object(swarm, "ORCHESTRATOR_PATH", missing_path),
+            self.assertLogs("swarm", level="WARNING") as captured,
+        ):
+            fingerprint = swarm.orchestrator_fingerprint()
+
+        self.assertIsNone(fingerprint)
+        self.assertIn("skipping automatic restart", "\n".join(captured.output))
+
+    def test_once_path_syncs_without_restart_check(self):
+        with (
+            patch.object(swarm.sys, "argv", ["orchestrator.py", "--once"]),
+            patch.object(swarm, "reset_process_history"),
+            patch.object(swarm, "cleanup_old_task_logs"),
+            patch.object(swarm, "sync_main_branch") as sync_main_branch,
+            patch.object(swarm, "sync_main_and_restart_if_updated") as restart_sync,
+            patch.object(swarm, "process_polling_cycle"),
+            patch.object(swarm.tracker, "poll_all"),
+            patch.object(swarm, "cleanup_merged_prs"),
+        ):
+            swarm.main()
+
+        sync_main_branch.assert_called_once_with(False)
+        restart_sync.assert_not_called()
+
+
 class RuntimeLifecycleTests(unittest.TestCase):
     def test_reset_process_history_clears_registry_and_memory(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
