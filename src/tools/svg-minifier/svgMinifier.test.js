@@ -53,7 +53,8 @@ describe('minifySvg', () => {
   });
 
   it('preserves text-node and attribute-value internals', () => {
-    const input = '<svg viewBox="0  0  24  24"><text>  Keep   this text  </text></svg>';
+    const input = '<svg data-note="inkscape:keep" viewBox="0  0  24  24">' +
+      '<text>  Keep   this text  </text></svg>';
     const result = minifySvg(input);
 
     expect(result.minified).toBe(input);
@@ -64,6 +65,7 @@ describe('minifySvg', () => {
     expect(minifySvg('<div></div>').error).toMatch(/root <svg>/i);
     expect(minifySvg('<svg><path></svg>').error).toMatch(/unbalanced/i);
     expect(minifySvg('<svg><path></path>').error).toMatch(/unclosed <svg>/i);
+    expect(minifySvg('<svg />outside').error).toMatch(/outside/i);
   });
 });
 
