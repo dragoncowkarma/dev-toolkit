@@ -25,6 +25,7 @@ function createDeferred() {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -48,7 +49,13 @@ describe('Base64Tool file/mode transition', () => {
 });
 
 describe('Base64Tool clipboard status announcement', () => {
-  it('announces copied status to screen readers in a status live region', async () => {
+  it('does not render a copy status before copying', () => {
+    render(<Base64Tool />);
+
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it('announces copied status once in a polite live region', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });
 
@@ -61,7 +68,32 @@ describe('Base64Tool clipboard status announcement', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
     });
 
+    const statuses = screen.getAllByRole('status');
+    expect(statuses).toHaveLength(1);
+    expect(statuses[0]).toHaveAttribute('aria-live', 'polite');
+    expect(statuses[0]).toHaveTextContent('Copied to clipboard');
+  });
+
+  it('removes the copied status after the confirmation timeout', async () => {
+    Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });
+
+    render(<Base64Tool />);
+
+    fireEvent.change(screen.getByLabelText('Text'), { target: { value: 'hello' } });
+    await waitFor(() => expect(screen.getByLabelText('Base64')).toHaveValue('aGVsbG8='));
+    vi.useFakeTimers();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
+    });
+
     expect(screen.getByRole('status')).toHaveTextContent('Copied to clipboard');
+
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 
   it('reports a copy failure without disabling a valid Swap', async () => {
@@ -79,6 +111,7 @@ describe('Base64Tool clipboard status announcement', () => {
     });
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Failed to copy to clipboard.');
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '⇅ Swap' })).not.toBeDisabled();
   });
 });
