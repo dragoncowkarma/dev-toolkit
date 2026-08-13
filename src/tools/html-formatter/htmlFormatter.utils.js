@@ -480,9 +480,11 @@ const PRESERVING_WHITE_SPACE_VALUES = new Set(['pre', 'pre-wrap', 'break-spaces'
 
 /**
  * Reads the `white-space` declaration out of an element's inline `style` attribute, if any.
- * Only the last declaration is honored (later ones win in CSS), and only inline styles are
- * considered: a standalone formatter cannot resolve `<style>` blocks or external stylesheets,
- * so those are out of scope by design rather than by oversight.
+ * Declarations are resolved by CSS cascade rules: `!important` declarations win over normal
+ * ones regardless of position, and among declarations of equal importance the last one wins
+ * (source order). Only inline styles are considered: a standalone formatter cannot resolve
+ * `<style>` blocks or external stylesheets, so those are out of scope by design rather than by
+ * oversight.
  *
  * @param {object} node An element node.
  * @returns {string|null} The lower-cased property value, or `null` if not declared inline.
@@ -496,7 +498,12 @@ function getInlineWhiteSpace(node) {
   const matches = [...styleAttr.value.matchAll(/white-space\s*:\s*([^;]+)/gi)];
   if (matches.length === 0) return null;
 
-  return matches[matches.length - 1][1].replace(/!important/gi, '').trim().toLowerCase();
+  const isImportant = (raw) => /!important/i.test(raw);
+  const importantMatches = matches.filter((match) => isImportant(match[1]));
+  const candidates = importantMatches.length > 0 ? importantMatches : matches;
+  const winner = candidates[candidates.length - 1];
+
+  return winner[1].replace(/!important/gi, '').trim().toLowerCase();
 }
 
 /**

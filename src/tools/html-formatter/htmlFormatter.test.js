@@ -340,6 +340,26 @@ describe('minifyHtml - inline white-space CSS', () => {
     );
   });
 
+  it('honors an earlier !important declaration over a later non-important override', () => {
+    // CSS cascade: `!important` wins over a normal declaration regardless of source order, so
+    // the earlier `pre !important` here beats the later plain `normal` and the two source
+    // spaces between the spans must survive verbatim.
+    const input = '<p style="white-space: pre !important; white-space: normal">'
+      + '<span>Hello</span>  <span>world</span></p>';
+    const result = minifyHtml(input);
+    expect(result.result).toBe(input);
+  });
+
+  it('honors the last !important declaration over an earlier !important one', () => {
+    const input = '<p style="white-space: pre !important; white-space: normal !important">'
+      + '<span>Hello</span>  <span>world</span></p>';
+    const result = minifyHtml(input);
+    expect(result.result).toBe(
+      '<p style="white-space: pre !important; white-space: normal !important">'
+        + '<span>Hello</span> <span>world</span></p>'
+    );
+  });
+
   it('preserves whitespace-only text at a block-element boundary under white-space: pre', () => {
     // Even though <p> is block-level (normally a hard boundary for minification), a preserving
     // white-space value means this tool cannot safely assume the whitespace is invisible.
