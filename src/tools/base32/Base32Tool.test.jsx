@@ -108,6 +108,91 @@ describe('Base32Tool UI & Interactions', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Base32 input contains invalid characters.'
     );
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it('renders role="status" notice and Hex fallback for non-UTF-8 Base32 decode', async () => {
+    render(<Base32Tool />);
+    fireEvent.click(screen.getByRole('button', { name: 'Decode' }));
+
+    const textarea = screen.getByLabelText('Base32');
+    fireEvent.change(textarea, { target: { value: '74======' } });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Text')).toHaveValue('ff');
+    });
+
+    const statusNotice = screen.getByRole('status');
+    expect(statusNotice).toHaveAttribute('aria-live', 'polite');
+    expect(statusNotice).toHaveTextContent(
+      'Decoded data is binary (non-UTF-8). Displaying Hex view.'
+    );
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('keeps Swap enabled for binary decode notice and swaps Hex back to Base32', async () => {
+    render(<Base32Tool />);
+    fireEvent.click(screen.getByRole('button', { name: 'Decode' }));
+
+    const textarea = screen.getByLabelText('Base32');
+    fireEvent.change(textarea, { target: { value: '74======' } });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Text')).toHaveValue('ff');
+    });
+
+    const swapBtn = screen.getByRole('button', { name: '⇅ Swap' });
+    expect(swapBtn).not.toBeDisabled();
+
+    fireEvent.click(swapBtn);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Base32')).toHaveValue('74======');
+    });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it('clears informational notice when input changes, mode switches, or cleared', async () => {
+    render(<Base32Tool />);
+    fireEvent.click(screen.getByRole('button', { name: 'Decode' }));
+
+    const textarea = screen.getByLabelText('Base32');
+    fireEvent.change(textarea, { target: { value: '74======' } });
+
+    await waitFor(() => {
+      expect(screen.getByRole('status')).toHaveTextContent(
+        'Decoded data is binary (non-UTF-8). Displaying Hex view.'
+      );
+    });
+
+    // 1. Changing input to valid UTF-8 Base32
+    fireEvent.change(textarea, { target: { value: 'MZXW6===' } });
+    await waitFor(() => {
+      expect(screen.getByLabelText('Text')).toHaveValue('foo');
+    });
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+
+    // 2. Switching mode after binary notice
+    fireEvent.change(textarea, { target: { value: '74======' } });
+    await waitFor(() => {
+      expect(screen.getByRole('status')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Encode' }));
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+
+    // 3. Clearing tool
+    fireEvent.click(screen.getByRole('button', { name: 'Decode' }));
+    fireEvent.change(screen.getByLabelText('Base32'), {
+      target: { value: '74======' },
+    });
+    await waitFor(() => {
+      expect(screen.getByRole('status')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 
   it('swaps input and output content', async () => {
