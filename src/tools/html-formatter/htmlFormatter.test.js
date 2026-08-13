@@ -443,6 +443,33 @@ describe('minifyHtml - inline display CSS', () => {
     expect(result.result).toBe(input);
   });
 
+  it('resolves display: initial and display: unset to their inline initial value', () => {
+    // Regression test: `display`'s initial value is `inline`, and `unset` falls back to the
+    // initial value for non-inherited properties like `display`. So both keywords promote a
+    // block-named `div` to inline just like an explicit `display: inline` would.
+    for (const display of ['initial', 'unset']) {
+      const input = `<section><div style="display: ${display}">Hello</div> `
+        + `<div style="display: ${display}">world</div></section>`;
+      const result = minifyHtml(input);
+      expect(result.ok).toBe(true);
+      expect(result.result).toBe(input);
+    }
+  });
+
+  it('conservatively keeps a word-boundary space for unresolvable display keywords', () => {
+    // `inherit` depends on the parent's computed display, and `revert`/`revert-layer` depend on
+    // a stylesheet cascade this tool never sees, so none of them can be resolved from a single
+    // element's inline style. Conservatively treat them like an inline element (same bias as
+    // `display: contents`) rather than risk dropping a separator that still renders.
+    for (const display of ['inherit', 'revert', 'revert-layer']) {
+      const input = `<section><div style="display: ${display}">Hello</div> `
+        + `<div style="display: ${display}">world</div></section>`;
+      const result = minifyHtml(input);
+      expect(result.ok).toBe(true);
+      expect(result.result).toBe(input);
+    }
+  });
+
   it('still drops whitespace between block-named elements with no inline display override', () => {
     const input = '<section><div>Hello</div> <div>world</div></section>';
     const result = minifyHtml(input);

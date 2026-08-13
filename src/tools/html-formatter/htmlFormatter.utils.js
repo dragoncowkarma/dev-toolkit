@@ -546,11 +546,35 @@ const INLINE_FLOW_DISPLAY_VALUES = new Set([
 ]);
 
 /**
+ * CSS-wide keywords that resolve `display` to its initial value, `inline`, because `display` is
+ * not an inherited property: `initial` explicitly requests the initial value, and `unset` falls
+ * back to the initial value for any non-inherited property. So `display: initial` and
+ * `display: unset` promote a block-named element to inline exactly like `display: inline` does.
+ */
+const INITIAL_DISPLAY_VALUES = new Set(['initial', 'unset']);
+
+/**
+ * CSS-wide keywords whose resolved `display` genuinely depends on state this tool cannot see —
+ * `inherit` takes the parent element's *computed* display (not just its own inline style, which
+ * may be absent or itself another keyword), and `revert`/`revert-layer` roll back to the
+ * user-agent or a prior cascade layer's stylesheet value, neither of which is visible from a
+ * single element's inline `style` attribute. Resolving these correctly would require a real
+ * cascade, so — matching the same conservative bias as `display: contents` above — they are
+ * treated as promoting the element to inline: the worst case is a separator that survives when a
+ * full layout engine would have collapsed it, never one that gets dropped when it was actually
+ * needed to keep two words apart.
+ */
+const UNKNOWN_COMPUTED_DISPLAY_VALUES = new Set(['inherit', 'revert', 'revert-layer']);
+
+/**
  * Whether an element that is normally block-level by tag name (see {@link BLOCK_ELEMENTS}) has
  * been pulled into the inline text flow by its own inline `display` declaration, so whitespace
  * touching it can still be a rendered word boundary — e.g.
  * `<div style="display: inline">Hello</div> <div style="display: inline">world</div>` renders as
- * `Hello world`, not `Helloworld`, even though `div` is ordinarily a block element.
+ * `Hello world`, not `Helloworld`, even though `div` is ordinarily a block element. This also
+ * covers the CSS-wide keywords that resolve to inline (see {@link INITIAL_DISPLAY_VALUES}) and
+ * the ones whose true computed value can't be determined locally, which are conservatively
+ * treated the same way (see {@link UNKNOWN_COMPUTED_DISPLAY_VALUES}).
  *
  * This only ever promotes a block-named element to inline; it does not demote a naturally inline
  * element back to block on `display: block` and similar. {@link BLOCK_ELEMENTS} is already a
@@ -563,7 +587,12 @@ const INLINE_FLOW_DISPLAY_VALUES = new Set([
  */
 function hasInlineFlowDisplay(node) {
   const value = getInlineStyleProperty(node, 'display');
-  return value !== null && INLINE_FLOW_DISPLAY_VALUES.has(value);
+  if (value === null) return false;
+  return (
+    INLINE_FLOW_DISPLAY_VALUES.has(value)
+    || INITIAL_DISPLAY_VALUES.has(value)
+    || UNKNOWN_COMPUTED_DISPLAY_VALUES.has(value)
+  );
 }
 
 /**
