@@ -88,6 +88,7 @@ describe('Punycode Utilities (RFC 3492)', () => {
       expect(detectScripts('مصر')).toEqual(['Arabic']);
       expect(detectScripts('한국')).toEqual(['Hangul']);
       expect(detectScripts('Москва')).toEqual(['Cyrillic']);
+      expect(detectScripts('ㄅ')).toEqual(['Bopomofo']);
     });
 
     it('detects mixed script (Latin + Cyrillic homograph)', () => {
@@ -185,6 +186,23 @@ describe('Punycode Utilities (RFC 3492)', () => {
     it('does not flag standard Korean domains mixing Hangul and Hanja as homograph risk', () => {
       const res = toASCII('한국.대한민국');
       expect(res.warnings).toHaveLength(0);
+      expect(res.errors).toHaveLength(0);
+    });
+
+    it('does not flag Chinese domains mixing Han and Bopomofo as homograph risk', () => {
+      const res = toASCII('漢ㄅ.example');
+      expect(res.labels[0].scripts).toEqual(['Bopomofo', 'Han']);
+      expect(res.labels[0].hasHomographRisk).toBe(false);
+      expect(res.warnings).toHaveLength(0);
+      expect(res.errors).toHaveLength(0);
+    });
+
+    it('flags Bopomofo and Latin labels as a mixed-script homograph risk', () => {
+      const res = toASCII('ㄅa.example');
+      expect(res.labels[0].scripts).toEqual(['Bopomofo', 'Latin']);
+      expect(res.labels[0].hasHomographRisk).toBe(true);
+      expect(res.warnings).toHaveLength(1);
+      expect(res.warnings[0]).toContain('Bopomofo, Latin');
       expect(res.errors).toHaveLength(0);
     });
 

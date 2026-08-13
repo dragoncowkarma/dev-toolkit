@@ -238,6 +238,7 @@ const SCRIPT_DEFINITIONS = [
   { name: 'Arabic', regex: /^\p{Script=Arabic}$/u },
   { name: 'Devanagari', regex: /^\p{Script=Devanagari}$/u },
   { name: 'Han', regex: /^\p{Script=Han}$/u },
+  { name: 'Bopomofo', regex: /^\p{Script=Bopomofo}$/u },
   { name: 'Hiragana', regex: /^\p{Script=Hiragana}$/u },
   { name: 'Katakana', regex: /^\p{Script=Katakana}$/u },
   { name: 'Hangul', regex: /^\p{Script=Hangul}$/u },
