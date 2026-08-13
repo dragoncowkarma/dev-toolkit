@@ -945,8 +945,54 @@ class PollingLifecycleTests(unittest.TestCase):
         assert maintainer_arg.model == "sonnet 5"
         assert maintainer_arg.reasoning == "높음"
 
-    def test_reviewer_tag_with_approved_phrase_without_maintainer_tag_returns_revise(self):
-        """A Reviewer comment with [Approved] or LGTM but lacking [Maintainer] metadata returns revise action."""
+    def test_pr_without_issue_number_auto_selects_maintainer_on_approval(self):
+        """When an issueless PR is approved without a Maintainer tag, process_prs auto-selects a Maintainer."""
+        issueless_pr = {
+            "number": 12,
+            "title": "[PR] fix - edge case without maintainer tag",
+            "body": (
+                "[Worker: codex | Model: 5.6 terra | Reasoning: 높음]\n"
+                "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]"
+            ),
+            "headRefName": "fix-branch",
+            "headRefOid": "sha555",
+        }
+        approval_comment = {
+            "id": "c-approval-no-maintainer-tag",
+            "body": (
+                "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]\n"
+                "[Approved] Implementation looks good, ready to merge."
+            ),
+        }
+        tracker = FakeTracker()
+        with (
+            patch.object(swarm, "tracker", tracker),
+            patch.object(swarm, "fetch_pr_comments", return_value=[approval_comment]),
+            patch.object(swarm, "fetch_issue") as fetch_issue,
+            patch.object(swarm, "dispatch_maintainer") as dispatch_maintainer,
+        ):
+            swarm.process_prs(open_prs=[issueless_pr])
+
+        fetch_issue.assert_not_called()
+        dispatch_maintainer.assert_called_once()
+        maintainer_arg = dispatch_maintainer.call_args[0][2]
+        self.assertEqual("claude", maintainer_arg.ai)
+        self.assertEqual("sonnet 5", maintainer_arg.model)
+        self.assertEqual("높음", maintainer_arg.reasoning)
+
+    def test_select_maintainer_excludes_reviewer_and_worker(self):
+        reviewer = swarm.RoleAssignment("antigravity", "gemini 3.6 flash", "high")
+        worker = swarm.RoleAssignment("codex", "5.6 terra", "높음")
+        maintainer = swarm.select_maintainer_for_issueless_pr(reviewer, worker)
+        self.assertEqual("claude", maintainer.ai)
+
+    def test_select_maintainer_excludes_only_reviewer_when_no_worker(self):
+        reviewer = swarm.RoleAssignment("antigravity", "gemini 3.6 flash", "high")
+        maintainer = swarm.select_maintainer_for_issueless_pr(reviewer, None)
+        self.assertEqual("codex", maintainer.ai)
+
+    def test_reviewer_approval_phrase_without_maintainer_tag_returns_maintain(self):
+        """A Reviewer comment with [Approved] or LGTM without [Maintainer] metadata returns maintain action."""
         comments = [{
             "id": "c-approved-no-maintainer",
             "body": (
@@ -955,7 +1001,7 @@ class PollingLifecycleTests(unittest.TestCase):
             ),
         }]
         action, comment, _ = swarm.determine_pr_action(comments)
-        self.assertEqual("revise", action)
+        self.assertEqual("maintain", action)
         self.assertEqual("c-approved-no-maintainer", comment["id"])
 
     def test_pr_without_issue_number_dispatches_worker_revision_using_pr_body_worker(self):

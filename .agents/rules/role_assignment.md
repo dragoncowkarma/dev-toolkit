@@ -32,8 +32,10 @@ The orchestrator assigns roles using this priority:
 | Tagged Maintainer block | Reviewer | PR number + block comment ID |
 
 Informational comments do not advance the lifecycle, and an approval is
-recognized only when one comment carries BOTH the Reviewer and the Maintainer
-tag. A Maintainer block requires both its `[Maintainer: ...]` metadata and an
+recognized when a comment carries a Reviewer tag along with either a Maintainer tag
+or an explicit approval signal (e.g. `[Approved]` or `LGTM`). For PRs without an explicit Maintainer tag
+(such as issue-less PRs approved by a Reviewer), the Maintainer is automatically selected by the orchestrator using the rotation table.
+A Maintainer block requires both its `[Maintainer: ...]` metadata and an
 exact `[Maintainer Blocked]` line; it returns the PR to the assigned Reviewer
 rather than sending the Worker directly. The Worker and Reviewer can alternate
 repeatedly, but only after the other role emits a new signal. Polling and
@@ -55,7 +57,7 @@ PID is confirmed gone.
 
 ## Default Reviewer/Maintainer Selection
 
-If the Worker does not specify a Reviewer in the PR, the orchestrator auto-assigns:
+If the Worker does not specify a Reviewer in the PR, or if an issue-less PR is approved without an explicit Maintainer tag, the orchestrator auto-assigns:
 
 | Worker | Default Reviewer | Default Maintainer |
 |--------|-----------------|--------------------|

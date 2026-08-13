@@ -117,6 +117,15 @@ MAINTAINER_PATTERN = re.compile(
     re.IGNORECASE,
 )
 MAINTAINER_BLOCKED_PATTERN = re.compile(r"\[Maintainer Blocked\]", re.IGNORECASE)
+REVIEWER_APPROVED_PATTERN = re.compile(
+    r"\[Approved\]|\[Reviewer Approved\]|\bApproved\b|\bLGTM\b",
+    re.IGNORECASE,
+)
+REVIEWER_REJECTED_PATTERN = re.compile(
+    r"\bnot\s+approved\b|\bunapproved\b|\bdisapproved\b|\bchanges requested\b",
+    re.IGNORECASE,
+)
+
 
 
 # Default reviewer/maintainer rotation
@@ -886,14 +895,47 @@ def validate_distinct_roles(
     return True, ""
 
 
+def select_maintainer_for_issueless_pr(
+    reviewer: RoleAssignment,
+    worker: Optional[RoleAssignment] = None,
+) -> RoleAssignment:
+    """Select a Maintainer for a PR that has no linked Issue.
+
+    When a Worker is known (from the Issue or PR body), the remaining AI in
+    DEFAULT_ROTATION that is neither Worker nor Reviewer is used. When no
+    Worker is known, the Reviewer's maintainer entry from DEFAULT_ROTATION is used.
+    Returns a RoleAssignment with valid default model and reasoning for the selected AI.
+    """
+    excluded = {reviewer.ai}
+    if worker:
+        excluded.add(worker.ai)
+
+    if worker:
+        candidates = [ai for ai in ["codex", "antigravity", "claude"] if ai not in excluded]
+        maintainer_ai = candidates[0] if candidates else DEFAULT_ROTATION.get(reviewer.ai, {}).get("maintainer", "codex")
+    else:
+        maintainer_ai = DEFAULT_ROTATION.get(reviewer.ai, {}).get("maintainer", "codex")
+
+    cfg = DEFAULT_AI_CONFIG.get(
+        maintainer_ai,
+        {"model": "gemini 3.6 flash", "reasoning": "high"},
+    )
+    return RoleAssignment(
+        ai=maintainer_ai,
+        model=cfg["model"],
+        reasoning=cfg["reasoning"],
+    )
+
+
 def determine_pr_action(comments: list[dict]) -> tuple[str, Optional[dict], int]:
     """Return the next action from the newest recognized lifecycle signal.
 
     Recognized signals are Reviewer feedback, Worker revision completion,
-    Reviewer approval (containing a Maintainer tag), and a Maintainer block.
-    Informational comments do not change state.
+    Reviewer approval (containing a Maintainer tag or explicit approval signal),
+    and a Maintainer block. Informational comments do not change state.
 
-    An approval is recognized only when one comment carries BOTH the Reviewer and the Maintainer tag.
+    An approval is recognized when a comment carries a Reviewer tag along with
+    either a Maintainer tag or an explicit approval indicator (e.g. [Approved] or LGTM).
     A lone Maintainer tag without a Reviewer tag is informational.
     """
     latest_action = "review"
@@ -909,7 +951,7 @@ def determine_pr_action(comments: list[dict]) -> tuple[str, Optional[dict], int]
             latest_action = "review_after_maintainer_block"
             latest_comment = comment
             latest_index = index
-        elif reviewer and maintainer:
+        elif reviewer and (maintainer or (REVIEWER_APPROVED_PATTERN.search(body) and not REVIEWER_REJECTED_PATTERN.search(body))):
             latest_action = "maintain"
             latest_comment = comment
             latest_index = index
@@ -923,6 +965,7 @@ def determine_pr_action(comments: list[dict]) -> tuple[str, Optional[dict], int]
             latest_index = index
 
     return latest_action, latest_comment, latest_index
+
 
 
 # ---------------------------------------------------------------------------
@@ -1983,6 +2026,8 @@ def process_prs(
                     reviewer.ai,
                 )
                 continue
+            if not maintainer:
+                maintainer = select_maintainer_for_issueless_pr(reviewer, worker)
             if not maintainer:
                 log_blocker(
                     f"approval-maintainer:{pr_num}:{signal_id}",

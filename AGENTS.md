@@ -131,7 +131,7 @@ git branch -d <branch_name>
 10. [Worker AI] Fixes, commits, pushes, and posts
     `[Worker] Revision complete.`
 11. Steps 7–10 repeat only when a new signal exists
-12. [If approved] Reviewer adds a distinct [Maintainer: ...] tag
+12. [If approved] Reviewer approves (adding a distinct [Maintainer: ...] tag or explicit approval signal; for issue-less PRs lacking a Maintainer tag, the orchestrator auto-selects one)
 13. [Orchestrator] Launches Maintainer AI once for that approval comment ID
 14. [If blocked] Maintainer posts `[Maintainer Blocked]` with its metadata and
     evidence; Orchestrator launches the assigned Reviewer once for that block
