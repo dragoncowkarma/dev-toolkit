@@ -394,6 +394,67 @@ describe('minifyHtml - inline white-space CSS', () => {
   });
 });
 
+describe('minifyHtml - inline display CSS', () => {
+  it('keeps a word-boundary space between two block-named elements set to display: inline', () => {
+    // Regression test: `div` is normally block-level, so the whitespace between two sibling
+    // divs is ordinarily a safe-to-drop block boundary. Here an inline `display: inline` pulls
+    // both divs into the surrounding text flow, so the source renders (and reads as text) as
+    // "Hello world"; dropping the space would collapse it to "Helloworld".
+    const input = '<section><div style="display: inline">Hello</div> '
+      + '<div style="display: inline">world</div></section>';
+    const result = minifyHtml(input);
+    expect(result.ok).toBe(true);
+    expect(result.result).toBe(input);
+  });
+
+  it('keeps a word-boundary space when only one side is promoted to display: inline', () => {
+    const input = '<section><div style="display: inline">Hello</div> <span>world</span></section>';
+    const result = minifyHtml(input);
+    expect(result.result).toBe(input);
+  });
+
+  it('recognizes inline-block, inline-flex, and inline-grid as inline-flow displays', () => {
+    for (const display of ['inline-block', 'inline-flex', 'inline-grid']) {
+      const input = `<section><div style="display: ${display}">Hello</div> `
+        + `<div style="display: ${display}">world</div></section>`;
+      expect(minifyHtml(input).result).toBe(input);
+    }
+  });
+
+  it('conservatively keeps a word-boundary space around display: contents', () => {
+    // `display: contents` removes the element's own box, so its children (not the element)
+    // determine whether the space is a real word boundary. This tool cannot resolve that without
+    // a layout engine, so it conservatively treats `contents` like a genuinely inline element —
+    // the same bias `BLOCK_ELEMENTS` already applies to unrecognized/custom tags — and keeps the
+    // separator rather than risk dropping one that still renders.
+    const input = '<section><div style="display: contents">Hello</div> '
+      + '<div style="display: contents">world</div></section>';
+    const result = minifyHtml(input);
+    expect(result.result).toBe(input);
+  });
+
+  it('still drops whitespace between block-named elements with no inline display override', () => {
+    const input = '<section><div>Hello</div> <div>world</div></section>';
+    const result = minifyHtml(input);
+    expect(result.result).toBe('<section><div>Hello</div><div>world</div></section>');
+  });
+
+  it('does not promote display: block or other non-inline-flow values', () => {
+    const input = '<section><div style="display: flex">Hello</div> '
+      + '<div style="display: flex">world</div></section>';
+    const result = minifyHtml(input);
+    expect(result.result).toBe('<section><div style="display: flex">Hello</div>'
+      + '<div style="display: flex">world</div></section>');
+  });
+
+  it('honors !important and last-declaration-wins for display the same as white-space', () => {
+    const input = '<section><div style="display: inline !important; display: flex">Hello</div> '
+      + '<div style="display: inline !important; display: flex">world</div></section>';
+    const result = minifyHtml(input);
+    expect(result.result).toBe(input);
+  });
+});
+
 describe('format/minify round trips', () => {
   const source = [
     '<!DOCTYPE html>',

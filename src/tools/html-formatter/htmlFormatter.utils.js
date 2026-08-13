@@ -56,12 +56,15 @@ const BLOCK_ELEMENTS = new Set([
  * Whether a node carries visible inline content, meaning whitespace touching it can affect
  * the rendered text. Non-whitespace text and non-block elements qualify; block elements, comments,
  * and doctypes do not (a comment or doctype never renders, and a block element establishes its
- * own box, so whitespace at its edge is never a word boundary). See {@link BLOCK_ELEMENTS} for
- * why elements are classified by denylist rather than allowlist.
+ * own box, so whitespace at its edge is never a word boundary) — unless the element's own inline
+ * `style` attribute pulls it into the inline flow anyway (see {@link hasInlineFlowDisplay}). See
+ * {@link BLOCK_ELEMENTS} for why elements are classified by denylist rather than allowlist.
  */
 function isInlineContentNode(node) {
   if (node.type === 'text') return !WHITESPACE_ONLY.test(node.value);
-  if (node.type === 'element') return !BLOCK_ELEMENTS.has(node.tagName.toLowerCase());
+  if (node.type === 'element') {
+    return !BLOCK_ELEMENTS.has(node.tagName.toLowerCase()) || hasInlineFlowDisplay(node);
+  }
   return false;
 }
 
@@ -488,7 +491,7 @@ const PRESERVING_WHITE_SPACE_VALUES = new Set(['pre', 'pre-wrap', 'break-spaces'
 const INHERIT_WHITE_SPACE_VALUES = new Set(['inherit', 'unset']);
 
 /**
- * Reads the `white-space` declaration out of an element's inline `style` attribute, if any.
+ * Reads a single property's declaration out of an element's inline `style` attribute, if any.
  * Declarations are resolved by CSS cascade rules: `!important` declarations win over normal
  * ones regardless of position, and among declarations of equal importance the last one wins
  * (source order). Only inline styles are considered: a standalone formatter cannot resolve
@@ -496,15 +499,17 @@ const INHERIT_WHITE_SPACE_VALUES = new Set(['inherit', 'unset']);
  * oversight.
  *
  * @param {object} node An element node.
+ * @param {string} property Lower-case CSS property name, e.g. `'white-space'` or `'display'`.
  * @returns {string|null} The lower-cased property value, or `null` if not declared inline.
  */
-function getInlineWhiteSpace(node) {
+function getInlineStyleProperty(node, property) {
   const styleAttr = node.attrs.find(
     (attr) => attr.hasValue && attr.value !== null && attr.name.toLowerCase() === 'style'
   );
   if (!styleAttr) return null;
 
-  const matches = [...styleAttr.value.matchAll(/white-space\s*:\s*([^;]+)/gi)];
+  const pattern = new RegExp(`${property}\\s*:\\s*([^;]+)`, 'gi');
+  const matches = [...styleAttr.value.matchAll(pattern)];
   if (matches.length === 0) return null;
 
   const isImportant = (raw) => /!important/i.test(raw);
@@ -513,6 +518,51 @@ function getInlineWhiteSpace(node) {
   const winner = candidates[candidates.length - 1];
 
   return winner[1].replace(/!important/gi, '').trim().toLowerCase();
+}
+
+/** Reads the `white-space` declaration out of an element's inline `style` attribute, if any. */
+function getInlineWhiteSpace(node) {
+  return getInlineStyleProperty(node, 'white-space');
+}
+
+/**
+ * Inline `display` values that pull an element into the surrounding inline text flow even though
+ * its tag name is normally block-level (see {@link BLOCK_ELEMENTS}). `inline`, `inline-block`,
+ * `inline-flex`, and `inline-grid` all generate an inline-level box that participates in inline
+ * layout the same way a `span` does, so whitespace touching the element is a real word boundary.
+ *
+ * `contents` is different: the element itself generates no box at all, so its *children* replace
+ * it directly in the parent's inline flow, and whether whitespace next to it is a word boundary
+ * really depends on what those children render as. Resolving that would require recursing into
+ * descendants (and their own possible inline styles), which this tool does not attempt. It
+ * conservatively treats `display: contents` the same as a genuinely inline element instead,
+ * matching the denylist's existing bias (see {@link BLOCK_ELEMENTS}): the worst case is a
+ * separator that survives when a full layout engine would have collapsed it, never one that gets
+ * dropped when it was actually needed to keep two words apart.
+ */
+const INLINE_FLOW_DISPLAY_VALUES = new Set([
+  'inline', 'inline-block', 'inline-flex', 'inline-grid', 'contents',
+]);
+
+/**
+ * Whether an element that is normally block-level by tag name (see {@link BLOCK_ELEMENTS}) has
+ * been pulled into the inline text flow by its own inline `display` declaration, so whitespace
+ * touching it can still be a rendered word boundary — e.g.
+ * `<div style="display: inline">Hello</div> <div style="display: inline">world</div>` renders as
+ * `Hello world`, not `Helloworld`, even though `div` is ordinarily a block element.
+ *
+ * This only ever promotes a block-named element to inline; it does not demote a naturally inline
+ * element back to block on `display: block` and similar. {@link BLOCK_ELEMENTS} is already a
+ * conservative denylist that treats every non-block tag as inline by default, so narrowing that
+ * further based on inline styles is out of scope here and would only risk dropping a separator
+ * that still renders.
+ *
+ * @param {object} node An element node.
+ * @returns {boolean} Whether an inline `display` declaration promotes this element to inline.
+ */
+function hasInlineFlowDisplay(node) {
+  const value = getInlineStyleProperty(node, 'display');
+  return value !== null && INLINE_FLOW_DISPLAY_VALUES.has(value);
 }
 
 /**
@@ -734,11 +784,14 @@ export function formatHtml(source, indent = HTML_INDENT_OPTIONS.TWO_SPACES) {
  * Whitespace-only text nodes between inline content are collapsed to a single space rather than
  * dropped, and that collapsing itself backs off whenever an ancestor element's inline `style`
  * attribute declares a whitespace-preserving `white-space` value (`pre`, `pre-wrap`,
- * `break-spaces`, or `pre-line`) — see {@link resolvesToPreservingWhiteSpace}. This tool parses
- * markup only: it
- * cannot resolve `<style>` blocks, external stylesheets, or the default user-agent stylesheet, so
- * whitespace significance driven by CSS it cannot see (including a `pre`-like `display` on a
- * `<style>`-only rule) is outside what it can preserve.
+ * `break-spaces`, or `pre-line`) — see {@link resolvesToPreservingWhiteSpace}. Whether a run of
+ * whitespace even counts as a word boundary also accounts for an inline `style="display: ..."`
+ * declaration that pulls a normally block-level element (e.g. `div`) into the inline text flow
+ * — see {@link hasInlineFlowDisplay}. This tool parses markup only: it cannot resolve `<style>`
+ * blocks, external stylesheets, or the default user-agent stylesheet, so whitespace significance
+ * driven by CSS it cannot see (including a `pre`-like `display` on a `<style>`-only rule, or a
+ * `<style>`-only rule that changes an element's inline/block classification) is outside what it
+ * can preserve.
  *
  * @param {string} source The HTML text to minify.
  * @returns {{ok: true, result: string}|{ok: false, error: {message: string, line: number,
