@@ -20,8 +20,8 @@ This project uses a **vendor-agnostic autonomous multi-agent swarm** where multi
 ## 2. Role Definitions
 
 ### 2.1 Worker
-- **Responsibility**: Implements the feature/fix described in the Issue.
-- **Metadata location**: Issue body.
+- **Responsibility**: Implements the feature/fix described in the Issue (or PR for issue-less PRs).
+- **Metadata location**: Issue body (or PR body for issue-less PRs).
 - **Format**: `[Worker: <ai_name> | Model: <model> | Reasoning: <level>]`
 - **Process**: Reads the Issue → creates a branch → implements in a worktree → opens a PR.
 
@@ -34,7 +34,7 @@ This project uses a **vendor-agnostic autonomous multi-agent swarm** where multi
 ### 2.3 Maintainer
 - **Responsibility**: Final approval, merge, cleanup, post-merge project analysis,
   and creation of exactly one non-duplicate follow-up Issue.
-- **Metadata location**: PR review completion comment.
+- **Metadata location**: PR review completion comment (or auto-selected by orchestrator for issue-less PRs lacking a Maintainer tag).
 - **Format**: `[Maintainer: <ai_name> | Model: <model> | Reasoning: <level>]`
 - **Process**: Verifies CI passes → confirms review → merges PR → closes the
   associated Issue → analyzes the updated project → creates the next Issue.
@@ -44,7 +44,7 @@ This project uses a **vendor-agnostic autonomous multi-agent swarm** where multi
 
 ### 2.5 Dispatch Idempotency
 - A lifecycle event MUST dispatch its assigned AI at most once successfully.
-- Event identity is based on the Issue, PR head SHA, or triggering comment ID.
+- Event identity is based on the Issue, PR head SHA, or triggering comment ID (for Reviewer approvals with explicit or auto-selected Maintainer, key is PR number + approval comment ID).
 - The same Worker may run again only after new Reviewer feedback.
 - The same Reviewer may run again only after a new Worker commit and
   `[Worker] Revision complete.` signal, or after a tagged Maintainer block.
@@ -59,54 +59,26 @@ This project uses a **vendor-agnostic autonomous multi-agent swarm** where multi
 
 The orchestrator uses these values when dynamically assigning roles.
 
-### 3.1 Antigravity
-| Model | Reasoning Levels |
-|-------|------------------|
-| gemini 3.6 flash | high, medium, low |
-| gemini 3.5 flash | high, medium, low |
-| gemini 3.1 pro | high, low |
-| claude sonnet 4.6 | thinking |
-| claude opus 4.6 | thinking |
-| gpt-oss 120b | medium |
-
-### 3.2 Claude
-| Model | Reasoning Levels |
-|-------|------------------|
-| opus 5 | 낮음, 중간, 높음, 엑스트라, 최대, ultracode |
-| sonnet 5 | 낮음, 중간, 높음, 엑스트라, 최대, ultracode |
-| haiku 4.5 | 낮음, 중간, 높음, 엑스트라, 최대, ultracode |
-
-### 3.3 Codex
-| Model | Reasoning Levels |
-|-------|------------------|
-| 5.6 (sol, terra, luna) | light, 중간, 높음, 매우 높음, 울트라 |
-| 5.5 | light, 중간, 높음, 매우 높음, 울트라 |
-| 5.4 | light, 중간, 높음, 매우 높음, 울트라 |
-| 5.4 mini | light, 중간, 높음, 매우 높음, 울트라 |
+| AI Agent | Command | Preset Models | Reasoning Levels | Default Preset |
+|----------|---------|---------------|------------------|----------------|
+| **Codex** | `codex` | `5.6 terra`, `5.6 sol`, `5.6 spark` | `낮음`, `중간`, `높음` | `5.6 terra` |
+| **Antigravity** | `agy` | `gemini 3.6 flash`, `gemini 3.1 pro` | `low`, `medium`, `high` | `gemini 3.6 flash` |
+| **Claude** | `claude` | `sonnet 5`, `haiku 3.5` | `낮음`, `중간`, `높음` | `sonnet 5` |
 
 ---
 
-## 4. Git Conventions
+## 4. Operational Rules
 
-### 4.1 Worktree Isolation (MANDATORY)
-```bash
-# Create isolated worktree for a task
-git worktree add .worktrees/<issue_number> <branch_name>
-
-# Work is done inside .worktrees/<issue_number>/
-# After merge, clean up:
-git worktree remove .worktrees/<issue_number>
-git branch -d <branch_name>
-```
-
-> ⚠️ **NEVER** run `git checkout` on the main working directory. Always use worktrees.
+### 4.1 Worktree Discipline
+- EVERY task runs in its own worktree at `.worktrees/<issue#>` (or `.worktrees/<pr#>` for issue-less PRs).
+- NEVER switch branches in the main workspace directory.
+- Worktrees are created by orchestrator, used by Worker/Reviewer/Maintainer, and removed after merge.
 
 ### 4.2 Naming Conventions
-
-| Entity | Pattern | Example |
-|--------|---------|----------|
-| Issue title | `[Task] <Tool Name> - <Summary>` | `[Task] Base64 - 인코더 추가` |
-| Branch name | `worker/<issue#>-<ai_name>-<short_desc>` | `worker/12-codex-base64-enc` |
+| Element | Pattern | Example |
+|---------|---------|---------|
+| Worktree path | `.worktrees/<issue#>` (or `.worktrees/<pr#>`) | `.worktrees/12` |
+| Branch | `worker/<issue#>-<ai>-<short-desc>` | `worker/12-codex-base64-encoder` |
 | PR title | `[PR] <issue#> - <Summary>` | `[PR] 12 - Base64 인코더 추가` |
 
 ### 4.3 Commit Messages

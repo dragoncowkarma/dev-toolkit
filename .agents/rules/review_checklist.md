@@ -27,7 +27,7 @@ Reviewers MUST check every item before approving a PR.
 - [ ] Worker/Reviewer/Maintainer are different AIs
 - [ ] Decisions and reproducible verification evidence are documented
 - [ ] Final review summary contains exactly one Reviewer metadata tag
-- [ ] Approval names a Maintainer different from Worker and Reviewer
+- [ ] Approval names a Maintainer different from Worker and Reviewer (or relies on automatic Maintainer selection for issue-less PRs)
 
 ## Testing
 - [ ] New utility functions have unit tests

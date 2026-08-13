@@ -51,9 +51,9 @@ PID is confirmed gone.
 
 | Role | Where | Format |
 |------|-------|--------|
-| Worker | Issue body | `[Worker: <ai> \| Model: <model> \| Reasoning: <level>]` |
+| Worker | Issue body (or PR body for issue-less PRs) | `[Worker: <ai> \| Model: <model> \| Reasoning: <level>]` |
 | Reviewer | PR body | `[Reviewer: <ai> \| Model: <model> \| Reasoning: <level>]` |
-| Maintainer | PR review comment | `[Maintainer: <ai> \| Model: <model> \| Reasoning: <level>]` |
+| Maintainer | PR review comment (or auto-assigned for issue-less PRs) | `[Maintainer: <ai> \| Model: <model> \| Reasoning: <level>]` |
 
 ## Default Reviewer/Maintainer Selection
 
