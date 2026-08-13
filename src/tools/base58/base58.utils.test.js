@@ -125,11 +125,17 @@ describe('base58.utils', () => {
       );
     });
 
-    it('reports checksumValid: false for payloads under 4 bytes', async () => {
+    it('reports checksumValid: false for payloads under 4 bytes or whitespace-only', async () => {
       const short = '1';
       const details = await decodeBase58CheckDetails(short);
       expect(details.checksumValid).toBe(false);
       expect(details.checksumError).toBe(
+        'Input is too short for Base58Check (minimum 4-byte checksum required).'
+      );
+
+      const whitespace = await decodeBase58CheckDetails('   ');
+      expect(whitespace.checksumValid).toBe(false);
+      expect(whitespace.checksumError).toBe(
         'Input is too short for Base58Check (minimum 4-byte checksum required).'
       );
     });
@@ -206,6 +212,14 @@ describe('base58.utils', () => {
       const details = await decodeBase58CheckDetails(result);
       expect(details.checksumValid).toBe(true);
       expect(details.text).toBe('Hello World');
+    });
+
+    it('rejects files larger than MAX_FILE_SIZE (16 KB)', async () => {
+      const largeContent = new Uint8Array(20 * 1024);
+      const blob = new Blob([largeContent], { type: 'application/octet-stream' });
+      await expect(fileToBase58(blob)).rejects.toThrow(
+        'File is too large for Base58 (max 16 KB)'
+      );
     });
 
     it('formats file sizes accurately', () => {

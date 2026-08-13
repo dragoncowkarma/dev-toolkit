@@ -6,6 +6,7 @@ import {
   encodeToBase58Check,
   fileToBase58,
   formatFileSize,
+  MAX_FILE_SIZE,
 } from './base58.utils.js';
 import './base58.css';
 
@@ -38,6 +39,8 @@ export default function Base58Tool() {
   const [outputType, setOutputType] = useState(FORMATS.TEXT);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [noticeType, setNoticeType] = useState('info');
+  const [outputIsHex, setOutputIsHex] = useState(false);
   const [copyError, setCopyError] = useState('');
   const [file, setFile] = useState(null);
   const [copied, setCopied] = useState(false);
@@ -50,6 +53,8 @@ export default function Base58Tool() {
       setOutput('');
       setError('');
       setNotice('');
+      setNoticeType('info');
+      setOutputIsHex(false);
       return;
     }
 
@@ -62,15 +67,19 @@ export default function Base58Tool() {
             const result = await encodeToBase58Check(input, { inputType });
             if (!cancelled) {
               setOutput(result);
+              setOutputIsHex(false);
               setError('');
               setNotice('');
+              setNoticeType('info');
             }
           } else {
             const result = encodeToBase58(input, { inputType });
             if (!cancelled) {
               setOutput(result);
+              setOutputIsHex(false);
               setError('');
               setNotice('');
+              setNoticeType('info');
             }
           }
         } else {
@@ -79,33 +88,36 @@ export default function Base58Tool() {
             if (cancelled) return;
 
             if (!details.checksumValid) {
-              if (outputType === FORMATS.HEX) {
-                setOutput(details.hex);
-              } else if (!details.isUtf8) {
-                setOutput(details.hex);
-              } else {
-                setOutput(details.text ?? details.hex);
-              }
+              const isHex = outputType === FORMATS.HEX || !details.isUtf8;
+              setOutput(isHex ? details.hex : (details.text ?? details.hex));
+              setOutputIsHex(isHex);
               setError('');
               setNotice(
                 `⚠ Checksum mismatch: ${
                   details.checksumError ?? 'Base58Check validation failed.'
                 }`
               );
+              setNoticeType('warning');
             } else if (outputType === FORMATS.HEX) {
               setOutput(details.hex);
+              setOutputIsHex(true);
               setError('');
               setNotice('✓ Checksum valid.');
+              setNoticeType('info');
             } else if (!details.isUtf8) {
               setOutput(details.hex);
+              setOutputIsHex(true);
               setError('');
               setNotice(
                 '✓ Checksum valid. Decoded data is binary (non-UTF-8). Displaying Hex view.'
               );
+              setNoticeType('info');
             } else {
               setOutput(details.text ?? '');
+              setOutputIsHex(false);
               setError('');
               setNotice('✓ Checksum valid.');
+              setNoticeType('info');
             }
           } else {
             const details = decodeBase58Details(input);
@@ -113,24 +125,32 @@ export default function Base58Tool() {
 
             if (outputType === FORMATS.HEX) {
               setOutput(details.hex);
+              setOutputIsHex(true);
               setError('');
               setNotice('');
+              setNoticeType('info');
             } else if (!details.isUtf8) {
               setOutput(details.hex);
+              setOutputIsHex(true);
               setError('');
               setNotice('Decoded data is binary (non-UTF-8). Displaying Hex view.');
+              setNoticeType('info');
             } else {
               setOutput(details.text ?? '');
+              setOutputIsHex(false);
               setError('');
               setNotice('');
+              setNoticeType('info');
             }
           }
         }
       } catch (err) {
         if (!cancelled) {
           setOutput('');
+          setOutputIsHex(false);
           setError(err.message);
           setNotice('');
+          setNoticeType('info');
         }
       }
     };
@@ -150,15 +170,19 @@ export default function Base58Tool() {
       .then((result) => {
         if (!cancelled) {
           setOutput(result);
+          setOutputIsHex(false);
           setError('');
           setNotice('');
+          setNoticeType('info');
         }
       })
       .catch((err) => {
         if (!cancelled) {
           setOutput('');
+          setOutputIsHex(false);
           setError(err.message);
           setNotice('');
+          setNoticeType('info');
         }
       });
 
@@ -183,6 +207,7 @@ export default function Base58Tool() {
     }
     setError('');
     setNotice('');
+    setNoticeType('info');
   }
 
   function handleAlgorithmChange(nextAlgo) {
@@ -190,11 +215,13 @@ export default function Base58Tool() {
     setAlgorithm(nextAlgo);
     setError('');
     setNotice('');
+    setNoticeType('info');
   }
 
   function handleInputChange(event) {
     setFile(null);
     setNotice('');
+    setNoticeType('info');
     setInput(event.target.value);
   }
 
@@ -208,14 +235,11 @@ export default function Base58Tool() {
     if (nextMode === MODES.DECODE) {
       setOutputType(FORMATS.TEXT);
     } else {
-      setInputType(
-        outputType === FORMATS.HEX || Boolean(notice)
-          ? FORMATS.HEX
-          : FORMATS.TEXT
-      );
+      setInputType(outputIsHex ? FORMATS.HEX : FORMATS.TEXT);
     }
     setError('');
     setNotice('');
+    setNoticeType('info');
   }
 
   function handleClear() {
@@ -223,6 +247,8 @@ export default function Base58Tool() {
     setOutput('');
     setError('');
     setNotice('');
+    setNoticeType('info');
+    setOutputIsHex(false);
     setCopyError('');
     setFile(null);
     if (fileInputRef.current) {
@@ -244,6 +270,21 @@ export default function Base58Tool() {
   function handleFileChange(event) {
     const selected = event.target.files?.[0];
     if (!selected) return;
+    if (selected.size > MAX_FILE_SIZE) {
+      setFile(null);
+      setInput('');
+      setOutput('');
+      setError(
+        'File is too large for Base58 (max 16 KB). ' +
+          'Base58 is intended for short payloads such as addresses and keys.'
+      );
+      setNotice('');
+      setNoticeType('info');
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      return;
+    }
     setMode(MODES.ENCODE);
     setInputType(FORMATS.TEXT);
     setFile(selected);
@@ -251,6 +292,7 @@ export default function Base58Tool() {
     setOutput('');
     setError('');
     setNotice('');
+    setNoticeType('info');
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -466,7 +508,11 @@ export default function Base58Tool() {
           ⚠ {alertMessage}
         </div>
       ) : notice ? (
-        <div className="base58-notice" role="status" aria-live="polite">
+        <div
+          className={noticeType === 'warning' ? 'base58-warning' : 'base58-notice'}
+          role="status"
+          aria-live="polite"
+        >
           {notice}
         </div>
       ) : null}

@@ -98,9 +98,11 @@ describe('Base58Tool UI & Interactions', () => {
     fireEvent.change(textarea, { target: { value: corruptedAddress } });
 
     await waitFor(() => {
-      expect(screen.getByRole('status')).toHaveTextContent(
+      const statusEl = screen.getByRole('status');
+      expect(statusEl).toHaveTextContent(
         '⚠ Checksum mismatch: Base58Check checksum validation failed (checksum mismatch).'
       );
+      expect(statusEl).toHaveClass('base58-warning');
     });
 
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
@@ -148,7 +150,7 @@ describe('Base58Tool UI & Interactions', () => {
     );
   });
 
-  it('swaps input and output content', async () => {
+  it('swaps input and output content in plain mode', async () => {
     render(<Base58Tool />);
     fireEvent.change(screen.getByLabelText('Text'), {
       target: { value: 'Hello World' },
@@ -163,6 +165,36 @@ describe('Base58Tool UI & Interactions', () => {
       expect(screen.getByLabelText('Text')).toHaveValue('Hello World');
     });
   });
+
+  it(
+    'swaps Base58Check decoded valid text back to Base58Check encode ' +
+      'in Text input mode',
+    async () => {
+      render(<Base58Tool />);
+      fireEvent.click(screen.getByRole('button', { name: 'Decode' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Base58Check' }));
+
+      const base58CheckText = '32UWxgjUJDXeRwy6c6Fxf';
+      const inputArea = screen.getByLabelText('Base58Check');
+      fireEvent.change(inputArea, { target: { value: base58CheckText } });
+
+      await waitFor(() => {
+        expect(screen.getByLabelText('Text')).toHaveValue('Hello World');
+        expect(screen.getByRole('status')).toHaveTextContent('✓ Checksum valid.');
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: '⇅ Swap' }));
+
+      expect(screen.getByRole('button', { name: 'Text' })).toHaveAttribute(
+        'aria-pressed',
+        'true'
+      );
+      expect(screen.getByLabelText('Text')).toHaveValue('Hello World');
+
+      await waitFor(() => {
+        expect(screen.getByLabelText('Base58Check')).toHaveValue(base58CheckText);
+      });
+    });
 
   it('clears all input, output, notices, and errors', async () => {
     render(<Base58Tool />);
@@ -234,6 +266,20 @@ describe('Base58Tool File Upload', () => {
       expect(screen.getByLabelText('Text')).toHaveValue('📁 hello.txt (11 B)');
       expect(screen.getByLabelText('Base58')).toHaveValue('JxF12TrwUP45BMd');
     });
+  });
+
+  it('rejects file upload exceeding max size (16 KB) with role alert', async () => {
+    render(<Base58Tool />);
+    const largeContent = new Uint8Array(20 * 1024);
+    const file = new File([largeContent], 'large.bin', {
+      type: 'application/octet-stream',
+    });
+    const fileInput = screen.getByLabelText('Convert a file to Base58');
+    await act(async () => selectFile(fileInput, file));
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'File is too large for Base58 (max 16 KB)'
+    );
   });
 
   it('ignores file read resolving after Clear', async () => {

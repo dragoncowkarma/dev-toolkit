@@ -255,6 +255,8 @@ export async function encodeToBase58Check(input, { inputType = 'text' } = {}) {
   return encodeBytesToBase58Check(bytes);
 }
 
+export const MAX_FILE_SIZE = 16 * 1024; // 16 KB
+
 /**
  * Decodes a Base58Check string into details including checksum validation.
  * @param {string} base58
@@ -270,16 +272,6 @@ export async function encodeToBase58Check(input, { inputType = 'text' } = {}) {
  */
 export async function decodeBase58CheckDetails(base58) {
   const rawBytes = decodeBase58ToBytes(base58);
-  if (rawBytes.length === 0) {
-    return {
-      bytes: new Uint8Array(0),
-      rawBytes,
-      text: '',
-      hex: '',
-      isUtf8: true,
-      checksumValid: true,
-    };
-  }
 
   if (rawBytes.length < 4) {
     const hex = bytesToHex(rawBytes);
@@ -294,7 +286,7 @@ export async function decodeBase58CheckDetails(base58) {
     return {
       bytes: rawBytes,
       rawBytes,
-      text,
+      text: isUtf8 ? text : null,
       hex,
       isUtf8,
       checksumValid: false,
@@ -346,6 +338,14 @@ export async function decodeBase58CheckDetails(base58) {
  * @returns {Promise<string>}
  */
 export function fileToBase58(file, { useChecksum = false } = {}) {
+  if (file.size > MAX_FILE_SIZE) {
+    return Promise.reject(
+      new Error(
+        'File is too large for Base58 (max 16 KB). ' +
+          'Base58 is intended for short payloads such as addresses and keys.'
+      )
+    );
+  }
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = async () => {
