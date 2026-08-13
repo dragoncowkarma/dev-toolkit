@@ -330,6 +330,25 @@ describe('minifyHtml - inline white-space CSS', () => {
     );
   });
 
+  it('carries an inherited preserving white-space value through an explicit "inherit"', () => {
+    // `white-space` is an inherited CSS property, so `inherit` explicitly requests the parent's
+    // resolved value rather than falling back to a non-preserving default.
+    const input = '<div style="white-space: pre">'
+      + '<p style="white-space: inherit"><span>Hello</span>  <span>world</span></p>'
+      + '</div>';
+    const result = minifyHtml(input);
+    expect(result.result).toBe(input);
+  });
+
+  it('carries an inherited preserving white-space value through an explicit "unset"', () => {
+    // `unset` resolves to `inherit` for inherited properties like `white-space`.
+    const input = '<div style="white-space: pre">'
+      + '<p style="white-space: unset"><span>Hello</span>  <span>world</span></p>'
+      + '</div>';
+    const result = minifyHtml(input);
+    expect(result.result).toBe(input);
+  });
+
   it('honors the last white-space declaration when the attribute repeats the property', () => {
     const input = '<p style="white-space: pre; white-space: normal">'
       + '<span>Hello</span>  <span>world</span></p>';

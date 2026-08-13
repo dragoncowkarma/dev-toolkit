@@ -479,6 +479,15 @@ function isWhitespaceOnlyText(node) {
 const PRESERVING_WHITE_SPACE_VALUES = new Set(['pre', 'pre-wrap', 'break-spaces', 'pre-line']);
 
 /**
+ * CSS-wide keywords that, for an inherited property like `white-space`, resolve to "use the
+ * parent's computed value" rather than to a value of their own. `inherit` explicitly requests
+ * the parent's value; `unset` falls back to the inherited value too, since `white-space` is an
+ * inherited property (as opposed to resetting to its initial value, which is what `unset` does
+ * for non-inherited properties).
+ */
+const INHERIT_WHITE_SPACE_VALUES = new Set(['inherit', 'unset']);
+
+/**
  * Reads the `white-space` declaration out of an element's inline `style` attribute, if any.
  * Declarations are resolved by CSS cascade rules: `!important` declarations win over normal
  * ones regardless of position, and among declarations of equal importance the last one wins
@@ -511,7 +520,10 @@ function getInlineWhiteSpace(node) {
  * verbatim rather than collapsed/dropped during minification. An element's own inline
  * `white-space` declaration takes precedence (it is an inherited CSS property); absent one, the
  * parent's resolved state is inherited unchanged, matching normal CSS inheritance as far as it
- * can be determined from inline styles alone.
+ * can be determined from inline styles alone. An explicit `inherit` or `unset` declaration also
+ * carries the parent's resolved state through unchanged, since both keywords resolve to the
+ * parent's computed value for an inherited property like `white-space` (see
+ * {@link INHERIT_WHITE_SPACE_VALUES}).
  *
  * @param {object} node An element node.
  * @param {boolean} inherited Whether the parent element resolved to a preserving value.
@@ -519,7 +531,7 @@ function getInlineWhiteSpace(node) {
  */
 function resolvesToPreservingWhiteSpace(node, inherited) {
   const value = getInlineWhiteSpace(node);
-  if (value === null) return inherited;
+  if (value === null || INHERIT_WHITE_SPACE_VALUES.has(value)) return inherited;
   return PRESERVING_WHITE_SPACE_VALUES.has(value);
 }
 
