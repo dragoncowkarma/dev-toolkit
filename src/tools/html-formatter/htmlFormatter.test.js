@@ -286,6 +286,16 @@ describe('minifyHtml - inline white-space CSS', () => {
     expect(result.result).toBe(input);
   });
 
+  it('keeps a newline separating inline content under white-space: pre-line', () => {
+    // Regression test: under `white-space: pre-line`, the source newline between the two spans
+    // renders as a line break, so collapsing it to a plain space (the `normal` behavior) would
+    // change "Hello" and "world" from two rendered lines into one.
+    const input = '<p style="white-space: pre-line"><span>Hello</span>\n<span>world</span></p>';
+    const result = minifyHtml(input);
+    expect(result.ok).toBe(true);
+    expect(result.result).toBe(input);
+  });
+
   it('still collapses whitespace when white-space is a non-preserving value', () => {
     const input = '<p style="white-space: normal"><span>Hello</span>  <span>world</span></p>';
     const result = minifyHtml(input);

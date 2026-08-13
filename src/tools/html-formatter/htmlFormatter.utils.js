@@ -467,10 +467,16 @@ function isWhitespaceOnlyText(node) {
 }
 
 /**
- * Inline `white-space` values under which browsers render runs of spaces verbatim instead of
- * collapsing them, so a text node's whitespace is significant even outside of `pre`/`textarea`.
+ * Inline `white-space` values under which whitespace in a text node is rendering-significant, so
+ * it must survive minification verbatim rather than being dropped or collapsed to one space.
+ * `pre`, `pre-wrap`, and `break-spaces` render runs of spaces verbatim; `pre-line` collapses
+ * runs of spaces/tabs but still turns embedded newlines into rendered line breaks, so a whitespace
+ * run under it can't be safely dropped either. This tool treats `pre-line` the same as the fully
+ * verbatim values rather than replicating its space-collapsing behavior: emitting the run
+ * unchanged is the conservative choice that never removes something that renders, even though it
+ * doesn't collapse runs of plain spaces the way a browser would.
  */
-const PRESERVING_WHITE_SPACE_VALUES = new Set(['pre', 'pre-wrap', 'break-spaces']);
+const PRESERVING_WHITE_SPACE_VALUES = new Set(['pre', 'pre-wrap', 'break-spaces', 'pre-line']);
 
 /**
  * Reads the `white-space` declaration out of an element's inline `style` attribute, if any.
@@ -601,11 +607,13 @@ function minifyNode(node, preserveWhitespace) {
  *
  * `preserveWhitespace` overrides all of the above: it is `true` when `nodes`' parent resolved
  * (via {@link resolvesToPreservingWhiteSpace}) to an inline `white-space` value of `pre`,
- * `pre-wrap`, or `break-spaces`, under which browsers render runs of spaces verbatim instead of
- * collapsing them. In that case every whitespace-only text node is emitted unchanged instead of
- * being dropped or collapsed to one space, regardless of block-boundary position, since this
- * tool cannot know whether an anonymous box actually swallows it without a full layout engine —
- * emitting it verbatim is the conservative choice that never removes something that renders.
+ * `pre-wrap`, `break-spaces`, or `pre-line` (see {@link PRESERVING_WHITE_SPACE_VALUES} for why
+ * `pre-line` — which only preserves newlines, not runs of spaces — is grouped with the fully
+ * verbatim values here). In that case every whitespace-only text node is emitted unchanged
+ * instead of being dropped or collapsed to one space, regardless of block-boundary position,
+ * since this tool cannot know whether an anonymous box actually swallows it without a full
+ * layout engine — emitting it verbatim is the conservative choice that never removes something
+ * that renders.
  */
 function joinMinified(nodes, preserveWhitespace = false) {
   let out = '';
@@ -706,8 +714,9 @@ export function formatHtml(source, indent = HTML_INDENT_OPTIONS.TWO_SPACES) {
  *
  * Whitespace-only text nodes between inline content are collapsed to a single space rather than
  * dropped, and that collapsing itself backs off whenever an ancestor element's inline `style`
- * attribute declares a whitespace-preserving `white-space` value (`pre`, `pre-wrap`, or
- * `break-spaces`) — see {@link resolvesToPreservingWhiteSpace}. This tool parses markup only: it
+ * attribute declares a whitespace-preserving `white-space` value (`pre`, `pre-wrap`,
+ * `break-spaces`, or `pre-line`) — see {@link resolvesToPreservingWhiteSpace}. This tool parses
+ * markup only: it
  * cannot resolve `<style>` blocks, external stylesheets, or the default user-agent stylesheet, so
  * whitespace significance driven by CSS it cannot see (including a `pre`-like `display` on a
  * `<style>`-only rule) is outside what it can preserve.
