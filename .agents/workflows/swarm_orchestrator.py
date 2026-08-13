@@ -117,12 +117,23 @@ MAINTAINER_PATTERN = re.compile(
     re.IGNORECASE,
 )
 MAINTAINER_BLOCKED_PATTERN = re.compile(r"\[Maintainer Blocked\]", re.IGNORECASE)
+REVIEWER_APPROVED_PATTERN = re.compile(
+    r"\[Approved\]|\[Reviewer Approved\]|\bApproved\b|\bLGTM\b",
+    re.IGNORECASE,
+)
 
 # Default reviewer/maintainer rotation
 DEFAULT_ROTATION = {
     "codex":       {"reviewer": "antigravity", "maintainer": "claude"},
     "antigravity": {"reviewer": "claude",      "maintainer": "codex"},
     "claude":      {"reviewer": "codex",       "maintainer": "antigravity"},
+}
+
+# Default model and reasoning configurations for each AI agent
+DEFAULT_AI_CONFIG: dict[str, dict[str, str]] = {
+    "codex":       {"model": "5.6 terra",        "reasoning": "높음"},
+    "antigravity": {"model": "gemini 3.6 flash", "reasoning": "high"},
+    "claude":      {"model": "sonnet 5",         "reasoning": "높음"},
 }
 
 # Prompt temp file directory (cleaned on shutdown)
@@ -882,13 +893,12 @@ def determine_pr_action(comments: list[dict]) -> tuple[str, Optional[dict], int]
     """Return the next action from the newest recognized lifecycle signal.
 
     Recognized signals are Reviewer feedback, Worker revision completion,
-    Reviewer approval containing a Maintainer assignment, and a Maintainer
-    block. Informational comments do not change state.
+    Reviewer approval (containing a Maintainer tag or explicit approval signal),
+    and a Maintainer block. Informational comments do not change state.
 
-    An approval must carry BOTH a Reviewer and a Maintainer tag. A lone
-    Maintainer tag — a human quoting the rules, or another agent naming a
-    candidate — is informational, because treating it as approval would freeze
-    the PR on a "maintain" action that later validation always rejects.
+    An approval is recognized when a comment carries a Reviewer tag along with
+    either a Maintainer tag or an explicit approval indicator (e.g. [Approved] or LGTM).
+    A lone Maintainer tag without a Reviewer tag is informational.
     """
     latest_action = "review"
     latest_comment: Optional[dict] = None
@@ -903,7 +913,7 @@ def determine_pr_action(comments: list[dict]) -> tuple[str, Optional[dict], int]
             latest_action = "review_after_maintainer_block"
             latest_comment = comment
             latest_index = index
-        elif maintainer and reviewer:
+        elif reviewer and (maintainer or REVIEWER_APPROVED_PATTERN.search(body)):
             latest_action = "maintain"
             latest_comment = comment
             latest_index = index
@@ -1615,23 +1625,27 @@ def select_maintainer_for_issueless_pr(
 
     When a Worker is known (from the Issue or PR body), the remaining AI in
     DEFAULT_ROTATION that is neither Worker nor Reviewer is used. When no
-    Worker is known, the Reviewer's rotation entry is used instead.
+    Worker is known, the Reviewer's maintainer entry from DEFAULT_ROTATION is used.
+    Returns a RoleAssignment with valid default model and reasoning for the selected AI.
     """
-    all_ais = set(DEFAULT_ROTATION.keys())  # {"codex", "antigravity", "claude"}
     excluded = {reviewer.ai}
     if worker:
         excluded.add(worker.ai)
-    candidates = all_ais - excluded
-    # If somehow excluded covers all known AIs, fall back to reviewer rotation.
-    if not candidates:
-        maintainer_ai = DEFAULT_ROTATION.get(reviewer.ai, {}).get("maintainer", "codex")
+
+    if worker:
+        candidates = [ai for ai in ["codex", "antigravity", "claude"] if ai not in excluded]
+        maintainer_ai = candidates[0] if candidates else DEFAULT_ROTATION.get(reviewer.ai, {}).get("maintainer", "codex")
     else:
-        maintainer_ai = next(iter(candidates))
-    # Use sensible defaults for model/reasoning (Reviewer's values as proxy).
+        maintainer_ai = DEFAULT_ROTATION.get(reviewer.ai, {}).get("maintainer", "codex")
+
+    cfg = DEFAULT_AI_CONFIG.get(
+        maintainer_ai,
+        {"model": "gemini 3.6 flash", "reasoning": "high"},
+    )
     return RoleAssignment(
         ai=maintainer_ai,
-        model=reviewer.model,
-        reasoning=reviewer.reasoning,
+        model=cfg["model"],
+        reasoning=cfg["reasoning"],
     )
 
 

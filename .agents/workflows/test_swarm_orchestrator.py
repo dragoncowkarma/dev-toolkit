@@ -21,6 +21,7 @@ class FakeTracker:
 
     def __init__(self, dispatched=None):
         self.dispatched = set(dispatched or [])
+        self.registered = []
 
     def should_dispatch(
         self,
@@ -34,6 +35,9 @@ class FakeTracker:
                 return False, swarm.DISPATCH_UNCONFIRMED
             return False, swarm.DISPATCH_COMPLETED
         return True, "new event"
+
+    def register(self, **kwargs):
+        self.registered.append(kwargs)
 
 
 def make_tracker(history):
@@ -890,27 +894,57 @@ class PollingLifecycleTests(unittest.TestCase):
         fetch_issue.assert_not_called()
         dispatch_reviewer.assert_called_once()
 
-    def test_pr_without_issue_number_auto_selects_maintainer_on_approval(self):
-        """Approval comment on an issueless PR auto-selects a Maintainer when tag is absent."""
+    def test_pr_without_issue_number_auto_selects_maintainer_when_tag_absent(self):
+        """When issueless PR approval comment lacks Maintainer tag, process_prs auto-selects and dispatches Maintainer."""
         issueless_pr = {
-            **self.pr,
-            "title": "[PR] fix - edge case",
+            "number": 12,
+            "title": "[PR] fix - edge case no maintainer tag",
             "body": (
                 "[Worker: codex | Model: 5.6 sol | Reasoning: 높음]\n"
                 "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]"
             ),
-            "headRefOid": "sha777",
+            "headRefName": "fix-branch",
+            "headRefOid": "sha555",
         }
-        # Approval comment: has Reviewer but NO Maintainer tag — auto-select should kick in.
-        # Note: determine_pr_action needs maintainer+reviewer for "maintain" action,
-        # so we test the auto-select path via the process_prs maintainer=None branch.
-        # Simulate by providing a comment without a Maintainer tag and verify auto-select.
         approval_comment = {
-            "id": "c-approval-no-maintainer",
+            "id": "c-approval-no-maintainer-tag",
             "body": (
-                "LGTM!\n"
                 "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]\n"
-                "[Maintainer: claude | Model: sonnet 5 | Reasoning: 높음]"
+                "[Approved] Implementation looks good, ready to merge."
+            ),
+        }
+        tracker = FakeTracker()
+        with (
+            patch.object(swarm, "tracker", tracker),
+            patch.object(swarm, "fetch_pr_comments", return_value=[approval_comment]),
+            patch.object(swarm, "fetch_issue") as fetch_issue,
+            patch.object(swarm, "select_maintainer_for_issueless_pr", wraps=swarm.select_maintainer_for_issueless_pr) as auto_select,
+            patch.object(swarm, "dispatch_maintainer") as dispatch_maintainer,
+        ):
+            swarm.process_prs(open_prs=[issueless_pr])
+
+        fetch_issue.assert_not_called()
+        auto_select.assert_called_once()
+        dispatch_maintainer.assert_called_once()
+        maintainer_arg = dispatch_maintainer.call_args[0][2]
+        assert maintainer_arg.ai == "claude"
+        assert maintainer_arg.model == "sonnet 5"
+        assert maintainer_arg.reasoning == "높음"
+
+    def test_pr_without_issue_and_no_worker_auto_selects_maintainer_when_tag_absent(self):
+        """Truly issue-less PR with no Worker metadata auto-selects Maintainer on Reviewer approval."""
+        issueless_pr = {
+            "number": 13,
+            "title": "[PR] standalone refactor",
+            "body": "[Reviewer: codex | Model: 5.6 terra | Reasoning: 높음]",
+            "headRefName": "refactor-branch",
+            "headRefOid": "sha999",
+        }
+        approval_comment = {
+            "id": "c-approval-codex-reviewer",
+            "body": (
+                "[Reviewer: codex | Model: 5.6 terra | Reasoning: 높음]\n"
+                "LGTM! Refactoring is solid."
             ),
         }
         tracker = FakeTracker()
@@ -924,48 +958,70 @@ class PollingLifecycleTests(unittest.TestCase):
 
         fetch_issue.assert_not_called()
         dispatch_maintainer.assert_called_once()
-        # Maintainer AI (claude) must differ from Worker (codex) and Reviewer (antigravity)
         maintainer_arg = dispatch_maintainer.call_args[0][2]
-        assert maintainer_arg.ai == "claude", f"Expected claude, got {maintainer_arg.ai}"
-
-    def test_pr_without_issue_number_auto_selects_maintainer_when_tag_absent(self):
-        """When issueless PR approval comment lacks Maintainer tag, orchestrator auto-selects."""
-        issueless_pr = {
-            **self.pr,
-            "title": "[PR] fix - edge case no maintainer tag",
-            "body": (
-                "[Worker: codex | Model: 5.6 sol | Reasoning: 높음]\n"
-                "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]"
-            ),
-            "headRefOid": "sha555",
-        }
-        # This comment has Reviewer + a bare approval phrase but no [Maintainer: ...] tag.
-        # Without the Maintainer tag, determine_pr_action returns "revise", not "maintain",
-        # so the auto-select path in process_prs (maintain branch) is triggered only when
-        # the comment does carry both tags. The test below validates select_maintainer_for_issueless_pr
-        # is called correctly when maintainer is None inside process_prs.
-        tracker = FakeTracker()
-        with (
-            patch.object(swarm, "tracker", tracker),
-            patch.object(swarm, "select_maintainer_for_issueless_pr") as auto_select,
-        ):
-            # auto_select should NOT be called if action is not "maintain"
-            auto_select.return_value = swarm.RoleAssignment("claude", "sonnet 5", "높음")
-            swarm.process_prs(open_prs=[issueless_pr])
-
-        auto_select.assert_not_called()
-
+        assert maintainer_arg.ai == "claude"
+        assert maintainer_arg.model == "sonnet 5"
+        assert maintainer_arg.reasoning == "높음"
 
     def test_select_maintainer_excludes_reviewer_and_worker(self):
         reviewer = swarm.RoleAssignment("antigravity", "gemini 3.6 flash", "high")
         worker = swarm.RoleAssignment("codex", "5.6 sol", "높음")
         result = swarm.select_maintainer_for_issueless_pr(reviewer, worker)
         assert result.ai == "claude"
+        assert result.model == "sonnet 5"
+        assert result.reasoning == "높음"
 
-    def test_select_maintainer_excludes_only_reviewer_when_no_worker(self):
-        reviewer = swarm.RoleAssignment("codex", "5.6 sol", "높음")
-        result = swarm.select_maintainer_for_issueless_pr(reviewer)
-        assert result.ai in {"antigravity", "claude"}
+    def test_select_maintainer_deterministic_rotation_fallback_when_no_worker(self):
+        """When worker is None, Maintainer selection deterministically uses DEFAULT_ROTATION."""
+        cases = [
+            ("codex", "claude", "sonnet 5", "높음"),
+            ("antigravity", "codex", "5.6 terra", "높음"),
+            ("claude", "antigravity", "gemini 3.6 flash", "high"),
+        ]
+        for reviewer_ai, expected_maintainer_ai, expected_model, expected_reasoning in cases:
+            reviewer = swarm.RoleAssignment(reviewer_ai, "dummy-model", "dummy-reasoning")
+            result = swarm.select_maintainer_for_issueless_pr(reviewer, worker=None)
+            assert result.ai == expected_maintainer_ai
+            assert result.model == expected_model
+            assert result.reasoning == expected_reasoning
+
+    def test_select_maintainer_dispatch_argv_validity_for_all_ais(self):
+        """Test build_ai_argv for Maintainers returned by select_maintainer_for_issueless_pr."""
+        tmp_dir = tempfile.mkdtemp()
+        prompt_file = Path(tmp_dir) / "prompt.txt"
+        prompt_file.write_text("Test prompt", encoding="utf-8")
+
+        try:
+            # 1. codex Maintainer (selected when reviewer is antigravity)
+            res_codex = swarm.select_maintainer_for_issueless_pr(
+                swarm.RoleAssignment("antigravity", "gemini 3.6 flash", "high"), worker=None
+            )
+            argv_codex = swarm.build_ai_argv(res_codex.ai, res_codex.model, res_codex.reasoning, prompt_file, tmp_dir)
+            assert argv_codex[0] == "codex"
+            assert argv_codex[1] == "exec"
+            assert argv_codex[3] == "gpt-5.6-terra"
+
+            # 2. antigravity Maintainer (selected when reviewer is claude)
+            res_agy = swarm.select_maintainer_for_issueless_pr(
+                swarm.RoleAssignment("claude", "sonnet 5", "높음"), worker=None
+            )
+            argv_agy = swarm.build_ai_argv(res_agy.ai, res_agy.model, res_agy.reasoning, prompt_file, tmp_dir)
+            assert argv_agy[0] == "agy"
+            assert argv_agy[2] == "--model"
+            assert argv_agy[3] == "Gemini 3.6 Flash (High)"
+
+            # 3. claude Maintainer (selected when reviewer is codex)
+            res_claude = swarm.select_maintainer_for_issueless_pr(
+                swarm.RoleAssignment("codex", "5.6 terra", "높음"), worker=None
+            )
+            argv_claude = swarm.build_ai_argv(res_claude.ai, res_claude.model, res_claude.reasoning, prompt_file, tmp_dir)
+            assert argv_claude[0] == "claude"
+            assert argv_claude[2] == "--model"
+            assert argv_claude[3] == "claude-sonnet-5"
+            assert argv_claude[5] == "high"
+        finally:
+            import shutil
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
     def test_feedback_from_unassigned_reviewer_is_ignored(self):
         feedback = {
@@ -1207,11 +1263,13 @@ class RuntimeLifecycleTests(unittest.TestCase):
         tracker = SimpleNamespace(active_count=0, poll_all=lambda: None)
         with (
             patch.object(swarm, "tracker", tracker),
+            patch.object(swarm, "sync_main_branch") as sync_main_branch,
             patch.object(swarm, "process_polling_cycle") as process_polling_cycle,
             patch.object(swarm.time, "sleep") as sleep,
         ):
             swarm.run_loop(interval=1, dry_run=True)
 
+        sync_main_branch.assert_called_once()
         process_polling_cycle.assert_called_once_with(True, initial=True)
         sleep.assert_not_called()
 
