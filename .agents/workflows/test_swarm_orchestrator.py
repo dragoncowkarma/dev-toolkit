@@ -909,11 +909,11 @@ class PollingLifecycleTests(unittest.TestCase):
         fetch_issue.assert_not_called()
         dispatch_reviewer.assert_called_once()
 
-    def test_pr_without_issue_number_auto_selects_maintainer_when_tag_absent(self):
-        """When issueless PR approval comment lacks Maintainer tag, process_prs auto-selects and dispatches Maintainer."""
+    def test_pr_without_issue_number_dispatches_maintainer_when_both_tags_present(self):
+        """When an issueless PR approval comment carries both Reviewer and Maintainer tags, process_prs dispatches Maintainer."""
         issueless_pr = {
             "number": 12,
-            "title": "[PR] fix - edge case no maintainer tag",
+            "title": "[PR] fix - edge case with maintainer tag",
             "body": (
                 "[Worker: codex | Model: 5.6 sol | Reasoning: 높음]\n"
                 "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]"
@@ -922,10 +922,11 @@ class PollingLifecycleTests(unittest.TestCase):
             "headRefOid": "sha555",
         }
         approval_comment = {
-            "id": "c-approval-no-maintainer-tag",
+            "id": "c-approval-with-maintainer-tag",
             "body": (
                 "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]\n"
-                "[Approved] Implementation looks good, ready to merge."
+                "[Maintainer: claude | Model: sonnet 5 | Reasoning: 높음]\n"
+                "Implementation looks good, ready to merge."
             ),
         }
         tracker = FakeTracker()
@@ -933,110 +934,63 @@ class PollingLifecycleTests(unittest.TestCase):
             patch.object(swarm, "tracker", tracker),
             patch.object(swarm, "fetch_pr_comments", return_value=[approval_comment]),
             patch.object(swarm, "fetch_issue") as fetch_issue,
-            patch.object(swarm, "select_maintainer_for_issueless_pr", wraps=swarm.select_maintainer_for_issueless_pr) as auto_select,
             patch.object(swarm, "dispatch_maintainer") as dispatch_maintainer,
         ):
             swarm.process_prs(open_prs=[issueless_pr])
 
         fetch_issue.assert_not_called()
-        auto_select.assert_called_once()
         dispatch_maintainer.assert_called_once()
         maintainer_arg = dispatch_maintainer.call_args[0][2]
         assert maintainer_arg.ai == "claude"
         assert maintainer_arg.model == "sonnet 5"
         assert maintainer_arg.reasoning == "높음"
 
-    def test_pr_without_issue_and_no_worker_auto_selects_maintainer_when_tag_absent(self):
-        """Truly issue-less PR with no Worker metadata auto-selects Maintainer on Reviewer approval."""
-        issueless_pr = {
-            "number": 13,
-            "title": "[PR] standalone refactor",
-            "body": "[Reviewer: codex | Model: 5.6 terra | Reasoning: 높음]",
-            "headRefName": "refactor-branch",
-            "headRefOid": "sha999",
-        }
-        approval_comment = {
-            "id": "c-approval-codex-reviewer",
+    def test_reviewer_tag_with_approved_phrase_without_maintainer_tag_returns_revise(self):
+        """A Reviewer comment with [Approved] or LGTM but lacking [Maintainer] metadata returns revise action."""
+        comments = [{
+            "id": "c-approved-no-maintainer",
             "body": (
-                "[Reviewer: codex | Model: 5.6 terra | Reasoning: 높음]\n"
-                "LGTM! Refactoring is solid."
+                "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]\n"
+                "[Approved] Looks great to me, LGTM!"
+            ),
+        }]
+        action, comment, _ = swarm.determine_pr_action(comments)
+        self.assertEqual("revise", action)
+        self.assertEqual("c-approved-no-maintainer", comment["id"])
+
+    def test_pr_without_issue_number_dispatches_worker_revision_using_pr_body_worker(self):
+        """Issueless PR with Worker in PR body dispatches worker revision on Reviewer feedback comment."""
+        issueless_pr = {
+            "number": 14,
+            "title": "[PR] standalone feature",
+            "body": (
+                "[Worker: codex | Model: 5.6 terra | Reasoning: 높음]\n"
+                "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]"
+            ),
+            "headRefName": "feat-branch",
+            "headRefOid": "sha888",
+        }
+        feedback_comment = {
+            "id": "c-feedback-1",
+            "body": (
+                "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]\n"
+                "Please fix the edge case in parser."
             ),
         }
         tracker = FakeTracker()
         with (
             patch.object(swarm, "tracker", tracker),
-            patch.object(swarm, "fetch_pr_comments", return_value=[approval_comment]),
+            patch.object(swarm, "fetch_pr_comments", return_value=[feedback_comment]),
             patch.object(swarm, "fetch_issue") as fetch_issue,
-            patch.object(swarm, "dispatch_maintainer") as dispatch_maintainer,
+            patch.object(swarm, "dispatch_worker_revision") as dispatch_worker_revision,
         ):
             swarm.process_prs(open_prs=[issueless_pr])
 
         fetch_issue.assert_not_called()
-        dispatch_maintainer.assert_called_once()
-        maintainer_arg = dispatch_maintainer.call_args[0][2]
-        assert maintainer_arg.ai == "claude"
-        assert maintainer_arg.model == "sonnet 5"
-        assert maintainer_arg.reasoning == "높음"
+        dispatch_worker_revision.assert_called_once()
+        worker_arg = dispatch_worker_revision.call_args[1].get("worker") or dispatch_worker_revision.call_args[0][5]
+        assert worker_arg.ai == "codex"
 
-    def test_select_maintainer_excludes_reviewer_and_worker(self):
-        reviewer = swarm.RoleAssignment("antigravity", "gemini 3.6 flash", "high")
-        worker = swarm.RoleAssignment("codex", "5.6 sol", "높음")
-        result = swarm.select_maintainer_for_issueless_pr(reviewer, worker)
-        assert result.ai == "claude"
-        assert result.model == "sonnet 5"
-        assert result.reasoning == "높음"
-
-    def test_select_maintainer_deterministic_rotation_fallback_when_no_worker(self):
-        """When worker is None, Maintainer selection deterministically uses DEFAULT_ROTATION."""
-        cases = [
-            ("codex", "claude", "sonnet 5", "높음"),
-            ("antigravity", "codex", "5.6 terra", "높음"),
-            ("claude", "antigravity", "gemini 3.6 flash", "high"),
-        ]
-        for reviewer_ai, expected_maintainer_ai, expected_model, expected_reasoning in cases:
-            reviewer = swarm.RoleAssignment(reviewer_ai, "dummy-model", "dummy-reasoning")
-            result = swarm.select_maintainer_for_issueless_pr(reviewer, worker=None)
-            assert result.ai == expected_maintainer_ai
-            assert result.model == expected_model
-            assert result.reasoning == expected_reasoning
-
-    def test_select_maintainer_dispatch_argv_validity_for_all_ais(self):
-        """Test build_ai_argv for Maintainers returned by select_maintainer_for_issueless_pr."""
-        tmp_dir = tempfile.mkdtemp()
-        prompt_file = Path(tmp_dir) / "prompt.txt"
-        prompt_file.write_text("Test prompt", encoding="utf-8")
-
-        try:
-            # 1. codex Maintainer (selected when reviewer is antigravity)
-            res_codex = swarm.select_maintainer_for_issueless_pr(
-                swarm.RoleAssignment("antigravity", "gemini 3.6 flash", "high"), worker=None
-            )
-            argv_codex = swarm.build_ai_argv(res_codex.ai, res_codex.model, res_codex.reasoning, prompt_file, tmp_dir)
-            assert argv_codex[0] == "codex"
-            assert argv_codex[1] == "exec"
-            assert argv_codex[3] == "gpt-5.6-terra"
-
-            # 2. antigravity Maintainer (selected when reviewer is claude)
-            res_agy = swarm.select_maintainer_for_issueless_pr(
-                swarm.RoleAssignment("claude", "sonnet 5", "높음"), worker=None
-            )
-            argv_agy = swarm.build_ai_argv(res_agy.ai, res_agy.model, res_agy.reasoning, prompt_file, tmp_dir)
-            assert argv_agy[0] == "agy"
-            assert argv_agy[2] == "--model"
-            assert argv_agy[3] == "Gemini 3.6 Flash (High)"
-
-            # 3. claude Maintainer (selected when reviewer is codex)
-            res_claude = swarm.select_maintainer_for_issueless_pr(
-                swarm.RoleAssignment("codex", "5.6 terra", "높음"), worker=None
-            )
-            argv_claude = swarm.build_ai_argv(res_claude.ai, res_claude.model, res_claude.reasoning, prompt_file, tmp_dir)
-            assert argv_claude[0] == "claude"
-            assert argv_claude[2] == "--model"
-            assert argv_claude[3] == "claude-sonnet-5"
-            assert argv_claude[5] == "high"
-        finally:
-            import shutil
-            shutil.rmtree(tmp_dir, ignore_errors=True)
 
     def test_feedback_from_unassigned_reviewer_is_ignored(self):
         feedback = {

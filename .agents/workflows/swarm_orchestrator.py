@@ -117,10 +117,7 @@ MAINTAINER_PATTERN = re.compile(
     re.IGNORECASE,
 )
 MAINTAINER_BLOCKED_PATTERN = re.compile(r"\[Maintainer Blocked\]", re.IGNORECASE)
-REVIEWER_APPROVED_PATTERN = re.compile(
-    r"\[Approved\]|\[Reviewer Approved\]|\[PR Approved\]|\bLGTM\b",
-    re.IGNORECASE,
-)
+
 
 # Default reviewer/maintainer rotation
 DEFAULT_ROTATION = {
@@ -893,11 +890,10 @@ def determine_pr_action(comments: list[dict]) -> tuple[str, Optional[dict], int]
     """Return the next action from the newest recognized lifecycle signal.
 
     Recognized signals are Reviewer feedback, Worker revision completion,
-    Reviewer approval (containing a Maintainer tag or explicit approval signal),
-    and a Maintainer block. Informational comments do not change state.
+    Reviewer approval (containing a Maintainer tag), and a Maintainer block.
+    Informational comments do not change state.
 
-    An approval is recognized when a comment carries a Reviewer tag along with
-    either a Maintainer tag or an explicit approval indicator (e.g. [Approved] or LGTM).
+    An approval is recognized only when one comment carries BOTH the Reviewer and the Maintainer tag.
     A lone Maintainer tag without a Reviewer tag is informational.
     """
     latest_action = "review"
@@ -913,7 +909,7 @@ def determine_pr_action(comments: list[dict]) -> tuple[str, Optional[dict], int]
             latest_action = "review_after_maintainer_block"
             latest_comment = comment
             latest_index = index
-        elif reviewer and (maintainer or REVIEWER_APPROVED_PATTERN.search(body)):
+        elif reviewer and maintainer:
             latest_action = "maintain"
             latest_comment = comment
             latest_index = index
@@ -1617,38 +1613,6 @@ def dispatch_reviewer(
         log.error("Failed to dispatch Reviewer: %s", e)
 
 
-def select_maintainer_for_issueless_pr(
-    reviewer: RoleAssignment,
-    worker: Optional[RoleAssignment] = None,
-) -> RoleAssignment:
-    """Choose a Maintainer for a PR that has no linked Issue.
-
-    When a Worker is known (from the Issue or PR body), the remaining AI in
-    DEFAULT_ROTATION that is neither Worker nor Reviewer is used. When no
-    Worker is known, the Reviewer's maintainer entry from DEFAULT_ROTATION is used.
-    Returns a RoleAssignment with valid default model and reasoning for the selected AI.
-    """
-    excluded = {reviewer.ai}
-    if worker:
-        excluded.add(worker.ai)
-
-    if worker:
-        candidates = [ai for ai in ["codex", "antigravity", "claude"] if ai not in excluded]
-        maintainer_ai = candidates[0] if candidates else DEFAULT_ROTATION.get(reviewer.ai, {}).get("maintainer", "codex")
-    else:
-        maintainer_ai = DEFAULT_ROTATION.get(reviewer.ai, {}).get("maintainer", "codex")
-
-    cfg = DEFAULT_AI_CONFIG.get(
-        maintainer_ai,
-        {"model": "gemini 3.6 flash", "reasoning": "high"},
-    )
-    return RoleAssignment(
-        ai=maintainer_ai,
-        model=cfg["model"],
-        reasoning=cfg["reasoning"],
-    )
-
-
 def dispatch_maintainer(
     pr: TaskPR,
     issue: Optional[TaskIssue],
@@ -1755,9 +1719,10 @@ def dispatch_worker_revision(
     feedback_text: str,
     dry_run: bool = False,
     task_ref: Optional[str] = None,
+    worker: Optional[RoleAssignment] = None,
 ):
     """Dispatch the original Worker AI to fix the PR based on feedback."""
-    worker = issue.worker if issue else None
+    worker = (issue.worker if issue else None) or worker
     if not worker:
         log.warning(
             "No Worker tag available (issue=%s) for PR #%d revision; skipping.",
@@ -2018,13 +1983,13 @@ def process_prs(
                     reviewer.ai,
                 )
                 continue
-            # Auto-select Maintainer when the approval comment lacks one.
-            if maintainer is None:
-                maintainer = select_maintainer_for_issueless_pr(reviewer, worker)
-                log.info(
-                    "PR #%d: no [Maintainer] tag in approval; auto-selected '%s'.",
-                    pr_num, maintainer.ai,
+            if not maintainer:
+                log_blocker(
+                    f"approval-maintainer:{pr_num}:{signal_id}",
+                    "PR #%d approval signal has no Maintainer tag.",
+                    pr_num,
                 )
+                continue
             valid, why = validate_distinct_roles(worker, reviewer, maintainer)
             if not valid:
                 log_blocker(
@@ -2180,6 +2145,7 @@ def process_prs(
             signal_comment.get("body", ""),
             dry_run,
             task_ref=task_ref,
+            worker=worker,
         )
 
 
