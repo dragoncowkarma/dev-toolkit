@@ -48,6 +48,15 @@ function decodeOne(pem) {
   return entry;
 }
 
+/** Wraps content bytes in a DER SEQUENCE header, so tests can re-encode input. */
+function encodeSequence(content) {
+  let header;
+  if (content.length < 0x80) header = [0x30, content.length];
+  else if (content.length < 0x100) header = [0x30, 0x81, content.length];
+  else header = [0x30, 0x82, content.length >> 8, content.length & 0xff];
+  return Uint8Array.from([...header, ...content]);
+}
+
 describe('extractPemBlocks', () => {
   it('returns every block in document order with whitespace stripped', () => {
     const blocks = extractPemBlocks(`noise\n${SAMPLE_CERTIFICATE}\nnoise\n${EC_CERTIFICATE}`);
@@ -311,10 +320,68 @@ describe('decodeCertificates', () => {
 });
 
 describe('parseCertificate error handling', () => {
+  const sampleDer = decodeBase64ToBytes(bodyOf(SAMPLE_CERTIFICATE));
+
   it('rejects DER whose outer element is not a SEQUENCE', () => {
     expect(() => parseCertificate(Uint8Array.from([0x05, 0x00]))).toThrow(
       'The certificate is not a valid DER SEQUENCE',
     );
+  });
+
+  it('rejects a primitive-form SEQUENCE tag instead of failing on its absent children', () => {
+    expect(() => parseCertificate(Uint8Array.from([0x10, 0x00]))).toThrow(
+      'The certificate is not a valid DER SEQUENCE',
+    );
+  });
+
+  it('decodes the untouched sample fixture, so the mutations below are the only change', () => {
+    expect(parseCertificate(sampleDer).subject.commonName).toBe('devtoolkit.example');
+  });
+
+  it('rejects a certificate that stops before its signature fields', () => {
+    const outer = parseAsn1(sampleDer);
+    const truncated = encodeSequence(
+      sampleDer.subarray(outer.children[0].start, outer.children[0].end),
+    );
+    expect(() => parseCertificate(truncated)).toThrow(
+      'The certificate is missing its signature fields',
+    );
+  });
+
+  it('rejects a signatureValue whose tag is not BIT STRING', () => {
+    const mutated = Uint8Array.from(sampleDer);
+    // Retag only the third top-level field, from BIT STRING (0x03) to NULL.
+    mutated[parseAsn1(sampleDer).children[2].start] = ASN1_TAG.NULL;
+    expect(() => parseCertificate(mutated)).toThrow(
+      'The certificate signature value is not a valid DER BIT STRING',
+    );
+  });
+
+  it('rejects a signatureValue with an invalid unused-bit count', () => {
+    const mutated = Uint8Array.from(sampleDer);
+    const signature = parseAsn1(sampleDer).children[2];
+    mutated[signature.end - signature.content.length] = 0x08;
+    expect(() => parseCertificate(mutated)).toThrow(
+      'The certificate signature value declares an invalid unused-bit count',
+    );
+  });
+
+  it('rejects superfluous fields after the signature value', () => {
+    const outer = parseAsn1(sampleDer);
+    const extended = encodeSequence(
+      Uint8Array.from([...sampleDer.subarray(outer.children[0].start, outer.end), 0x05, 0x00]),
+    );
+    expect(() => parseCertificate(extended)).toThrow(
+      'unexpected fields after its signature value',
+    );
+  });
+
+  it('reports a retagged signatureValue as a per-block decode error', () => {
+    const mutated = Uint8Array.from(sampleDer);
+    mutated[parseAsn1(sampleDer).children[2].start] = ASN1_TAG.NULL;
+    const entry = decodeOne(toPem(btoa(String.fromCharCode(...mutated))));
+    expect(entry.certificate).toBeUndefined();
+    expect(entry.error).toMatch('not a valid DER BIT STRING');
   });
 });
 
