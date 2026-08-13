@@ -21,7 +21,7 @@ describe('SvgMinifierTool', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Minify SVG' }));
 
     expect(screen.getByLabelText('Minified SVG markup output')).toHaveValue(
-      '<svg viewBox="0 0 24 24"><path d="M0 0" /></svg>',
+      '<svg viewBox="0 0 24 24"><path d="M0 0"/></svg>',
     );
     expect(screen.getByText(/B → .*saved/)).toBeInTheDocument();
     expect(screen.getByLabelText('Minified SVG preview')).toBeInTheDocument();

@@ -71,7 +71,8 @@ function findDoctypeEnd(markup, start) {
 
 /**
  * Removes editor-specific attributes from one SVG opening tag while preserving
- * every character of remaining attribute values.
+ * every character of remaining attribute values and normalizing whitespace
+ * between retained attributes.
  *
  * @param {string} tag - One complete opening SVG tag.
  * @param {boolean} isRoot - Whether `tag` is the root `<svg>` element.
@@ -83,10 +84,9 @@ function stripEditorAttributes(tag, isRoot) {
   let index = nameEnd;
 
   while (index < tag.length) {
-    const attributeStart = index;
     while (/\s/.test(tag[index])) index += 1;
     if (tag[index] === '/' || tag[index] === '>' || index >= tag.length) {
-      output += tag.slice(attributeStart);
+      output += tag.slice(index);
       break;
     }
 
@@ -110,7 +110,7 @@ function stripEditorAttributes(tag, isRoot) {
 
     const editorAttribute = /^(?:inkscape|sodipodi):/i.test(attributeName);
     const editorNamespace = isRoot && /^xmlns:(?:inkscape|sodipodi)$/i.test(attributeName);
-    if (!editorAttribute && !editorNamespace) output += tag.slice(attributeStart, index);
+    if (!editorAttribute && !editorNamespace) output += ` ${tag.slice(nameStart, index)}`;
   }
 
   return output;
@@ -144,9 +144,9 @@ function encodeUtf8Base64(value) {
 
 /**
  * Minifies SVG markup by removing non-rendering declarations, comments,
- * editor metadata, and whitespace-only gaps between markup tags. It performs
- * conservative structural validation and returns an error result instead of
- * throwing for malformed input.
+ * editor metadata, whitespace-only gaps between markup tags, and intra-tag
+ * whitespace between retained attributes. It performs conservative structural
+ * validation and returns an error result instead of throwing for malformed input.
  *
  * @param {unknown} markup - Raw SVG markup pasted by the user.
  * @returns {SvgMinifyResult} Minified output and UTF-8 byte-saving statistics.
