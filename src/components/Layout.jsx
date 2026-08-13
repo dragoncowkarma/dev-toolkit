@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import Sidebar from './Sidebar.jsx';
 import LoadingSpinner from './LoadingSpinner.jsx';
 import ToolErrorBoundary from './ToolErrorBoundary.jsx';
+import { subscribeToDesktopBreakpoint } from './breakpoints.js';
 import './Layout.css';
 
 function getFallbackToolId(tools, defaultToolId) {
@@ -58,28 +59,19 @@ export default function Layout({ tools, defaultToolId }) {
     [activeToolId, tools],
   );
 
+  // Layout is the sole owner of the mobile-drawer viewport transition: it is
+  // the only mounted component that subscribes to the desktop breakpoint and
+  // closes the drawer when the viewport grows into the desktop layout. See
+  // `breakpoints.js` for the shared breakpoint contract Sidebar's CSS also
+  // relies on.
   useEffect(() => {
-    if (!isMobileOpen || typeof window === 'undefined' || !window.matchMedia) return undefined;
+    if (!isMobileOpen) return undefined;
 
-    const mediaQuery = window.matchMedia('(min-width: 769px)');
-    const handleMediaChange = (event) => {
-      if (event.matches) {
+    return subscribeToDesktopBreakpoint((matchesDesktop) => {
+      if (matchesDesktop) {
         setIsMobileOpen(false);
       }
-    };
-
-    if (mediaQuery.matches) {
-      setIsMobileOpen(false);
-    }
-
-    if (mediaQuery.addEventListener) {
-      mediaQuery.addEventListener('change', handleMediaChange);
-      return () => mediaQuery.removeEventListener('change', handleMediaChange);
-    } else if (mediaQuery.addListener) {
-      mediaQuery.addListener(handleMediaChange);
-      return () => mediaQuery.removeListener(handleMediaChange);
-    }
-    return undefined;
+    });
   }, [isMobileOpen]);
 
   const handleSelectTool = (toolId) => {
