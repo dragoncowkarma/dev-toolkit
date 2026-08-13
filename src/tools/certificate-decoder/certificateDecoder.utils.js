@@ -447,12 +447,32 @@ const UTC_TIME_PATTERN = /^(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})?(Z|[+-]\d{
 const GENERALIZED_TIME_PATTERN =
   /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})?(?:[.,](\d+))?(Z|[+-]\d{4})$/;
 
-function applyZoneOffset(utcMilliseconds, zone) {
-  if (zone === 'Z') return utcMilliseconds;
-  const sign = zone[0] === '-' ? -1 : 1;
-  const hours = Number(zone.slice(1, 3));
-  const minutes = Number(zone.slice(3, 5));
-  return utcMilliseconds - sign * (hours * 60 + minutes) * 60_000;
+const DAYS_PER_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+function isLeapYear(year) {
+  return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+}
+
+function getDaysInMonth(year, month) {
+  return month === 2 && isLeapYear(year) ? 29 : DAYS_PER_MONTH[month - 1];
+}
+
+function applyZoneOffset(utcMilliseconds, zoneSign, zoneHours, zoneMinutes) {
+  return utcMilliseconds - zoneSign * (zoneHours * 60 + zoneMinutes) * 60_000;
+}
+
+/**
+ * Builds a UTC timestamp without the normalisation `Date.UTC()` applies to
+ * years below 100, which it would otherwise remap into the 1900s.
+ */
+function toUtcMilliseconds(year, month, day, hour, minute, second, millisecond) {
+  const timestamp = Date.UTC(year, month - 1, day, hour, minute, second, millisecond);
+  if (year >= 0 && year <= 99) {
+    const literalYear = new Date(timestamp);
+    literalYear.setUTCFullYear(year);
+    return literalYear.getTime();
+  }
+  return timestamp;
 }
 
 /**
@@ -480,20 +500,40 @@ export function decodeAsn1Time(node) {
   const year = isUtcTime
     ? Number(match[1]) + (Number(match[1]) < 50 ? 2000 : 1900)
     : Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const second = Number(match[6] ?? 0);
   const fraction = isGeneralizedTime && match[7] ? Number(`0.${match[7]}`) * 1000 : 0;
   const zone = isUtcTime ? match[7] : match[8];
+  const zoneSign = zone === 'Z' || zone[0] === '+' ? 1 : -1;
+  const zoneHours = zone === 'Z' ? 0 : Number(zone.slice(1, 3));
+  const zoneMinutes = zone === 'Z' ? 0 : Number(zone.slice(3, 5));
+
+  // `Date.UTC()` silently normalises out-of-range fields, so month 13 would
+  // otherwise be presented as January of the following year. Every calendar and
+  // offset component is range-checked against the raw text before the `Date`
+  // is built, so corrupt validity data is rejected rather than rewritten.
+  const isOutOfRange =
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > getDaysInMonth(year, month) ||
+    hour > 23 ||
+    minute > 59 ||
+    second > 59 ||
+    zoneHours > 23 ||
+    zoneMinutes > 59;
+  if (isOutOfRange) {
+    throw new Error(`"${raw}" is not a valid ASN.1 time value.`);
+  }
 
   const milliseconds = applyZoneOffset(
-    Date.UTC(
-      year,
-      Number(match[2]) - 1,
-      Number(match[3]),
-      Number(match[4]),
-      Number(match[5]),
-      Number(match[6] ?? 0),
-      Math.round(fraction),
-    ),
-    zone,
+    toUtcMilliseconds(year, month, day, hour, minute, second, Math.min(999, Math.round(fraction))),
+    zoneSign,
+    zoneHours,
+    zoneMinutes,
   );
 
   const date = new Date(milliseconds);
