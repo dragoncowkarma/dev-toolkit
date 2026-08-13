@@ -1,0 +1,179 @@
+.iban {
+  --iban-panel-gap: 1rem;
+  display: flex;
+  width: 100%;
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  flex-direction: column;
+  gap: var(--iban-panel-gap);
+}
+
+.iban__intro,
+.iban__panel,
+.iban__result {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  padding: 1rem;
+}
+
+.iban__intro h2,
+.iban__heading h3 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.iban__intro > p:last-child,
+.iban__heading p,
+.iban__result > span,
+.iban__privacy,
+.iban__field {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.iban__eyebrow {
+  color: var(--color-primary-light);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.iban__panel,
+.iban__heading,
+.iban__field,
+.iban__actions,
+.iban__samples,
+.iban__result {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.iban__field {
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.iban__field input {
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: calc(var(--radius) - 5px);
+  background: var(--color-code-bg);
+  color: var(--color-text);
+  font: inherit;
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  padding: 0.65rem 0.7rem;
+}
+
+.iban__field input:focus {
+  outline: 0;
+  border-color: var(--color-primary);
+}
+
+.iban button {
+  align-self: flex-start;
+  border: 1px solid var(--color-border);
+  border-radius: calc(var(--radius) - 5px);
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 0.45rem 0.65rem;
+}
+
+.iban button:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.iban__actions,
+.iban__samples {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+
+.iban__field-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+}
+
+.iban__result {
+  background: var(--color-code-bg);
+}
+
+.iban__result code,
+.iban__result strong,
+.iban__result dd {
+  overflow-x: auto;
+  color: var(--color-primary-light);
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 0.9rem;
+}
+
+.iban__result dl {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.6rem;
+  margin: 0;
+}
+
+.iban__result dl div {
+  display: grid;
+  grid-template-columns: minmax(6rem, 0.6fr) minmax(0, 1.4fr);
+  gap: 0.75rem;
+}
+
+.iban__result dt {
+  color: var(--color-text-muted);
+}
+
+.iban__result dd {
+  margin: 0;
+}
+
+.iban__error {
+  margin: 0;
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+  font-size: 0.85rem;
+  padding: 0.75rem 1rem;
+}
+
+.iban__status {
+  min-height: 1.5rem;
+  margin: 0;
+  color: var(--color-success);
+  font-size: 0.85rem;
+}
+
+.iban__privacy {
+  margin: 0;
+}
+
+@media (min-width: 650px) {
+  .iban__heading {
+    align-items: flex-start;
+    flex-direction: row;
+    justify-content: space-between;
+  }
+
+  .iban__field-grid {
+    grid-template-columns: minmax(8rem, 0.35fr) minmax(0, 1.65fr);
+  }
+
+  .iban__result dl {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .iban__result dl div {
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
+  }
+}
