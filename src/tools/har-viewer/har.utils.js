@@ -8,15 +8,14 @@
  * @returns {string} Formatted size string.
  */
 export function formatBytes(bytes) {
-  if (typeof bytes !== 'number' || isNaN(bytes) || bytes < 0) {
+  if (typeof bytes !== 'number' || isNaN(bytes) || bytes <= 0) {
     return '0 B';
   }
-  if (bytes === 0) return '0 B';
   const k = 1024;
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  const i = Math.min(Math.max(Math.floor(Math.log(bytes) / Math.log(k)), 0), sizes.length - 1);
   const val = bytes / Math.pow(k, i);
-  return `${parseFloat(val.toFixed(i === 0 ? 0 : 2))} ${sizes[i] || 'B'}`;
+  return `${parseFloat(val.toFixed(2))} ${sizes[i]}`;
 }
 
 /**
@@ -102,7 +101,7 @@ export function normalizeTimings(rawTimings, entryIndex) {
     } else if (typeof val === 'number' && !isNaN(val) && val >= 0) {
       normalized[phase] = val;
       total += val;
-    } else if (typeof val === 'number' && val < -1) {
+    } else if (typeof val === 'number' && val < 0) {
       normalized[phase] = 0;
       warnings.push(`Entry #${entryIndex}: Negative timing value (${val}) for phase '${phase}'.`);
     } else {

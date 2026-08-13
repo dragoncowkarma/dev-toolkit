@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import {
   parseHar,
   filterAndSortEntries,
@@ -24,7 +24,17 @@ export default function HarTool() {
   const [sortOrder, setSortOrder] = useState('asc');
   const [toastMessage, setToastMessage] = useState('');
   const [isDragging, setIsDragging] = useState(false);
+
   const fileInputRef = useRef(null);
+  const toastTimeoutRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimeoutRef.current) {
+        clearTimeout(toastTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Parse HAR data
   const parseResult = useMemo(() => {
@@ -32,6 +42,13 @@ export default function HarTool() {
   }, [inputRaw]);
 
   const { success, error, entries, summary, warnings } = parseResult;
+
+  // Derive distinct HTTP methods present in entries
+  const availableMethods = useMemo(() => {
+    if (!entries || entries.length === 0) return [];
+    const methods = new Set(entries.map((e) => e.method).filter(Boolean));
+    return Array.from(methods).sort();
+  }, [entries]);
 
   // Filter and sort entries
   const filteredEntries = useMemo(() => {
@@ -52,23 +69,42 @@ export default function HarTool() {
     return entries.find((e) => e.id === selectedEntryId) || null;
   }, [selectedEntryId, entries]);
 
+  const hasParamsOrBody = Boolean(
+    selectedEntry &&
+      (selectedEntry.request.queryString.length > 0 || selectedEntry.request.postData)
+  );
+
+  // Reconcile tab selection if current tab is unavailable on selected entry
+  const safeActiveTab = useMemo(() => {
+    if (activeTab === 'params' && !hasParamsOrBody) {
+      return 'overview';
+    }
+    return activeTab;
+  }, [activeTab, hasParamsOrBody]);
+
   const showToast = (msg) => {
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current);
+    }
     setToastMessage(msg);
-    setTimeout(() => {
+    toastTimeoutRef.current = setTimeout(() => {
       setToastMessage('');
+      toastTimeoutRef.current = null;
     }, 2000);
   };
 
-  const handleCopy = (text, label) => {
+  const handleCopy = async (text, label) => {
     if (!text) return;
-    navigator.clipboard
-      .writeText(text)
-      .then(() => {
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
         showToast(`Copied ${label} to clipboard!`);
-      })
-      .catch(() => {
-        showToast('Failed to copy to clipboard.');
-      });
+      } else {
+        showToast('Clipboard access not available.');
+      }
+    } catch {
+      showToast('Failed to copy to clipboard.');
+    }
   };
 
   const handleFileChange = (e) => {
@@ -83,6 +119,10 @@ export default function HarTool() {
       const content = event.target.result;
       setInputRaw(content);
       setSelectedEntryId(null);
+      setActiveTab('overview');
+    };
+    reader.onerror = () => {
+      showToast('Failed to read HAR file.');
     };
     reader.readAsText(file);
   };
@@ -108,6 +148,7 @@ export default function HarTool() {
   const handleLoadSample = () => {
     setInputRaw(JSON.stringify(SAMPLE_HAR, null, 2));
     setSelectedEntryId(1);
+    setActiveTab('overview');
     setSearchQuery('');
     setStatusFilter('all');
     setMethodFilter('all');
@@ -119,6 +160,7 @@ export default function HarTool() {
   const handleClear = () => {
     setInputRaw('');
     setSelectedEntryId(null);
+    setActiveTab('overview');
     setSearchQuery('');
     setStatusFilter('all');
     setMethodFilter('all');
@@ -128,6 +170,11 @@ export default function HarTool() {
     }
   };
 
+  const handleSelectEntry = (id) => {
+    setSelectedEntryId((prev) => (prev === id ? null : id));
+    setActiveTab('overview');
+  };
+
   const handleSortChange = (field) => {
     if (sortBy === field) {
       setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
@@ -135,6 +182,34 @@ export default function HarTool() {
       setSortBy(field);
       setSortOrder('asc');
     }
+  };
+
+  const renderSortHeader = (field, label, widthClass = '') => {
+    const isCurrent = sortBy === field;
+    const sortDir = isCurrent ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none';
+    const indicator = isCurrent ? (sortOrder === 'asc' ? '▲' : '▼') : '';
+
+    return (
+      <th
+        scope="col"
+        className={`har-sortable-th ${widthClass}`}
+        aria-sort={sortDir}
+        tabIndex={0}
+        onClick={() => handleSortChange(field)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            handleSortChange(field);
+          }
+        }}
+        role="columnheader"
+        aria-label={`Sort by ${label}${isCurrent ? ` (${sortOrder})` : ''}`}
+      >
+        <span className="har-th-content">
+          {label} {indicator && <span className="har-sort-indicator">{indicator}</span>}
+        </span>
+      </th>
+    );
   };
 
   return (
@@ -208,13 +283,7 @@ export default function HarTool() {
             <p>
               <strong>Drag &amp; drop a browser DevTools .har file here</strong> or click to upload
             </p>
-            <span
-              style={{
-                fontSize: '0.75rem',
-                color: 'var(--color-text-muted)',
-                marginTop: '0.25rem',
-              }}
-            >
+            <span className="har-dropzone-subtitle">
               Entirely client-side — no network calls or server uploads.
             </span>
           </div>
@@ -225,6 +294,7 @@ export default function HarTool() {
             onChange={(e) => {
               setInputRaw(e.target.value);
               setSelectedEntryId(null);
+              setActiveTab('overview');
             }}
             placeholder="Paste .har JSON content here..."
             aria-label="Raw HAR JSON input"
@@ -269,9 +339,14 @@ export default function HarTool() {
             <span className="har-stat-label">Wall-Clock Duration</span>
             <span className="har-stat-value">{summary.totalWallClockFormatted}</span>
           </div>
-          <div className="har-stat-card" style={{ gridColumn: 'span 2' }}>
+          <div className="har-stat-card har-stat-card-span2">
             <span className="har-stat-label">Status Breakdown</span>
             <div className="har-status-breakdown">
+              {summary.statusCounts['1xx'] > 0 && (
+                <span className="har-badge har-badge-1xx">
+                  1xx: {summary.statusCounts['1xx']}
+                </span>
+              )}
               <span className="har-badge har-badge-2xx">2xx: {summary.statusCounts['2xx']}</span>
               <span className="har-badge har-badge-3xx">3xx: {summary.statusCounts['3xx']}</span>
               <span className="har-badge har-badge-4xx">4xx: {summary.statusCounts['4xx']}</span>
@@ -305,6 +380,7 @@ export default function HarTool() {
             aria-label="Filter by status code class"
           >
             <option value="all">All Statuses</option>
+            <option value="1xx">1xx Informational</option>
             <option value="2xx">2xx Success</option>
             <option value="3xx">3xx Redirect</option>
             <option value="4xx">4xx Client Error</option>
@@ -319,12 +395,11 @@ export default function HarTool() {
             aria-label="Filter by HTTP method"
           >
             <option value="all">All Methods</option>
-            <option value="GET">GET</option>
-            <option value="POST">POST</option>
-            <option value="PUT">PUT</option>
-            <option value="DELETE">DELETE</option>
-            <option value="PATCH">PATCH</option>
-            <option value="OPTIONS">OPTIONS</option>
+            {availableMethods.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
           </select>
 
           <select
@@ -353,13 +428,20 @@ export default function HarTool() {
             }}
             aria-label="Sort entries by column"
           >
-            <option value="index-asc">Order (Original)</option>
+            <option value="index-asc">Order (1 -&gt; N)</option>
+            <option value="index-desc">Order (N -&gt; 1)</option>
+            <option value="method-asc">Method (A-Z)</option>
+            <option value="method-desc">Method (Z-A)</option>
             <option value="url-asc">URL (A-Z)</option>
+            <option value="url-desc">URL (Z-A)</option>
             <option value="status-asc">Status Code (Low-High)</option>
             <option value="status-desc">Status Code (High-Low)</option>
+            <option value="mimeType-asc">Type (A-Z)</option>
+            <option value="mimeType-desc">Type (Z-A)</option>
+            <option value="transferredSize-desc">Size (Largest First)</option>
+            <option value="transferredSize-asc">Size (Smallest First)</option>
             <option value="time-desc">Duration (Slowest First)</option>
             <option value="time-asc">Duration (Fastest First)</option>
-            <option value="transferredSize-desc">Size (Largest First)</option>
           </select>
         </div>
       )}
@@ -370,34 +452,22 @@ export default function HarTool() {
           <table className="har-table" aria-label="HAR network entries table">
             <thead>
               <tr>
-                <th style={{ width: '40px' }} onClick={() => handleSortChange('index')}>
-                  # {sortBy === 'index' ? (sortOrder === 'asc' ? '▲' : '▼') : ''}
+                {renderSortHeader('index', '#', 'har-th-num')}
+                {renderSortHeader('method', 'Method', 'har-th-method')}
+                {renderSortHeader('url', 'URL / Resource')}
+                {renderSortHeader('status', 'Status', 'har-th-status')}
+                {renderSortHeader('mimeType', 'Type', 'har-th-type')}
+                {renderSortHeader('transferredSize', 'Size', 'har-th-size')}
+                {renderSortHeader('time', 'Time', 'har-th-time')}
+                <th scope="col" className="har-th-timeline">
+                  Timeline
                 </th>
-                <th style={{ width: '70px' }} onClick={() => handleSortChange('method')}>
-                  Method {sortBy === 'method' ? (sortOrder === 'asc' ? '▲' : '▼') : ''}
-                </th>
-                <th onClick={() => handleSortChange('url')}>
-                  URL / Resource {sortBy === 'url' ? (sortOrder === 'asc' ? '▲' : '▼') : ''}
-                </th>
-                <th style={{ width: '70px' }} onClick={() => handleSortChange('status')}>
-                  Status {sortBy === 'status' ? (sortOrder === 'asc' ? '▲' : '▼') : ''}
-                </th>
-                <th style={{ width: '100px' }} onClick={() => handleSortChange('mimeType')}>
-                  Type {sortBy === 'mimeType' ? (sortOrder === 'asc' ? '▲' : '▼') : ''}
-                </th>
-                <th style={{ width: '90px' }} onClick={() => handleSortChange('transferredSize')}>
-                  Size {sortBy === 'transferredSize' ? (sortOrder === 'asc' ? '▲' : '▼') : ''}
-                </th>
-                <th style={{ width: '90px' }} onClick={() => handleSortChange('time')}>
-                  Time {sortBy === 'time' ? (sortOrder === 'asc' ? '▲' : '▼') : ''}
-                </th>
-                <th style={{ width: '70px' }}>Timeline</th>
               </tr>
             </thead>
             <tbody>
               {filteredEntries.length === 0 ? (
                 <tr>
-                  <td colSpan={8} style={{ textAlign: 'center', padding: '2rem' }}>
+                  <td colSpan={8} className="har-td-empty">
                     <span className="har-empty-msg">
                       No network entries match the selected filters.
                     </span>
@@ -418,17 +488,21 @@ export default function HarTool() {
                     <tr
                       key={entry.id}
                       className={isSelected ? 'har-row-selected' : ''}
-                      onClick={() => setSelectedEntryId(isSelected ? null : entry.id)}
-                      aria-selected={isSelected}
-                      tabIndex={0}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          setSelectedEntryId(isSelected ? null : entry.id);
-                        }
-                      }}
+                      onClick={() => handleSelectEntry(entry.id)}
                     >
-                      <td>{entry.id}</td>
+                      <td>
+                        <button
+                          type="button"
+                          className="har-row-select-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSelectEntry(entry.id);
+                          }}
+                          aria-label={`Select entry #${entry.id}: ${entry.method} ${entry.url}`}
+                        >
+                          {entry.id}
+                        </button>
+                      </td>
                       <td>
                         <span className={`har-method-tag ${methodClass}`}>{entry.method}</span>
                       </td>
@@ -496,7 +570,7 @@ export default function HarTool() {
 
       {/* Entry Detail Panel */}
       {selectedEntry && (
-        <div className="har-detail-panel" aria-label="Selected request details">
+        <section className="har-detail-panel" aria-label="Selected request details">
           <div className="har-detail-header">
             <div className="har-detail-title-group">
               <span className={`har-method-tag har-method-${selectedEntry.method}`}>
@@ -532,8 +606,10 @@ export default function HarTool() {
             <button
               type="button"
               role="tab"
-              aria-selected={activeTab === 'overview'}
-              className={`har-tab ${activeTab === 'overview' ? 'active' : ''}`}
+              id="har-tab-overview"
+              aria-controls="har-tabpanel-overview"
+              aria-selected={safeActiveTab === 'overview'}
+              className={`har-tab ${safeActiveTab === 'overview' ? 'active' : ''}`}
               onClick={() => setActiveTab('overview')}
             >
               ⏱️ Timing &amp; Overview
@@ -541,8 +617,10 @@ export default function HarTool() {
             <button
               type="button"
               role="tab"
-              aria-selected={activeTab === 'req-headers'}
-              className={`har-tab ${activeTab === 'req-headers' ? 'active' : ''}`}
+              id="har-tab-req-headers"
+              aria-controls="har-tabpanel-req-headers"
+              aria-selected={safeActiveTab === 'req-headers'}
+              className={`har-tab ${safeActiveTab === 'req-headers' ? 'active' : ''}`}
               onClick={() => setActiveTab('req-headers')}
             >
               Request Headers ({selectedEntry.request.headers.length})
@@ -550,8 +628,10 @@ export default function HarTool() {
             <button
               type="button"
               role="tab"
-              aria-selected={activeTab === 'res-headers'}
-              className={`har-tab ${activeTab === 'res-headers' ? 'active' : ''}`}
+              id="har-tab-res-headers"
+              aria-controls="har-tabpanel-res-headers"
+              aria-selected={safeActiveTab === 'res-headers'}
+              className={`har-tab ${safeActiveTab === 'res-headers' ? 'active' : ''}`}
               onClick={() => setActiveTab('res-headers')}
             >
               Response Headers ({selectedEntry.response.headers.length})
@@ -559,20 +639,23 @@ export default function HarTool() {
             <button
               type="button"
               role="tab"
-              aria-selected={activeTab === 'cookies'}
-              className={`har-tab ${activeTab === 'cookies' ? 'active' : ''}`}
+              id="har-tab-cookies"
+              aria-controls="har-tabpanel-cookies"
+              aria-selected={safeActiveTab === 'cookies'}
+              className={`har-tab ${safeActiveTab === 'cookies' ? 'active' : ''}`}
               onClick={() => setActiveTab('cookies')}
             >
               Cookies (
               {selectedEntry.request.cookies.length + selectedEntry.response.cookies.length})
             </button>
-            {(selectedEntry.request.queryString.length > 0 ||
-              selectedEntry.request.postData) && (
+            {hasParamsOrBody && (
               <button
                 type="button"
                 role="tab"
-                aria-selected={activeTab === 'params'}
-                className={`har-tab ${activeTab === 'params' ? 'active' : ''}`}
+                id="har-tab-params"
+                aria-controls="har-tabpanel-params"
+                aria-selected={safeActiveTab === 'params'}
+                className={`har-tab ${safeActiveTab === 'params' ? 'active' : ''}`}
                 onClick={() => setActiveTab('params')}
               >
                 Params &amp; Body
@@ -581,8 +664,13 @@ export default function HarTool() {
           </div>
 
           {/* Tab 1: Timing & Overview */}
-          {activeTab === 'overview' && (
-            <div className="har-tab-content" role="tabpanel">
+          {safeActiveTab === 'overview' && (
+            <div
+              className="har-tab-content"
+              role="tabpanel"
+              id="har-tabpanel-overview"
+              aria-labelledby="har-tab-overview"
+            >
               <div className="har-timing-legend">
                 <div className="har-legend-item">
                   <span className="har-legend-dot seg-blocked" /> Blocked (
@@ -648,10 +736,15 @@ export default function HarTool() {
           )}
 
           {/* Tab 2: Request Headers */}
-          {activeTab === 'req-headers' && (
-            <div className="har-tab-content" role="tabpanel">
-              <div className="har-header-actions" style={{ marginBottom: '0.5rem' }}>
-                <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>Request Headers</span>
+          {safeActiveTab === 'req-headers' && (
+            <div
+              className="har-tab-content"
+              role="tabpanel"
+              id="har-tabpanel-req-headers"
+              aria-labelledby="har-tab-req-headers"
+            >
+              <div className="har-tab-actions">
+                <span className="har-tab-title">Request Headers</span>
                 <button
                   type="button"
                   className="har-btn"
@@ -694,10 +787,15 @@ export default function HarTool() {
           )}
 
           {/* Tab 3: Response Headers */}
-          {activeTab === 'res-headers' && (
-            <div className="har-tab-content" role="tabpanel">
-              <div className="har-header-actions" style={{ marginBottom: '0.5rem' }}>
-                <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>Response Headers</span>
+          {safeActiveTab === 'res-headers' && (
+            <div
+              className="har-tab-content"
+              role="tabpanel"
+              id="har-tabpanel-res-headers"
+              aria-labelledby="har-tab-res-headers"
+            >
+              <div className="har-tab-actions">
+                <span className="har-tab-title">Response Headers</span>
                 <button
                   type="button"
                   className="har-btn"
@@ -740,13 +838,18 @@ export default function HarTool() {
           )}
 
           {/* Tab 4: Cookies */}
-          {activeTab === 'cookies' && (
-            <div className="har-tab-content" role="tabpanel">
-              <h4 style={{ fontSize: '0.875rem', margin: '0.25rem 0' }}>Request Cookies</h4>
+          {safeActiveTab === 'cookies' && (
+            <div
+              className="har-tab-content"
+              role="tabpanel"
+              id="har-tabpanel-cookies"
+              aria-labelledby="har-tab-cookies"
+            >
+              <h4 className="har-section-title">Request Cookies</h4>
               {selectedEntry.request.cookies.length === 0 ? (
                 <p className="har-empty-msg">No request cookies present.</p>
               ) : (
-                <div className="har-kv-table-wrapper" style={{ marginBottom: '1rem' }}>
+                <div className="har-kv-table-wrapper har-kv-wrapper-mb">
                   <table className="har-kv-table">
                     <thead>
                       <tr>
@@ -770,9 +873,7 @@ export default function HarTool() {
                 </div>
               )}
 
-              <h4 style={{ fontSize: '0.875rem', margin: '0.25rem 0' }}>
-                Response Cookies (Set-Cookie)
-              </h4>
+              <h4 className="har-section-title">Response Cookies (Set-Cookie)</h4>
               {selectedEntry.response.cookies.length === 0 ? (
                 <p className="har-empty-msg">No response cookies set.</p>
               ) : (
@@ -796,10 +897,7 @@ export default function HarTool() {
                           <td>{c.path || 'N/A'}</td>
                           <td>
                             {c.httpOnly && (
-                              <span
-                                className="har-badge har-badge-other"
-                                style={{ marginRight: '4px' }}
-                              >
+                              <span className="har-badge har-badge-other har-badge-mr">
                                 HttpOnly
                               </span>
                             )}
@@ -815,14 +913,17 @@ export default function HarTool() {
           )}
 
           {/* Tab 5: Params & Body */}
-          {activeTab === 'params' && (
-            <div className="har-tab-content" role="tabpanel">
+          {safeActiveTab === 'params' && (
+            <div
+              className="har-tab-content"
+              role="tabpanel"
+              id="har-tabpanel-params"
+              aria-labelledby="har-tab-params"
+            >
               {selectedEntry.request.queryString.length > 0 && (
                 <>
-                  <h4 style={{ fontSize: '0.875rem', margin: '0.25rem 0' }}>
-                    Query Parameters
-                  </h4>
-                  <div className="har-kv-table-wrapper" style={{ marginBottom: '1rem' }}>
+                  <h4 className="har-section-title">Query Parameters</h4>
+                  <div className="har-kv-table-wrapper har-kv-wrapper-mb">
                     <table className="har-kv-table">
                       <thead>
                         <tr>
@@ -845,17 +946,17 @@ export default function HarTool() {
 
               {selectedEntry.request.postData && (
                 <>
-                  <h4 style={{ fontSize: '0.875rem', margin: '0.25rem 0' }}>
+                  <h4 className="har-section-title">
                     POST Data ({selectedEntry.request.postData.mimeType || 'unknown type'})
                   </h4>
-                  <pre className="har-textarea" style={{ minHeight: '80px', margin: 0 }}>
+                  <pre className="har-textarea har-postbody-pre">
                     {selectedEntry.request.postData.text || '(No body text captured)'}
                   </pre>
                 </>
               )}
             </div>
           )}
-        </div>
+        </section>
       )}
     </div>
   );

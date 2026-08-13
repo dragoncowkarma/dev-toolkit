@@ -21,6 +21,12 @@ describe('har.utils.js', () => {
       expect(formatBytes(1073741824)).toBe('1 GB');
     });
 
+    it('handles boundary and extreme values correctly', () => {
+      expect(formatBytes(0.5)).toBe('0.5 B');
+      expect(formatBytes(1024 ** 5)).toBe('1024 TB');
+      expect(formatBytes(1024 ** 5 * 1023)).toBe('1047552 TB');
+    });
+
     it('handles negative or invalid values gracefully', () => {
       expect(formatBytes(-100)).toBe('0 B');
       expect(formatBytes(NaN)).toBe('0 B');
@@ -100,10 +106,10 @@ describe('har.utils.js', () => {
       expect(res.warnings).toHaveLength(0);
     });
 
-    it('flags non-numeric or negative values with warnings', () => {
+    it('flags non-numeric or small negative values with warnings', () => {
       const raw = {
         blocked: 'invalid',
-        dns: -5,
+        dns: -0.5,
         send: 2.0,
       };
       const res = normalizeTimings(raw, 3);
@@ -112,7 +118,7 @@ describe('har.utils.js', () => {
       expect(res.timings.send).toBe(2.0);
       expect(res.warnings.length).toBeGreaterThanOrEqual(2);
       expect(res.warnings[0]).toContain('Non-numeric timing value');
-      expect(res.warnings[1]).toContain('Negative timing value');
+      expect(res.warnings[1]).toContain("Negative timing value (-0.5) for phase 'dns'");
     });
   });
 
@@ -134,6 +140,55 @@ describe('har.utils.js', () => {
       const result = parseHar(harStr);
       expect(result.success).toBe(true);
       expect(result.entries).toHaveLength(5);
+    });
+
+    it('handles empty entries array in log.entries', () => {
+      const emptyHar = { log: { version: '1.2', entries: [] } };
+      const res = parseHar(emptyHar);
+      expect(res.success).toBe(true);
+      expect(res.entries).toEqual([]);
+      expect(res.summary.totalRequests).toBe(0);
+      expect(res.warnings).toEqual([]);
+    });
+
+    it('handles negative overall entry time with a warning', () => {
+      const badTimeHar = {
+        log: {
+          version: '1.2',
+          entries: [
+            {
+              startedDateTime: '2026-08-13T10:00:00.000Z',
+              time: -10,
+              request: { method: 'GET', url: 'https://example.com' },
+              response: { status: 200 },
+            },
+          ],
+        },
+      };
+      const res = parseHar(badTimeHar);
+      expect(res.success).toBe(true);
+      expect(res.entries).toHaveLength(1);
+      expect(res.warnings.some((w) => w.includes('Negative overall entry time (-10)'))).toBe(true);
+    });
+
+    it('counts 1xx status responses in calculateSummary and statusCounts', () => {
+      const infoHar = {
+        log: {
+          version: '1.2',
+          entries: [
+            {
+              startedDateTime: '2026-08-13T10:00:00.000Z',
+              time: 15,
+              request: { method: 'GET', url: 'https://example.com/ws' },
+              response: { status: 101, statusText: 'Switching Protocols' },
+            },
+          ],
+        },
+      };
+      const res = parseHar(infoHar);
+      expect(res.success).toBe(true);
+      expect(res.summary.statusCounts['1xx']).toBe(1);
+      expect(res.entries[0].statusClass).toBe('1xx');
     });
 
     it('returns structured error for empty input', () => {

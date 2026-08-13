@@ -5,5 +5,6 @@ export default {
     'Parse and inspect HTTP Archive (.har) network capture files with timing breakdown, ' +
     'header/cookie drill-down, and status summaries.',
   icon: '🌐',
-  category: 'Inspector',
+  category: 'Web',
 };
+
