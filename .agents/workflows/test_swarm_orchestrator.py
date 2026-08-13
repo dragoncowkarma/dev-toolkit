@@ -2,7 +2,10 @@
 
 import importlib.util
 import json
+import subprocess
+import sys
 import tempfile
+import time
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -1320,6 +1323,30 @@ class MainSyncRestartTests(unittest.TestCase):
             [swarm.sys.executable, "orchestrator.py", "--interval", "15"],
         )
 
+    def test_active_process_defers_restart_until_activity_drains(self):
+        tracker = SimpleNamespace(active_count=1, outstanding_count=1)
+        with (
+            patch.object(
+                swarm,
+                "orchestrator_fingerprint",
+                side_effect=["before", "after"],
+            ),
+            patch.object(swarm, "sync_main_branch", return_value=True),
+            patch.object(swarm, "tracker", tracker),
+            patch.object(swarm.os, "execv") as execv,
+        ):
+            swarm.sync_main_and_restart_if_updated()
+
+            execv.assert_not_called()
+            self.assertTrue(swarm._restart_pending)
+
+            tracker.active_count = 0
+            tracker.outstanding_count = 0
+            swarm.restart_if_pending()
+
+        execv.assert_called_once()
+        self.assertFalse(swarm._restart_pending)
+
     def test_dry_run_logs_restart_without_exec(self):
         with (
             patch.object(
@@ -1368,7 +1395,7 @@ class MainSyncRestartTests(unittest.TestCase):
     def test_once_path_syncs_without_restart_check(self):
         with (
             patch.object(swarm.sys, "argv", ["orchestrator.py", "--once"]),
-            patch.object(swarm, "reset_process_history"),
+            patch.object(swarm, "reset_process_history") as reset_history,
             patch.object(swarm, "cleanup_old_task_logs"),
             patch.object(swarm, "sync_main_branch") as sync_main_branch,
             patch.object(swarm, "sync_main_and_restart_if_updated") as restart_sync,
@@ -1380,9 +1407,114 @@ class MainSyncRestartTests(unittest.TestCase):
 
         sync_main_branch.assert_called_once_with(False)
         restart_sync.assert_not_called()
+        reset_history.assert_called_once_with(preserve_running=False)
+
+    def test_polling_daemon_preserves_running_history_on_startup(self):
+        with (
+            patch.object(swarm.sys, "argv", ["orchestrator.py", "--interval", "1"]),
+            patch.object(swarm, "reset_process_history") as reset_history,
+            patch.object(swarm, "cleanup_old_task_logs"),
+            patch.object(swarm, "run_loop"),
+        ):
+            swarm.main()
+
+            reset_history.assert_called_once_with(preserve_running=True)
+
+    def test_dry_run_does_not_preserve_running_history_on_startup(self):
+        with (
+            patch.object(swarm.sys, "argv", ["orchestrator.py", "--dry-run"]),
+            patch.object(swarm, "reset_process_history") as reset_history,
+            patch.object(swarm, "cleanup_old_task_logs"),
+            patch.object(swarm, "run_loop"),
+        ):
+            swarm.main()
+
+            reset_history.assert_called_once_with(preserve_running=False)
 
 
 class RuntimeLifecycleTests(unittest.TestCase):
+    def test_self_restart_supervises_live_pid_until_same_run_reconciles_it(self):
+        real_sleep = time.sleep
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            temp_path = Path(tmp_dir)
+            registry = temp_path / "registry.json"
+            marker = temp_path / "finish"
+            log_file = temp_path / "child.log"
+            log_file.write_text("", encoding="utf-8")
+            child_code = (
+                "import pathlib, sys, time\n"
+                "marker = pathlib.Path(sys.argv[1])\n"
+                "while not marker.exists():\n"
+                "    time.sleep(0.01)\n"
+            )
+            proc = subprocess.Popen(
+                [sys.executable, "-c", child_code, str(marker)],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+
+            try:
+                original_tracker = make_tracker([])
+                with patch.object(swarm, "PROCESS_REGISTRY_FILE", registry):
+                    original_tracker.register(
+                        proc=proc,
+                        role="worker",
+                        ai_name="codex",
+                        model="5.6 sol",
+                        reasoning="높음",
+                        task_ref="issue#212:initial",
+                        branch="worker/212-codex-exits-the-daemon",
+                        command="long-lived child",
+                        cwd=tmp_dir,
+                        log_file=str(log_file),
+                    )
+                    restarted_tracker = swarm.ProcessTracker()
+
+                    self.assertEqual(0, restarted_tracker.active_count)
+                    self.assertEqual(1, restarted_tracker.outstanding_count)
+                    allowed, reason = restarted_tracker.should_dispatch(
+                        "issue#212:initial",
+                        "worker",
+                    )
+                    self.assertFalse(allowed)
+                    self.assertEqual(swarm.DISPATCH_RUNNING, reason)
+
+                    with patch.object(swarm, "tracker", restarted_tracker):
+                        swarm.reset_process_history(preserve_running=True)
+
+                    def finish_during_sleep(_interval):
+                        marker.touch()
+                        real_sleep(0.2)
+
+                    with (
+                        patch.object(swarm, "tracker", restarted_tracker),
+                        patch.object(swarm, "sync_main_and_restart_if_updated"),
+                        patch.object(swarm, "process_polling_cycle") as cycle,
+                        patch.object(swarm.signal, "signal"),
+                        patch.object(
+                            swarm.time,
+                            "sleep",
+                            side_effect=finish_during_sleep,
+                        ) as sleep,
+                    ):
+                        swarm.run_loop(interval=1, dry_run=True)
+
+                    self.assertGreaterEqual(cycle.call_count, 2)
+                    self.assertGreaterEqual(sleep.call_count, 1)
+                    self.assertTrue(
+                        all(call.args == (1,) for call in sleep.call_args_list)
+                    )
+                    reconciled = restarted_tracker._history[0]
+                    self.assertEqual(swarm.ProcessStatus.COMPLETED, reconciled.status)
+                    self.assertEqual(0, reconciled.exit_code)
+                    self.assertEqual(0, restarted_tracker.outstanding_count)
+                    proc.returncode = reconciled.exit_code
+            finally:
+                if proc.returncode is None:
+                    proc.terminate()
+                    proc.wait(timeout=5)
+
     def test_reset_process_history_clears_registry_and_memory(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             registry = Path(tmp_dir) / "registry.json"
@@ -1489,16 +1621,23 @@ class RuntimeLifecycleTests(unittest.TestCase):
                 tracker._history = original_history
 
     def test_run_loop_exits_after_one_idle_cycle(self):
-        tracker = SimpleNamespace(active_count=0, poll_all=lambda: None)
+        tracker = SimpleNamespace(
+            active_count=0,
+            outstanding_count=0,
+            poll_all=lambda: None,
+        )
         with (
             patch.object(swarm, "tracker", tracker),
-            patch.object(swarm, "sync_main_branch") as sync_main_branch,
+            patch.object(
+                swarm,
+                "sync_main_and_restart_if_updated",
+            ) as sync_main_and_restart_if_updated,
             patch.object(swarm, "process_polling_cycle") as process_polling_cycle,
             patch.object(swarm.time, "sleep") as sleep,
         ):
             swarm.run_loop(interval=1, dry_run=True)
 
-        sync_main_branch.assert_called_once()
+        sync_main_and_restart_if_updated.assert_called_once_with(True)
         process_polling_cycle.assert_called_once_with(True, initial=True)
         sleep.assert_not_called()
 

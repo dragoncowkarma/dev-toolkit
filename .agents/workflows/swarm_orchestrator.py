@@ -341,6 +341,52 @@ class ProcessTracker:
                 record.role, record.task_ref, record.pid,
             )
 
+    def _poll_orphaned_processes(self) -> bool:
+        """Poll live child PIDs whose Popen handles were lost across exec()."""
+        changed = False
+        for tracked in self._history:
+            if tracked.status != ProcessStatus.RUNNING:
+                continue
+
+            try:
+                waited_pid, wait_status = os.waitpid(tracked.pid, os.WNOHANG)
+            except ChildProcessError:
+                if self.check_pid_alive(tracked.pid):
+                    continue
+                tracked.status = ProcessStatus.UNKNOWN
+                tracked.ended_at = (
+                    tracked.ended_at
+                    or datetime.now(timezone.utc).isoformat()
+                )
+                log.warning(
+                    "Orphaned %s record for %s [PID %d] marked UNKNOWN; "
+                    "event is retryable.",
+                    tracked.role,
+                    tracked.task_ref,
+                    tracked.pid,
+                )
+                changed = True
+                continue
+
+            if waited_pid == 0:
+                elapsed = self._elapsed_str(tracked.started_at)
+                log.info(
+                    "⏳ [PID %d] %s %s — running for %s after self-restart",
+                    tracked.pid,
+                    tracked.role.upper(),
+                    tracked.task_ref,
+                    elapsed,
+                )
+                continue
+
+            self._finalize_record(
+                tracked,
+                os.waitstatus_to_exitcode(wait_status),
+            )
+            changed = True
+
+        return changed
+
     def _save_registry(self):
         """Persist process registry to disk."""
         PROCESS_REGISTRY_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -385,6 +431,7 @@ class ProcessTracker:
     def poll_all(self):
         """Check status of all active processes via poll(). Non-blocking."""
         finished_pids = []
+        registry_changed = self._poll_orphaned_processes()
 
         for pid, (proc, tracked) in self._active.items():
             retcode = proc.poll()
@@ -397,44 +444,7 @@ class ProcessTracker:
                     pid, tracked.role.upper(), tracked.task_ref, elapsed,
                 )
             else:
-                # Process finished
-                tracked.exit_code = retcode
-                tracked.ended_at = datetime.now(timezone.utc).isoformat()
-                elapsed = self._elapsed_str(tracked.started_at)
-                output_tail = self._read_log_tail(tracked.log_file, 2000)
-                tracked.retry_after = self._provider_retry_after(
-                    output_tail,
-                    tracked.ended_at,
-                )
-
-                if tracked.retry_after:
-                    tracked.status = ProcessStatus.DEFERRED
-                    tracked.failure_reason = self._failure_summary(output_tail)
-                    tracked.defer_scope = self._defer_scope(output_tail)
-                    log.warning(
-                        "⏸️ [PID %d] %s %s — provider unavailable "
-                        "(exit %d, %s); retry after %s\n  output: %s",
-                        pid, tracked.role.upper(), tracked.task_ref,
-                        retcode, elapsed, tracked.retry_after,
-                        tracked.failure_reason,
-                    )
-                elif retcode == 0:
-                    tracked.status = ProcessStatus.COMPLETED
-                    log.info(
-                        "✅ [PID %d] %s %s — completed successfully (%s)",
-                        pid, tracked.role.upper(), tracked.task_ref, elapsed,
-                    )
-                else:
-                    tracked.failure_reason = self._failure_summary(output_tail)
-                    tracked.status = ProcessStatus.FAILED
-                    log.error(
-                        "❌ [PID %d] %s %s — failed (exit %d, %s)\n"
-                        "  output: %s",
-                        pid, tracked.role.upper(), tracked.task_ref,
-                        retcode, elapsed,
-                        tracked.failure_reason or "(empty)",
-                    )
-
+                self._finalize_record(tracked, retcode)
                 finished_pids.append(pid)
 
         # Move finished processes to history
@@ -442,8 +452,57 @@ class ProcessTracker:
             _, tracked = self._active.pop(pid)
             self._history.append(tracked)
 
-        if finished_pids:
+        if finished_pids or registry_changed:
             self._save_registry()
+
+    def _finalize_record(self, tracked: TrackedProcess, retcode: int):
+        """Record a process outcome from either Popen.poll() or waitpid()."""
+        tracked.exit_code = retcode
+        tracked.ended_at = datetime.now(timezone.utc).isoformat()
+        elapsed = self._elapsed_str(tracked.started_at)
+        output_tail = self._read_log_tail(tracked.log_file, 2000)
+        tracked.retry_after = self._provider_retry_after(
+            output_tail,
+            tracked.ended_at,
+        )
+
+        if tracked.retry_after:
+            tracked.status = ProcessStatus.DEFERRED
+            tracked.failure_reason = self._failure_summary(output_tail)
+            tracked.defer_scope = self._defer_scope(output_tail)
+            log.warning(
+                "⏸️ [PID %d] %s %s — provider unavailable "
+                "(exit %d, %s); retry after %s\n  output: %s",
+                tracked.pid,
+                tracked.role.upper(),
+                tracked.task_ref,
+                retcode,
+                elapsed,
+                tracked.retry_after,
+                tracked.failure_reason,
+            )
+        elif retcode == 0:
+            tracked.status = ProcessStatus.COMPLETED
+            log.info(
+                "✅ [PID %d] %s %s — completed successfully (%s)",
+                tracked.pid,
+                tracked.role.upper(),
+                tracked.task_ref,
+                elapsed,
+            )
+        else:
+            tracked.failure_reason = self._failure_summary(output_tail)
+            tracked.status = ProcessStatus.FAILED
+            log.error(
+                "❌ [PID %d] %s %s — failed (exit %d, %s)\n"
+                "  output: %s",
+                tracked.pid,
+                tracked.role.upper(),
+                tracked.task_ref,
+                retcode,
+                elapsed,
+                tracked.failure_reason or "(empty)",
+            )
 
     def check_pid_alive(self, pid: int) -> bool:
         """Check if a PID is still alive via OS signal 0."""
@@ -543,6 +602,15 @@ class ProcessTracker:
     @property
     def active_count(self) -> int:
         return len(self._active)
+
+    @property
+    def outstanding_count(self) -> int:
+        """Count attached processes and live records inherited across exec()."""
+        inherited = sum(
+            record.status == ProcessStatus.RUNNING
+            for record in self._history
+        )
+        return self.active_count + inherited
 
     @property
     def active_processes(self) -> list[TrackedProcess]:
@@ -736,10 +804,11 @@ class ProcessTracker:
 
 # Global tracker instance
 tracker = ProcessTracker()
+_restart_pending = False
 
 
-def reset_process_history():
-    """Start a fresh run, but keep AI provider cooldowns that have not expired.
+def reset_process_history(preserve_running: bool = False):
+    """Start a fresh run while retaining state that must cross this boundary.
 
     `run_loop` exits after a single idle cycle and `--once` is meant to be
     re-invoked by an external scheduler, so the orchestrator process restarts
@@ -748,23 +817,33 @@ def reset_process_history():
     re-dispatch a prompt to an AI we already know will reject it — silently
     reintroducing the failure the provider-cooldown check exists to prevent.
 
-    Only unexpired, provider-scoped DEFERRED records survive (these were
-    already reclassified from the persisted registry by
-    `_reclassify_deferred_failures` when `tracker` was constructed). Every
-    other kind of stale state — orphaned RUNNING records, exhausted crash
-    attempts, completed runs, expired or event-scope defers — is cleared
-    exactly as before.
+    Unexpired provider-scoped DEFERRED records always survive. A real polling
+    daemon also retains live RUNNING records so a replacement process can
+    harvest their child PIDs. Every other kind of stale state is cleared as
+    before.
     """
     tracker._active.clear()
     surviving = [
-        record for record in tracker._history
+        record
+        for record in tracker._history
         if tracker._is_active_provider_cooldown(record)
+        or (preserve_running and record.status == ProcessStatus.RUNNING)
     ]
     for record in surviving:
-        log.info(
-            "⏸️ Preserving '%s' provider cooldown across restart (retry after %s).",
-            record.ai_name, record.retry_after,
-        )
+        if record.status == ProcessStatus.RUNNING:
+            log.info(
+                "♻️ Preserving %s %s [PID %d] across self-restart.",
+                record.role,
+                record.task_ref,
+                record.pid,
+            )
+        else:
+            log.info(
+                "⏸️ Preserving '%s' provider cooldown across restart "
+                "(retry after %s).",
+                record.ai_name,
+                record.retry_after,
+            )
     tracker._history = surviving
     if surviving:
         tracker._save_registry()
@@ -1238,8 +1317,36 @@ def orchestrator_fingerprint() -> Optional[str]:
     return digest.hexdigest()
 
 
+def restart_if_pending(dry_run: bool = False):
+    """Apply a detected self-update once all tracked work has drained."""
+    global _restart_pending
+
+    if not _restart_pending:
+        return
+    if dry_run:
+        log.info("[DRY RUN] Would restart orchestrator")
+        _restart_pending = False
+        return
+    if tracker.outstanding_count > 0:
+        log.info(
+            "⏳ Deferring orchestrator restart until %d active task(s) finish.",
+            tracker.outstanding_count,
+        )
+        return
+
+    log.info("♻️ swarm_orchestrator.py has changed — restarting ...")
+    _restart_pending = False
+    try:
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+    except OSError:
+        _restart_pending = True
+        raise
+
+
 def sync_main_and_restart_if_updated(dry_run: bool = False):
     """Sync main and replace this process if that sync updated this file."""
+    global _restart_pending
+
     fingerprint_before = orchestrator_fingerprint()
     fast_forwarded = sync_main_branch(dry_run)
     if not fast_forwarded or fingerprint_before is None:
@@ -1249,11 +1356,8 @@ def sync_main_and_restart_if_updated(dry_run: bool = False):
     if fingerprint_after is None or fingerprint_after == fingerprint_before:
         return
 
-    log.info("♻️ swarm_orchestrator.py has changed — restarting ...")
-    if dry_run:
-        log.info("[DRY RUN] Would restart orchestrator")
-        return
-    os.execv(sys.executable, [sys.executable] + sys.argv)
+    _restart_pending = True
+    restart_if_pending(dry_run)
 
 
 # ---------------------------------------------------------------------------
@@ -2336,6 +2440,9 @@ def run_loop(interval: int, dry_run: bool = False):
             # 1. Check status of all running AI processes
             tracker.poll_all()
 
+            # Apply a previously deferred update before dispatching more work.
+            restart_if_pending(dry_run)
+
             # 2. Keep local main current so new worktrees branch from a fresh
             # base. Cheap, but still throttled — no need to hit the network
             # every single interval.
@@ -2350,7 +2457,7 @@ def run_loop(interval: int, dry_run: bool = False):
             process_polling_cycle(dry_run, initial=initial)
             initial = False
 
-            if tracker.active_count == 0:
+            if tracker.outstanding_count == 0:
                 idle_cycles += 1
                 if idle_cycles >= IDLE_EXIT_CYCLES:
                     log.info(
@@ -2402,7 +2509,8 @@ def main():
         print(tracker.get_summary())
         return
 
-    reset_process_history()
+    preserve_running = not args.once and not args.dry_run
+    reset_process_history(preserve_running=preserve_running)
     cleanup_old_task_logs()
 
     if args.once:
