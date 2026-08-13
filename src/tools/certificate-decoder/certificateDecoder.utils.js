@@ -660,6 +660,14 @@ function parseAlgorithmIdentifier(node, label) {
   if (!node.children || node.children.length === 0) {
     throw new Error(`${label} is missing its algorithm OID.`);
   }
+  // RFC 5280 §4.1.1.2 defines AlgorithmIdentifier as an OID followed by at most
+  // one optional `parameters` value. Surplus fields make the structure something
+  // other than an AlgorithmIdentifier even when its OID still reads back, so
+  // they are rejected here rather than silently ignored: otherwise two equally
+  // malformed identifiers would pass the DER equality check below.
+  if (node.children.length > 2) {
+    throw new Error(`${label} has unexpected fields after its parameters.`);
+  }
   const oid = readOid(node.children[0], `${label} OID`);
   return {
     oid,
