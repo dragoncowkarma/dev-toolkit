@@ -460,6 +460,28 @@ class LifecycleSignalTests(unittest.TestCase):
         self.assertEqual("revise", action)
         self.assertEqual("negated-approval-1", comment["id"])
 
+    def test_negative_lgtm_feedback_returns_revise(self):
+        """Review comments with negative LGTM wording must return revise action."""
+        cases = [
+            "Not LGTM: regression remains.",
+            "not LGTM",
+            "No LGTM",
+            "cannot LGTM",
+            "not LGTM at all",
+        ]
+        for phrase in cases:
+            with self.subTest(phrase=phrase):
+                comments = [{
+                    "id": "c-neg-lgtm",
+                    "body": (
+                        "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]\n"
+                        + phrase
+                    ),
+                }]
+                action, comment, _ = swarm.determine_pr_action(comments)
+                self.assertEqual("revise", action)
+                self.assertEqual("c-neg-lgtm", comment["id"])
+
     def test_maintainer_block_is_a_reviewer_signal(self):
         comments = [{
             "id": "maintainer-block-1",
@@ -1056,6 +1078,129 @@ class PollingLifecycleTests(unittest.TestCase):
             swarm.process_prs(open_prs=[self.pr])
 
         dispatch_revision.assert_not_called()
+
+    def test_issue_backed_pr_approval_without_maintainer_tag_blocks_dispatch(self):
+        """Issue-backed PR approved without Maintainer tag must not auto-select Maintainer and must not dispatch."""
+        issue_backed_pr = {
+            "number": 20,
+            "title": "[PR] 12 - Add feature",
+            "body": "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]",
+            "headRefName": "worker/12-codex-feat",
+            "headRefOid": "sha123",
+        }
+        approval_comment = {
+            "id": "c-approved-no-maintainer-tag",
+            "body": (
+                "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]\n"
+                "[Approved] Looks great to me, LGTM!"
+            ),
+        }
+        tracker = FakeTracker()
+        with (
+            patch.object(swarm, "tracker", tracker),
+            patch.object(swarm, "fetch_pr_comments", return_value=[approval_comment]),
+            patch.object(swarm, "fetch_issue", return_value=self.issue),
+            patch.object(swarm, "dispatch_maintainer") as dispatch_maintainer,
+        ):
+            swarm.process_prs(open_prs=[issue_backed_pr])
+
+        dispatch_maintainer.assert_not_called()
+
+    def test_issueless_pr_approval_without_maintainer_tag_dispatches_auto_selected_maintainer(self):
+        """Issueless PR approved without Maintainer tag auto-selects Maintainer and dispatches."""
+        issueless_pr = {
+            "number": 21,
+            "title": "[PR] standalone feature",
+            "body": (
+                "[Worker: codex | Model: 5.6 terra | Reasoning: 높음]\n"
+                "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]"
+            ),
+            "headRefName": "feat-branch",
+            "headRefOid": "sha999",
+        }
+        approval_comment = {
+            "id": "c-approved-issueless",
+            "body": (
+                "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]\n"
+                "[Approved] LGTM!"
+            ),
+        }
+        tracker = FakeTracker()
+        with (
+            patch.object(swarm, "tracker", tracker),
+            patch.object(swarm, "fetch_pr_comments", return_value=[approval_comment]),
+            patch.object(swarm, "fetch_issue") as fetch_issue,
+            patch.object(swarm, "dispatch_maintainer") as dispatch_maintainer,
+        ):
+            swarm.process_prs(open_prs=[issueless_pr])
+
+        fetch_issue.assert_not_called()
+        dispatch_maintainer.assert_called_once()
+        maintainer_arg = dispatch_maintainer.call_args[1].get("maintainer") or dispatch_maintainer.call_args[0][2]
+        self.assertEqual("claude", maintainer_arg.ai)
+
+    def test_issue_backed_pr_negative_lgtm_dispatches_worker_revision(self):
+        """Issue-backed PR with 'Not LGTM: regression remains.' comment must dispatch Worker revision."""
+        issue_backed_pr = {
+            "number": 22,
+            "title": "[PR] 12 - Add feature",
+            "body": (
+                "[Worker: codex | Model: 5.6 terra | Reasoning: 높음]\n"
+                "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]"
+            ),
+            "headRefName": "worker/12-codex-feat",
+            "headRefOid": "sha123",
+        }
+        negative_comment = {
+            "id": "c-not-lgtm-issue-backed",
+            "body": (
+                "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]\n"
+                "Not LGTM: regression remains."
+            ),
+        }
+        tracker = FakeTracker()
+        with (
+            patch.object(swarm, "tracker", tracker),
+            patch.object(swarm, "fetch_pr_comments", return_value=[negative_comment]),
+            patch.object(swarm, "fetch_issue", return_value=self.issue),
+            patch.object(swarm, "dispatch_maintainer") as dispatch_maintainer,
+            patch.object(swarm, "dispatch_worker_revision") as dispatch_worker_revision,
+        ):
+            swarm.process_prs(open_prs=[issue_backed_pr])
+
+        dispatch_maintainer.assert_not_called()
+        dispatch_worker_revision.assert_called_once()
+
+    def test_issueless_pr_negative_lgtm_dispatches_worker_revision(self):
+        """Issueless PR with 'Not LGTM: regression remains.' comment must dispatch Worker revision, not Maintainer."""
+        issueless_pr = {
+            "number": 23,
+            "title": "[PR] standalone feature",
+            "body": (
+                "[Worker: codex | Model: 5.6 terra | Reasoning: 높음]\n"
+                "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]"
+            ),
+            "headRefName": "feat-branch",
+            "headRefOid": "sha999",
+        }
+        negative_comment = {
+            "id": "c-not-lgtm-issueless",
+            "body": (
+                "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]\n"
+                "Not LGTM: regression remains."
+            ),
+        }
+        tracker = FakeTracker()
+        with (
+            patch.object(swarm, "tracker", tracker),
+            patch.object(swarm, "fetch_pr_comments", return_value=[negative_comment]),
+            patch.object(swarm, "dispatch_maintainer") as dispatch_maintainer,
+            patch.object(swarm, "dispatch_worker_revision") as dispatch_worker_revision,
+        ):
+            swarm.process_prs(open_prs=[issueless_pr])
+
+        dispatch_maintainer.assert_not_called()
+        dispatch_worker_revision.assert_called_once()
 
 
 class CleanupTests(unittest.TestCase):

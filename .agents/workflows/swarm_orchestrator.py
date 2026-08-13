@@ -122,7 +122,15 @@ REVIEWER_APPROVED_PATTERN = re.compile(
     re.IGNORECASE,
 )
 REVIEWER_REJECTED_PATTERN = re.compile(
-    r"\bnot\s+approved\b|\bunapproved\b|\bdisapproved\b|\bchanges requested\b",
+    r"\bnot\s+(?:\w+\s+){0,3}(?:approve[ds]?|lgtm)\b"
+    r"|\bno\s+(?:\w+\s+){0,2}lgtm\b|\bnon-lgtm\b"
+    r"|\bnever\s+(?:\w+\s+){0,3}(?:approve[ds]?|lgtm)\b"
+    r"|\bcan(?:not|'t)\s+(?:\w+\s+){0,3}(?:approve[ds]?|lgtm)\b"
+    r"|\bwon'?t\s+(?:\w+\s+){0,3}(?:approve[ds]?|lgtm)\b"
+    r"|\bdoes(?:n't|\s+not)\s+(?:\w+\s+){0,3}(?:approve[ds]?|lgtm)\b"
+    r"|\bdid(?:n't|\s+not)\s+(?:\w+\s+){0,3}(?:approve[ds]?|lgtm)\b"
+    r"|\bis(?:n't|\s+not)\s+(?:\w+\s+){0,3}(?:approve[ds]?|lgtm)\b"
+    r"|\bunapproved\b|\bdisapproved\b|\bchanges?\s+requested\b",
     re.IGNORECASE,
 )
 
@@ -951,7 +959,7 @@ def determine_pr_action(comments: list[dict]) -> tuple[str, Optional[dict], int]
             latest_action = "review_after_maintainer_block"
             latest_comment = comment
             latest_index = index
-        elif reviewer and (maintainer or (REVIEWER_APPROVED_PATTERN.search(body) and not REVIEWER_REJECTED_PATTERN.search(body))):
+        elif reviewer and not REVIEWER_REJECTED_PATTERN.search(body) and (maintainer or REVIEWER_APPROVED_PATTERN.search(body)):
             latest_action = "maintain"
             latest_comment = comment
             latest_index = index
@@ -2026,7 +2034,7 @@ def process_prs(
                     reviewer.ai,
                 )
                 continue
-            if not maintainer:
+            if not maintainer and issue_number is None:
                 maintainer = select_maintainer_for_issueless_pr(reviewer, worker)
             if not maintainer:
                 log_blocker(
