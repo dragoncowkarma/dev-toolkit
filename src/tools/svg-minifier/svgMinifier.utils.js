@@ -78,17 +78,42 @@ function findDoctypeEnd(markup, start) {
  * @returns {string} The tag with editor-only attributes removed.
  */
 function stripEditorAttributes(tag, isRoot) {
-  const attributeValue = "(?:\\s*=\\s*(?:\"[^\"]*\"|'[^']*'|[^\\s\"'=<>\\x60]+))?";
-  const editorAttribute = new RegExp(
-    `\\s+(?:inkscape|sodipodi):[\\w.-]+${attributeValue}`,
-    'gi',
-  );
-  const editorNamespace = new RegExp(
-    `\\s+xmlns:(?:inkscape|sodipodi)${attributeValue}`,
-    'gi',
-  );
-  const withoutAttributes = tag.replace(editorAttribute, '');
-  return isRoot ? withoutAttributes.replace(editorNamespace, '') : withoutAttributes;
+  const nameEnd = tag.search(/[\s/>]/);
+  let output = tag.slice(0, nameEnd);
+  let index = nameEnd;
+
+  while (index < tag.length) {
+    const attributeStart = index;
+    while (/\s/.test(tag[index])) index += 1;
+    if (tag[index] === '/' || tag[index] === '>' || index >= tag.length) {
+      output += tag.slice(attributeStart);
+      break;
+    }
+
+    const nameStart = index;
+    while (index < tag.length && !/[\s=/>]/.test(tag[index])) index += 1;
+    const attributeName = tag.slice(nameStart, index);
+    while (/\s/.test(tag[index])) index += 1;
+
+    if (tag[index] === '=') {
+      index += 1;
+      while (/\s/.test(tag[index])) index += 1;
+      const quote = tag[index];
+      if (quote === '"' || quote === "'") {
+        index += 1;
+        while (index < tag.length && tag[index] !== quote) index += 1;
+        index += 1;
+      } else {
+        while (index < tag.length && !/[\s/>]/.test(tag[index])) index += 1;
+      }
+    }
+
+    const editorAttribute = /^(?:inkscape|sodipodi):/i.test(attributeName);
+    const editorNamespace = isRoot && /^xmlns:(?:inkscape|sodipodi)$/i.test(attributeName);
+    if (!editorAttribute && !editorNamespace) output += tag.slice(attributeStart, index);
+  }
+
+  return output;
 }
 
 /**
@@ -147,11 +172,18 @@ export function minifySvg(markup) {
     while (cursor < original.length) {
       const tagStart = original.indexOf('<', cursor);
       if (tagStart === -1) {
+        if (rootClosed && original.slice(cursor).trim()) {
+          return fail('SVG markup must not contain text outside its root element.');
+        }
         parts.push(original.slice(cursor));
         break;
       }
 
-      parts.push(original.slice(cursor, tagStart));
+      const textBeforeTag = original.slice(cursor, tagStart);
+      if ((!rootFound || rootClosed) && textBeforeTag.trim()) {
+        return fail('SVG markup must not contain text outside its root element.');
+      }
+      parts.push(textBeforeTag);
 
       if (original.startsWith('<!--', tagStart)) {
         const commentEnd = original.indexOf('-->', tagStart + 4);
@@ -194,7 +226,7 @@ export function minifySvg(markup) {
           return fail(`SVG markup has an unbalanced </${closingName}> tag.`);
         }
         parts.push(tag);
-        if (closingName === 'svg') rootClosed = true;
+        if (closingName === 'svg' && stack.length === 0) rootClosed = true;
         continue;
       }
 
