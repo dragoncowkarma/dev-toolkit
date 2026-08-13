@@ -1,0 +1,110 @@
+.css-specificity {
+  display: grid;
+  gap: 1rem;
+  max-width: 1100px;
+}
+
+.css-specificity__intro h2,
+.css-specificity__results-heading h3,
+.css-specificity__compare h3,
+.css-specificity__card h4 {
+  color: var(--color-text);
+}
+
+.css-specificity__eyebrow {
+  color: var(--color-accent);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.css-specificity__intro p:not(.css-specificity__eyebrow),
+.css-specificity__help,
+.css-specificity__tuple,
+.css-specificity__empty {
+  color: var(--color-text-muted);
+}
+
+.css-specificity__actions,
+.css-specificity__results-heading,
+.css-specificity__card-heading,
+.css-specificity__score,
+.css-specificity__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.css-specificity button,
+.css-specificity select,
+.css-specificity textarea,
+.css-specificity input {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.css-specificity button,
+.css-specificity select,
+.css-specificity input {
+  padding: 0.55rem 0.75rem;
+}
+
+.css-specificity button { cursor: pointer; }
+.css-specificity button:hover { background: var(--color-surface-hover); }
+.css-specificity button:disabled { cursor: not-allowed; opacity: 0.6; }
+
+.css-specificity textarea {
+  min-height: 140px;
+  padding: 0.75rem;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.css-specificity__results-heading {
+  align-items: center;
+  justify-content: space-between;
+}
+
+.css-specificity__results-heading label { display: grid; gap: 0.25rem; font-size: 0.85rem; }
+.css-specificity__cards { display: grid; gap: 0.8rem; }
+
+.css-specificity__card,
+.css-specificity__compare {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  padding: 1rem;
+}
+
+.css-specificity__card--error { border-color: var(--color-error-border); }
+.css-specificity__error { color: var(--color-error-light); }
+.css-specificity__card-heading { align-items: center; }
+.css-specificity__card-heading code { overflow-wrap: anywhere; }
+.css-specificity__important { color: var(--color-warning); }
+
+.css-specificity__score { margin-top: 0.9rem; }
+.css-specificity__score span {
+  display: grid;
+  min-width: 72px;
+  padding: 0.45rem;
+  border-radius: 8px;
+  background: var(--color-code-bg);
+  text-align: center;
+}
+.css-specificity__score b { color: var(--color-primary-light); font-size: 1.2rem; }
+.css-specificity__score small { color: var(--color-text-muted); font-size: 0.68rem; }
+.css-specificity__chips { margin-top: 0.8rem; }
+.css-specificity__chip { border-radius: 999px; background: var(--color-surface-hover); padding: 0.25rem 0.55rem; font-size: 0.78rem; }
+.css-specificity__chip em { color: var(--color-success); font-style: normal; }
+
+.css-specificity__compare { display: grid; gap: 0.55rem; }
+.css-specificity__comparison-result { color: var(--color-success); font-weight: 700; }
+.css-specificity__status { min-height: 1.5rem; color: var(--color-success); }
+
+@media (min-width: 700px) {
+  .css-specificity__compare { grid-template-columns: 1fr 1fr; align-items: end; }
+  .css-specificity__compare > div, .css-specificity__comparison-result, .css-specificity__error { grid-column: 1 / -1; }
+}
