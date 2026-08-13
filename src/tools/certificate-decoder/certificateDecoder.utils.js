@@ -294,6 +294,9 @@ function parseAsn1Nodes(bytes, start, limit, depth) {
       constructed: header.constructed,
       start: cursor,
       end: header.contentEnd,
+      // The complete TLV encoding, kept so structures RFC 5280 requires to be
+      // identical can be compared as DER rather than field by field.
+      raw: bytes.subarray(cursor, header.contentEnd),
       content: bytes.subarray(header.contentStart, header.contentEnd),
       children: null,
     };
@@ -662,10 +665,17 @@ function parseAlgorithmIdentifier(node, label) {
     oid,
     name: SIGNATURE_ALGORITHMS[oid] ?? PUBLIC_KEY_ALGORITHMS[oid] ?? null,
     parameters: node.children[1] ?? null,
+    der: node.raw,
   };
 }
 
-/** Drops the raw `parameters` node so the decoded result stays serialisable. */
+/** Compares two DER encodings byte for byte. */
+function derEquals(left, right) {
+  if (!left || !right || left.length !== right.length) return false;
+  return left.every((byte, index) => byte === right[index]);
+}
+
+/** Drops the raw `parameters` and `der` values so the result stays serialisable. */
 function toAlgorithmSummary(algorithm) {
   return { oid: algorithm.oid, name: algorithm.name };
 }
@@ -858,13 +868,17 @@ export function parseCertificate(der) {
   );
   cursor += 1;
   // The signed body repeats the signature AlgorithmIdentifier, and RFC 5280
-  // §4.1.1.2 requires it to equal the outer one. Both are checked so a tampered
-  // body cannot decode; the outer copy is the one conventionally displayed.
+  // §4.1.1.2 requires it to be the *same* identifier as the outer one. The two
+  // complete DER encodings are compared, not just their OIDs, so a body that
+  // keeps the OID while rewriting its `parameters` is rejected too. DER gives
+  // every AlgorithmIdentifier exactly one encoding, so byte equality is the
+  // strictest reading of "the same" and needs no per-algorithm special cases.
+  // The outer copy is the one conventionally displayed.
   const tbsSignatureAlgorithm = parseAlgorithmIdentifier(
     fields[cursor],
     'The signed certificate body signature algorithm',
   );
-  if (tbsSignatureAlgorithm.oid !== signatureAlgorithm.oid) {
+  if (!derEquals(tbsSignatureAlgorithm.der, signatureAlgorithm.der)) {
     throw new Error(
       'The certificate body signature algorithm does not match the outer signature algorithm.',
     );
