@@ -1,6 +1,10 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it } from 'vitest';
 import EmailHeaderTool from './EmailHeaderTool.jsx';
+
+afterEach(() => {
+  cleanup();
+});
 
 describe('EmailHeaderTool', () => {
   it('shows an alert and no report for malformed input', () => {
