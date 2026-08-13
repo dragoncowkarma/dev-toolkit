@@ -11,6 +11,13 @@ const EXPORTED_SVG = `<?xml version="1.0" encoding="UTF-8"?>
   <circle cx="12" cy="12" r="8" />
 </svg>`;
 
+const MULTILINE_EDITOR_SVG = `<svg xmlns="http://www.w3.org/2000/svg"
+  xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+  viewBox="0 0 24 24" inkscape:version="1.3"
+  sodipodi:docname="icon.svg" width="24"   >
+  <path d="M 12,2 L 22,20 H 2 Z" />
+</svg>`;
+
 function decodeBase64(value) {
   const encoded = value.replace('data:image/svg+xml;base64,', '');
   const bytes = Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0));
@@ -19,7 +26,7 @@ function decodeBase64(value) {
 
 function decodeCss(value) {
   const encoded = value.match(/^background-image: url\("data:image\/svg\+xml,(.*)"\);$/)?.[1] || '';
-  return decodeURIComponent(encoded).replace(/'/g, '"');
+  return decodeURIComponent(encoded).replaceAll("'", '"');
 }
 
 describe('minifySvg', () => {
@@ -29,8 +36,8 @@ describe('minifySvg', () => {
     expect(result.error).toBeUndefined();
     expect(result.minified).toBe(
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">' +
-        '<path d="M 1 2 L 3 4" points="1, 2 3, 4" />' +
-        '<circle cx="12" cy="12" r="8" /></svg>',
+        '<path d="M 1 2 L 3 4" points="1, 2 3, 4"/>' +
+        '<circle cx="12" cy="12" r="8"/></svg>',
     );
     expect(result.minified).not.toContain('<?xml');
     expect(result.minified).not.toContain('<!DOCTYPE');
@@ -58,6 +65,19 @@ describe('minifySvg', () => {
     const result = minifySvg(input);
 
     expect(result.minified).toBe(input);
+  });
+
+  it('normalizes multiline editor attributes for exact data URI round-trips', () => {
+    const result = minifySvg(MULTILINE_EDITOR_SVG);
+    const expected =
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24">' +
+      '<path d="M 12,2 L 22,20 H 2 Z"/></svg>';
+
+    expect(result.error).toBeUndefined();
+    expect(result.minified).toBe(expected);
+    expect(result.minifiedBytes).toBeLessThan(result.originalBytes);
+    expect(decodeCss(toCssDataUri(result.minified))).toBe(result.minified);
+    expect(decodeBase64(toBase64DataUri(result.minified))).toBe(result.minified);
   });
 
   it('returns descriptive, non-throwing errors for missing or unbalanced SVG roots', () => {
