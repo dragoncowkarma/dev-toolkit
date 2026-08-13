@@ -41,7 +41,7 @@ describe('parseTreeInput', () => {
   });
 
   it('rejects skipped levels, mixed whitespace, and paths inside indented lists', () => {
-    expect(() => parseTreeInput('src/\n    Button.jsx')).toThrow('Missing parent');
+    expect(() => parseTreeInput('src/\n  components/\n      Button.jsx')).toThrow('Missing parent');
     expect(() => parseTreeInput('src/\n \tButton.jsx')).toThrow('Do not mix');
     expect(() => parseTreeInput('src/\n  nested/Button.jsx')).toThrow('one name');
   });
@@ -72,12 +72,12 @@ describe('renderTree', () => {
     })).toContain('client\n|-- src\n|   |-- components');
   });
 
-  it('uses complete custom symbols and can preserve insertion order', () => {
+  it('uses the configured custom symbols for each branch position', () => {
     expect(renderTree(parseTreeInput('z.js\na.js'), {
       mode: 'custom',
       foldersFirst: false,
       customSymbols: { branch: '+ ', lastBranch: '- ', vertical: '> ', space: '  ' },
-    })).toBe('- a.js\n- z.js');
+    })).toBe('+ a.js\n- z.js');
   });
 
   it('returns symbols and rejects invalid symbol modes', () => {
