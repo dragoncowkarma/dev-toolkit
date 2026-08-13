@@ -528,8 +528,9 @@ function getInlineWhiteSpace(node) {
 /**
  * Inline `display` values that pull an element into the surrounding inline text flow even though
  * its tag name is normally block-level (see {@link BLOCK_ELEMENTS}). `inline`, `inline-block`,
- * `inline-flex`, and `inline-grid` all generate an inline-level box that participates in inline
- * layout the same way a `span` does, so whitespace touching the element is a real word boundary.
+ * `inline-flex`, `inline-grid`, and `inline-table` all generate an inline-level box that
+ * participates in inline layout the same way a `span` does, so whitespace touching the element is
+ * a real word boundary.
  *
  * `contents` is different: the element itself generates no box at all, so its *children* replace
  * it directly in the parent's inline flow, and whether whitespace next to it is a word boundary
@@ -541,7 +542,7 @@ function getInlineWhiteSpace(node) {
  * dropped when it was actually needed to keep two words apart.
  */
 const INLINE_FLOW_DISPLAY_VALUES = new Set([
-  'inline', 'inline-block', 'inline-flex', 'inline-grid', 'contents',
+  'inline', 'inline-block', 'inline-flex', 'inline-grid', 'inline-table', 'contents',
 ]);
 
 /**

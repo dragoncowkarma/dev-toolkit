@@ -413,12 +413,22 @@ describe('minifyHtml - inline display CSS', () => {
     expect(result.result).toBe(input);
   });
 
-  it('recognizes inline-block, inline-flex, and inline-grid as inline-flow displays', () => {
-    for (const display of ['inline-block', 'inline-flex', 'inline-grid']) {
+  it('recognizes inline-block/flex/grid/table as inline-flow displays', () => {
+    for (const display of ['inline-block', 'inline-flex', 'inline-grid', 'inline-table']) {
       const input = `<section><div style="display: ${display}">Hello</div> `
         + `<div style="display: ${display}">world</div></section>`;
       expect(minifyHtml(input).result).toBe(input);
     }
+  });
+
+  it('keeps a word-boundary space between two block elements set to display: inline-table', () => {
+    // Regression test: `inline-table` generates an inline-level box just like `inline-block`, so
+    // the space between two sibling divs promoted this way is a real rendered word boundary.
+    const input = '<section><div style="display: inline-table">Hello</div> '
+      + '<div style="display: inline-table">world</div></section>';
+    const result = minifyHtml(input);
+    expect(result.ok).toBe(true);
+    expect(result.result).toBe(input);
   });
 
   it('conservatively keeps a word-boundary space around display: contents', () => {
