@@ -1,0 +1,359 @@
+.cookie-inspector {
+  margin: 0 auto;
+  max-width: 1120px;
+  min-width: 0;
+  overflow-x: hidden;
+  padding: 0 1rem 2rem;
+  width: 100%;
+}
+
+.cookie-inspector__intro {
+  margin-top: 1rem;
+}
+
+.cookie-inspector__intro p:last-child,
+.cookie-inspector__copy-status,
+.cookie-inspector__summary {
+  color: var(--color-text-muted);
+}
+
+.cookie-inspector__eyebrow,
+.cookie-inspector label,
+.cookie-inspector legend {
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.cookie-inspector__controls {
+  align-items: end;
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: minmax(0, 1fr);
+  margin-top: 1.25rem;
+}
+
+.cookie-inspector__controls label:first-child,
+.cookie-inspector__fields label {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.cookie-inspector__check,
+.cookie-inspector__flags label {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.cookie-inspector__input-label {
+  display: block;
+  margin-top: 1rem;
+}
+
+.cookie-inspector input,
+.cookie-inspector select,
+.cookie-inspector textarea {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.cookie-inspector input,
+.cookie-inspector select {
+  min-height: 42px;
+  padding: 0.55rem 0.7rem;
+}
+
+.cookie-inspector input:focus,
+.cookie-inspector select:focus,
+.cookie-inspector textarea:focus {
+  border-color: var(--color-primary);
+  outline: 2px solid color-mix(in srgb, var(--color-primary) 30%, transparent);
+  outline-offset: 1px;
+}
+
+.cookie-inspector__textarea {
+  font: 0.85rem/1.5 'SF Mono', 'Fira Code', Consolas, monospace;
+  margin-top: 0.4rem;
+  min-height: 145px;
+  padding: 0.75rem;
+  resize: vertical;
+  width: 100%;
+}
+
+.cookie-inspector__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.cookie-inspector button {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  padding: 0.5rem 0.8rem;
+}
+
+.cookie-inspector button:hover:not(:disabled) {
+  border-color: var(--color-primary-light);
+  color: var(--color-primary-light);
+}
+
+.cookie-inspector button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.cookie-inspector__primary {
+  background: var(--color-primary) !important;
+  border-color: var(--color-primary) !important;
+  color: white !important;
+}
+
+.cookie-inspector__error {
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  color: var(--color-error-light);
+  margin-top: 1rem;
+  padding: 0.75rem;
+}
+
+.cookie-inspector__summary {
+  margin-top: 1rem;
+}
+
+.cookie-inspector__table-wrap {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  margin-top: 0.75rem;
+  max-width: 100%;
+  overflow-x: auto;
+  width: 100%;
+}
+
+.cookie-inspector table {
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  min-width: 1050px;
+  width: 100%;
+}
+
+.cookie-inspector th,
+.cookie-inspector td {
+  border-bottom: 1px solid var(--color-border);
+  padding: 0.65rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.cookie-inspector th {
+  background: var(--color-surface-hover);
+  color: var(--color-text-muted);
+}
+
+.cookie-inspector tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.cookie-inspector td small {
+  color: var(--color-text-muted);
+  display: block;
+  margin-top: 0.2rem;
+}
+
+.cookie-inspector__select {
+  border-radius: 6px !important;
+  color: var(--color-primary-light) !important;
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace !important;
+  padding: 0.25rem 0.45rem !important;
+}
+
+.cookie-inspector__select[aria-pressed='true'] {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 1px var(--color-primary);
+}
+
+.cookie-inspector__warnings,
+.cookie-inspector__editor {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  margin-top: 1rem;
+  min-width: 0;
+  padding: 1rem;
+}
+
+.cookie-inspector__warnings h3 {
+  font-size: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.cookie-inspector__warnings ul,
+.cookie-inspector__editor-warnings {
+  display: grid;
+  gap: 0.5rem;
+  list-style: none;
+}
+
+.cookie-inspector__warnings li,
+.cookie-inspector__editor-warnings li {
+  border-left: 3px solid var(--color-warning);
+  border-radius: 6px;
+  padding: 0.55rem 0.7rem;
+}
+
+.cookie-inspector__warnings li span {
+  background: color-mix(in srgb, var(--color-warning) 18%, transparent);
+  border-radius: 999px;
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  margin-right: 0.5rem;
+  padding: 0.1rem 0.45rem;
+  text-transform: uppercase;
+}
+
+.cookie-inspector__warnings .cookie-inspector__warning--high {
+  border-left-color: var(--color-error);
+}
+
+.cookie-inspector__warnings .cookie-inspector__warning--high span {
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+}
+
+.cookie-inspector__section-heading,
+.cookie-inspector__output > div {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.cookie-inspector__section-heading > span {
+  background: var(--color-surface-hover);
+  border-radius: 999px;
+  color: var(--color-primary-light);
+  font-size: 0.78rem;
+  padding: 0.2rem 0.55rem;
+}
+
+.cookie-inspector__fields {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: minmax(0, 1fr);
+  margin-top: 1rem;
+}
+
+.cookie-inspector__flags {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding: 0.75rem;
+}
+
+.cookie-inspector__flags legend {
+  padding: 0 0.35rem;
+}
+
+.cookie-inspector__expiration {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: 1fr;
+  margin-top: 1rem;
+}
+
+.cookie-inspector__expiration div {
+  background: var(--color-surface-hover);
+  border-radius: 8px;
+  padding: 0.65rem;
+}
+
+.cookie-inspector__expiration dt {
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+}
+
+.cookie-inspector__expiration dd {
+  overflow-wrap: anywhere;
+}
+
+.cookie-inspector__editor-warnings {
+  margin-top: 1rem;
+}
+
+.cookie-inspector__outputs {
+  display: grid;
+  gap: 0.85rem;
+  min-width: 0;
+  margin-top: 1rem;
+}
+
+.cookie-inspector__output {
+  min-width: 0;
+}
+
+.cookie-inspector__output button {
+  font-size: 0.78rem;
+  padding: 0.3rem 0.55rem;
+}
+
+.cookie-inspector__output textarea {
+  font: 0.8rem/1.5 'SF Mono', 'Fira Code', Consolas, monospace;
+  margin-top: 0.4rem;
+  min-height: 90px;
+  overflow-wrap: anywhere;
+  padding: 0.65rem;
+  resize: vertical;
+  width: 100%;
+}
+
+.cookie-inspector__copy-status {
+  min-height: 1.5rem;
+  padding-top: 0.75rem;
+}
+
+@media (min-width: 640px) {
+  .cookie-inspector__controls {
+    grid-template-columns: minmax(220px, 0.5fr) 1fr;
+  }
+
+  .cookie-inspector__fields,
+  .cookie-inspector__expiration {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 900px) {
+  .cookie-inspector {
+    padding: 0 2rem 3rem;
+  }
+
+  .cookie-inspector__fields {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .cookie-inspector__expiration,
+  .cookie-inspector__outputs {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .cookie-inspector__outputs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
