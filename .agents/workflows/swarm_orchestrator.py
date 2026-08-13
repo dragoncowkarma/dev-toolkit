@@ -13,6 +13,7 @@ Requires: gh CLI authenticated, git, and at least one AI CLI installed.
 """
 
 import argparse
+import hashlib
 import json
 import logging
 import logging.handlers
@@ -35,6 +36,7 @@ from typing import Optional
 # ---------------------------------------------------------------------------
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+ORCHESTRATOR_PATH = Path(__file__).resolve()
 WORKTREE_DIR = REPO_ROOT / ".worktrees"
 LOG_DIR = REPO_ROOT / ".agents" / "logs"
 POLL_INTERVAL_SECONDS = 30
@@ -1032,13 +1034,17 @@ def cleanup_worktree(issue_number: int, branch_name: str):
             log.warning("Failed to delete branch '%s': %s", branch_name, stderr)
 
 
-def sync_main_branch(dry_run: bool = False):
+def sync_main_branch(dry_run: bool = False) -> bool:
     """Fast-forward local main from origin, and push local-only commits back.
 
     Runs periodically so the shared checkout that worktrees branch off of
     never drifts far from origin/main after Maintainers merge PRs on GitHub.
     Only ever fast-forwards or pushes — never rewrites history — so a
     genuinely diverged main is reported and left for a human, not clobbered.
+
+    Returns whether local main was successfully fast-forwarded. Callers use
+    that signal to avoid reacting to unrelated file changes when no update was
+    applied by this sync.
     """
     fetch = subprocess.run(
         ["git", "fetch", "origin", "main"],
@@ -1052,7 +1058,7 @@ def sync_main_branch(dry_run: bool = False):
             fetch.stderr.strip() or "(unknown error)",
             level=logging.WARNING,
         )
-        return
+        return False
 
     branch = subprocess.run(
         ["git", "rev-parse", "--abbrev-ref", "HEAD"],
@@ -1060,7 +1066,7 @@ def sync_main_branch(dry_run: bool = False):
     ).stdout.strip()
     if branch != "main":
         log.debug("Skipping main sync: repo root is on '%s', not 'main'.", branch)
-        return
+        return False
 
     status = subprocess.run(
         ["git", "status", "--porcelain"],
@@ -1072,7 +1078,7 @@ def sync_main_branch(dry_run: bool = False):
             "Skipping main sync: repo root working tree is dirty.",
             level=logging.WARNING,
         )
-        return
+        return False
 
     local_sha = subprocess.run(
         ["git", "rev-parse", "main"],
@@ -1083,7 +1089,7 @@ def sync_main_branch(dry_run: bool = False):
         cwd=REPO_ROOT, capture_output=True, text=True, check=False,
     ).stdout.strip()
     if not local_sha or not remote_sha or local_sha == remote_sha:
-        return
+        return False
 
     behind = subprocess.run(
         ["git", "merge-base", "--is-ancestor", "main", "origin/main"],
@@ -1100,13 +1106,14 @@ def sync_main_branch(dry_run: bool = False):
                 "[DRY RUN] Would fast-forward local main %s -> origin/main %s",
                 local_sha[:8], remote_sha[:8],
             )
-            return
+            return False
         merge = subprocess.run(
             ["git", "merge", "--ff-only", "origin/main"],
             cwd=REPO_ROOT, capture_output=True, text=True, check=False,
         )
         if merge.returncode == 0:
             log.info("🔄 Fast-forwarded local main %s -> %s", local_sha[:8], remote_sha[:8])
+            return True
         else:
             log_blocker(
                 "main-sync:ff",
@@ -1117,7 +1124,7 @@ def sync_main_branch(dry_run: bool = False):
     elif ahead and not behind:
         if dry_run:
             log.info("[DRY RUN] Would push local main %s -> origin/main", local_sha[:8])
-            return
+            return False
         push = subprocess.run(
             ["git", "push", "origin", "main"],
             cwd=REPO_ROOT, capture_output=True, text=True, check=False,
@@ -1138,6 +1145,42 @@ def sync_main_branch(dry_run: bool = False):
             "(manual resolution required).",
             level=logging.WARNING,
         )
+    return False
+
+
+def orchestrator_fingerprint() -> Optional[str]:
+    """Return the orchestrator file's SHA-256, or None when it cannot be read."""
+    digest = hashlib.sha256()
+    try:
+        with ORCHESTRATOR_PATH.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(64 * 1024), b""):
+                digest.update(chunk)
+    except OSError as error:
+        log.warning(
+            "Could not fingerprint %s; skipping automatic restart: %s",
+            ORCHESTRATOR_PATH.name,
+            error,
+        )
+        return None
+    return digest.hexdigest()
+
+
+def sync_main_and_restart_if_updated(dry_run: bool = False):
+    """Sync main and replace this process if that sync updated this file."""
+    fingerprint_before = orchestrator_fingerprint()
+    fast_forwarded = sync_main_branch(dry_run)
+    if not fast_forwarded or fingerprint_before is None:
+        return
+
+    fingerprint_after = orchestrator_fingerprint()
+    if fingerprint_after is None or fingerprint_after == fingerprint_before:
+        return
+
+    log.info("♻️ swarm_orchestrator.py has changed — restarting ...")
+    if dry_run:
+        log.info("[DRY RUN] Would restart orchestrator")
+        return
+    os.execv(sys.executable, [sys.executable] + sys.argv)
 
 
 # ---------------------------------------------------------------------------
@@ -2171,7 +2214,7 @@ def run_loop(interval: int, dry_run: bool = False):
             cycle_count += 1
             if cycle_count == 1 or cycle_count % MAIN_SYNC_EVERY_CYCLES == 0:
                 try:
-                    sync_main_branch(dry_run)
+                    sync_main_and_restart_if_updated(dry_run)
                 except Exception as e:
                     log.error("Error syncing main branch: %s", e, exc_info=True)
 
