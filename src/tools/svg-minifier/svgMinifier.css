@@ -1,0 +1,184 @@
+.svg-minifier-tool {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1.25rem 1rem 3rem;
+}
+
+.svg-minifier-tool__intro {
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.svg-minifier-tool__eyebrow {
+  color: var(--color-accent);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.svg-minifier-tool__intro h2 {
+  margin-top: 0.25rem;
+  color: var(--color-text);
+  font-size: clamp(1.45rem, 3vw, 2rem);
+}
+
+.svg-minifier-tool__intro p:last-child {
+  margin-top: 0.35rem;
+  color: var(--color-text-muted);
+}
+
+.svg-minifier-tool__actions,
+.svg-minifier-tool__output-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.svg-minifier-tool button {
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 0.45rem 0.7rem;
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+  transition: background var(--transition), border-color var(--transition), color var(--transition);
+}
+
+.svg-minifier-tool button:hover:not(:disabled) {
+  border-color: var(--color-primary-light);
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.svg-minifier-tool button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.svg-minifier-tool__input-panel,
+.svg-minifier-tool__output-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.svg-minifier-tool__input-panel:focus-within,
+.svg-minifier-tool__output-panel:focus-within {
+  border-color: var(--color-primary);
+}
+
+.svg-minifier-tool__input-panel > label,
+.svg-minifier-tool__output-heading {
+  padding: 0.7rem 0.9rem;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text);
+  font-size: 0.9rem;
+  font-weight: 650;
+}
+
+.svg-minifier-tool__output-heading {
+  justify-content: space-between;
+}
+
+.svg-minifier-tool__output-heading h3 {
+  font-size: inherit;
+}
+
+.svg-minifier-tool__output-heading p {
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  font-weight: 400;
+}
+
+.svg-minifier-tool textarea {
+  width: 100%;
+  min-height: 180px;
+  border: 0;
+  outline: 0;
+  resize: vertical;
+  padding: 0.9rem;
+  background: var(--color-code-bg);
+  color: var(--color-text);
+  font-family: 'Fira Code', 'Courier New', monospace;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  tab-size: 2;
+}
+
+.svg-minifier-tool__input-panel textarea {
+  min-height: 250px;
+}
+
+.svg-minifier-tool textarea::placeholder {
+  color: var(--color-text-muted);
+}
+
+.svg-minifier-tool__outputs {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+.svg-minifier-tool__error,
+.svg-minifier-tool__status {
+  border-radius: 8px;
+  padding: 0.75rem 0.9rem;
+}
+
+.svg-minifier-tool__error {
+  border: 1px solid var(--color-error-border);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+}
+
+.svg-minifier-tool__status {
+  border: 1px solid var(--color-success);
+  background: rgba(52, 211, 153, 0.1);
+  color: var(--color-success);
+}
+
+.svg-minifier-tool__preview {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-height: 88px;
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.svg-minifier-tool__preview figcaption {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+.svg-minifier-tool__preview img {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+}
+
+@media (min-width: 800px) {
+  .svg-minifier-tool {
+    padding: 1.5rem 2rem 4rem;
+  }
+
+  .svg-minifier-tool__outputs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .svg-minifier-tool__output-panel:first-child {
+    grid-column: span 2;
+  }
+}
