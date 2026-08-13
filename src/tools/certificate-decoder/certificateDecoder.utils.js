@@ -327,8 +327,17 @@ export function parseAsn1(bytes) {
   return nodes[0];
 }
 
+// DER fixes the encoding form of every universal tag: SEQUENCE and SET are
+// always constructed, every other tag this decoder reads is always primitive.
+const CONSTRUCTED_UNIVERSAL_TAGS = new Set([ASN1_TAG.SEQUENCE, ASN1_TAG.SET]);
+
 function isUniversal(node, tagNumber) {
-  return Boolean(node) && node.tagClass === ASN1_CLASS.UNIVERSAL && node.tagNumber === tagNumber;
+  return (
+    Boolean(node) &&
+    node.tagClass === ASN1_CLASS.UNIVERSAL &&
+    node.tagNumber === tagNumber &&
+    node.constructed === CONSTRUCTED_UNIVERSAL_TAGS.has(tagNumber)
+  );
 }
 
 function isContext(node, tagNumber) {
@@ -772,9 +781,17 @@ function parseExtensions(node) {
 export function parseCertificate(der) {
   const certificate = parseAsn1(der);
   expectUniversal(certificate, ASN1_TAG.SEQUENCE, 'The certificate');
+  // RFC 5280 defines Certificate as exactly { tbsCertificate,
+  // signatureAlgorithm, signatureValue }, so anything else is not an X.509
+  // certificate even when its first fields happen to decode.
   if (certificate.children.length < 3) {
     throw new Error('The certificate is missing its signature fields.');
   }
+  if (certificate.children.length > 3) {
+    throw new Error('The certificate has unexpected fields after its signature value.');
+  }
+  // Validated for shape only; the decoder never verifies the signature itself.
+  readBitStringBytes(certificate.children[2], 'The certificate signature value');
 
   const tbs = certificate.children[0];
   expectUniversal(tbs, ASN1_TAG.SEQUENCE, 'The certificate body');
