@@ -118,7 +118,7 @@ MAINTAINER_PATTERN = re.compile(
 )
 MAINTAINER_BLOCKED_PATTERN = re.compile(r"\[Maintainer Blocked\]", re.IGNORECASE)
 REVIEWER_APPROVED_PATTERN = re.compile(
-    r"\[Approved\]|\[Reviewer Approved\]|\bApproved\b|\bLGTM\b",
+    r"\[Approved\]|\[Reviewer Approved\]|\[PR Approved\]|\bLGTM\b",
     re.IGNORECASE,
 )
 

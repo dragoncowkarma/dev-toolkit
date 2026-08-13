@@ -445,6 +445,21 @@ class LifecycleSignalTests(unittest.TestCase):
         self.assertEqual("maintain", action)
         self.assertEqual("approval-1", comment["id"])
 
+    def test_negated_approval_phrase_returns_revise(self):
+        """A review comment containing 'Not approved' must not match approval pattern and must return revise action."""
+        comments = [{
+            "id": "negated-approval-1",
+            "body": (
+                "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]\n"
+                "Not approved: coverage is missing."
+            ),
+        }]
+
+        action, comment, _ = swarm.determine_pr_action(comments)
+
+        self.assertEqual("revise", action)
+        self.assertEqual("negated-approval-1", comment["id"])
+
     def test_maintainer_block_is_a_reviewer_signal(self):
         comments = [{
             "id": "maintainer-block-1",
