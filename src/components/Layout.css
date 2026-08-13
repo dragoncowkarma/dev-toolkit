@@ -302,6 +302,8 @@
   }
 }
 
+/* Keep in sync with DESKTOP_BREAKPOINT_PX in breakpoints.js, which Layout's
+   mobile drawer viewport listener uses to mirror this layout switch. */
 @media (min-width: 769px) {
   .layout__page {
     margin-left: 17.5rem;

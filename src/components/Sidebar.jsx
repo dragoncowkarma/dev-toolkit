@@ -157,29 +157,9 @@ export default function Sidebar({
     onCloseMobileRef.current = onCloseMobile;
   });
 
-  useEffect(() => {
-    if (!isMobileOpen || typeof window === 'undefined' || !window.matchMedia) return undefined;
-
-    const mediaQuery = window.matchMedia('(min-width: 769px)');
-    const handleMediaChange = (event) => {
-      if (event.matches) {
-        onCloseMobileRef.current();
-      }
-    };
-
-    if (mediaQuery.matches) {
-      onCloseMobileRef.current();
-    }
-
-    if (mediaQuery.addEventListener) {
-      mediaQuery.addEventListener('change', handleMediaChange);
-      return () => mediaQuery.removeEventListener('change', handleMediaChange);
-    } else if (mediaQuery.addListener) {
-      mediaQuery.addListener(handleMediaChange);
-      return () => mediaQuery.removeListener(handleMediaChange);
-    }
-    return undefined;
-  }, [isMobileOpen]);
+  // Sidebar does not own the desktop-breakpoint transition: Layout is the
+  // single owner that watches the viewport and passes `isMobileOpen` down.
+  // See `breakpoints.js` for the shared breakpoint contract.
 
   useEffect(() => {
     if (!isMobileOpen) return undefined;

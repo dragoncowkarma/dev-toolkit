@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import Sidebar from './Sidebar.jsx';
@@ -445,46 +445,53 @@ describe('Sidebar Modal Dialog Accessibility', () => {
     document.body.removeChild(liveRegion);
   });
 
-  it('force-closes the drawer when viewport widens to desktop size (>= 769px)', () => {
-    const listeners = [];
+  it('does not register its own matchMedia listener for the desktop breakpoint', () => {
+    // Layout is the single owner of the desktop-breakpoint viewport
+    // transition (see breakpoints.js); Sidebar must not create a
+    // competing listener that also reacts to the same media query.
     const originalMatchMedia = window.matchMedia;
-    window.matchMedia = vi.fn().mockImplementation((query) => ({
+    const matchMediaSpy = vi.fn().mockImplementation((query) => ({
       matches: false,
       media: query,
       onchange: null,
-      addListener: (listener) => {
-        listeners.push(listener);
-      },
-      removeListener: (listener) => {
-        const idx = listeners.indexOf(listener);
-        if (idx !== -1) listeners.splice(idx, 1);
-      },
-      addEventListener: (type, listener) => {
-        if (type === 'change') listeners.push(listener);
-      },
-      removeEventListener: (type, listener) => {
-        if (type === 'change') {
-          const idx = listeners.indexOf(listener);
-          if (idx !== -1) listeners.splice(idx, 1);
-        }
-      },
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
       dispatchEvent: vi.fn(),
     }));
+    window.matchMedia = matchMediaSpy;
 
-    const { onCloseMobile } = renderSidebar({ isMobileOpen: true });
+    renderSidebar({ isMobileOpen: true });
 
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
-
-    act(() => {
-      listeners.forEach((listener) => listener({ matches: true }));
-    });
-
-    expect(onCloseMobile).toHaveBeenCalledTimes(1);
+    expect(matchMediaSpy).not.toHaveBeenCalled();
 
     if (originalMatchMedia) {
       window.matchMedia = originalMatchMedia;
     } else {
       delete window.matchMedia;
     }
+  });
+
+  it('relies solely on the isMobileOpen prop, not a viewport listener, to stay open', () => {
+    // Without Layout (its viewport owner) in the tree, widening the
+    // simulated viewport must not affect Sidebar: it only reacts to props.
+    const { container, rerender } = renderSidebar({ isMobileOpen: true });
+
+    expect(container.querySelector('.sidebar')).toHaveClass('sidebar--mobile-open');
+
+    rerender(
+      <Sidebar
+        tools={TOOLS}
+        activeToolId="base64"
+        isCollapsed={false}
+        isMobileOpen={true}
+        onSelectTool={vi.fn()}
+        onToggleCollapse={vi.fn()}
+        onCloseMobile={vi.fn()}
+      />,
+    );
+
+    expect(container.querySelector('.sidebar')).toHaveClass('sidebar--mobile-open');
   });
 });

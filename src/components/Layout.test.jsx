@@ -303,53 +303,69 @@ describe('Layout Integration & Focus Trap', () => {
     expect(statusElement).not.toHaveAttribute('aria-hidden');
   });
 
-  it('force-closes drawer and clears aria-hidden when viewport becomes desktop width', () => {
-    const listeners = [];
-    const originalMatchMedia = window.matchMedia;
-    window.matchMedia = vi.fn().mockImplementation((query) => ({
-      matches: false,
-      media: query,
-      onchange: null,
-      addListener: (listener) => {
-        listeners.push(listener);
-      },
-      removeListener: (listener) => {
-        const idx = listeners.indexOf(listener);
-        if (idx !== -1) listeners.splice(idx, 1);
-      },
-      addEventListener: (type, listener) => {
-        if (type === 'change') listeners.push(listener);
-      },
-      removeEventListener: (type, listener) => {
-        if (type === 'change') {
+  it(
+    'force-closes drawer through the single Layout owner and clears dialog ' +
+      'role, aria-modal, and aria-hidden isolation on the desktop transition',
+    () => {
+      // Layout is the sole owner of the mobile-drawer viewport transition
+      // (see breakpoints.js); this test drives that transition entirely
+      // through Layout's matchMedia subscription, with no involvement from
+      // Sidebar's own code.
+      const listeners = [];
+      const originalMatchMedia = window.matchMedia;
+      window.matchMedia = vi.fn().mockImplementation((query) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: (listener) => {
+          listeners.push(listener);
+        },
+        removeListener: (listener) => {
           const idx = listeners.indexOf(listener);
           if (idx !== -1) listeners.splice(idx, 1);
-        }
-      },
-      dispatchEvent: vi.fn(),
-    }));
+        },
+        addEventListener: (type, listener) => {
+          if (type === 'change') listeners.push(listener);
+        },
+        removeEventListener: (type, listener) => {
+          if (type === 'change') {
+            const idx = listeners.indexOf(listener);
+            if (idx !== -1) listeners.splice(idx, 1);
+          }
+        },
+        dispatchEvent: vi.fn(),
+      }));
 
-    const { container } = render(<Layout tools={TEST_TOOLS} defaultToolId="base64" />);
+      const { container } = render(<Layout tools={TEST_TOOLS} defaultToolId="base64" />);
 
-    const openMenuButton = screen.getByRole('button', { name: 'Open tool navigation' });
-    fireEvent.click(openMenuButton);
+      const openMenuButton = screen.getByRole('button', { name: 'Open tool navigation' });
+      fireEvent.click(openMenuButton);
 
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
-    expect(container.querySelector('.layout__page')).toHaveAttribute('aria-hidden', 'true');
+      // Exactly one listener registered against the shared breakpoint query:
+      // Layout's own subscription (Sidebar registers none).
+      expect(listeners).toHaveLength(1);
 
-    act(() => {
-      listeners.forEach((listener) => listener({ matches: true }));
-    });
+      const sidebarElement = container.querySelector('#tool-navigation');
+      expect(sidebarElement).toHaveAttribute('role', 'dialog');
+      expect(sidebarElement).toHaveAttribute('aria-modal', 'true');
+      expect(container.querySelector('.layout__page')).toHaveAttribute('aria-hidden', 'true');
 
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    expect(container.querySelector('.layout__page')).not.toHaveAttribute('aria-hidden');
+      act(() => {
+        listeners.forEach((listener) => listener({ matches: true }));
+      });
 
-    if (originalMatchMedia) {
-      window.matchMedia = originalMatchMedia;
-    } else {
-      delete window.matchMedia;
-    }
-  });
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(sidebarElement).not.toHaveAttribute('role', 'dialog');
+      expect(sidebarElement).not.toHaveAttribute('aria-modal');
+      expect(container.querySelector('.layout__page')).not.toHaveAttribute('aria-hidden');
+
+      if (originalMatchMedia) {
+        window.matchMedia = originalMatchMedia;
+      } else {
+        delete window.matchMedia;
+      }
+    },
+  );
 });
 
 describe('Layout URL hash routing', () => {

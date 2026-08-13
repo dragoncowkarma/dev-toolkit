@@ -319,6 +319,8 @@
   visibility: visible;
 }
 
+/* Keep in sync with DESKTOP_BREAKPOINT_PX in breakpoints.js, which the mobile
+   drawer's JavaScript viewport listener uses to mirror this layout switch. */
 @media (min-width: 769px) {
   .sidebar {
     width: 17.5rem;
