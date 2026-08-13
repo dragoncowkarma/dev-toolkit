@@ -151,15 +151,50 @@ export function restoreProtectedRegions(text, store, { stripComments = false } =
  * single space is only reintroduced when the comment sits directly between
  * two identifier characters (e.g. `foo/* c *\/bar`), where deleting it
  * outright would fuse two separate tokens into one (`foobar`).
+ *
+ * A removable comment's neighbor may itself be another removable comment -
+ * `red/* one *\//* two *\/blue` - so the boundary check looks past any run of
+ * adjacent removable-comment placeholders to find the nearest real character.
+ * Each comment in the run independently sees the same identifier characters
+ * on either side and reintroduces its own space; any resulting duplicate
+ * spaces collapse to one in the whitespace-collapsing pass that follows.
  */
 function stripMinifiableComments(text, store) {
-  return text.replace(PLACEHOLDER_RE, (match, idText, offset, full) => {
-    const entry = store[Number(idText)];
-    if (!entry || entry.kind !== 'comment' || entry.important) return match;
-    const before = full[offset - 1];
-    const after = full[offset + match.length];
+  const tokens = [];
+  let last = 0;
+  let match = PLACEHOLDER_RE.exec(text);
+  while (match) {
+    if (match.index > last) {
+      tokens.push({ isPlaceholder: false, value: text.slice(last, match.index) });
+    }
+    tokens.push({ isPlaceholder: true, id: Number(match[1]) });
+    last = match.index + match[0].length;
+    match = PLACEHOLDER_RE.exec(text);
+  }
+  if (last < text.length) tokens.push({ isPlaceholder: false, value: text.slice(last) });
+
+  const isRemovableComment = (token) => {
+    if (!token.isPlaceholder) return false;
+    const entry = store[token.id];
+    return Boolean(entry) && entry.kind === 'comment' && !entry.important;
+  };
+
+  const neighborChar = (fromIndex, step) => {
+    for (let k = fromIndex + step; k >= 0 && k < tokens.length; k += step) {
+      const token = tokens[k];
+      if (!token.isPlaceholder) return step === -1 ? token.value.slice(-1) : token.value[0];
+      if (!isRemovableComment(token)) return undefined;
+    }
+    return undefined;
+  };
+
+  return tokens.map((token, index) => {
+    if (!token.isPlaceholder) return token.value;
+    if (!isRemovableComment(token)) return PH_START + token.id + PH_END;
+    const before = neighborChar(index, -1);
+    const after = neighborChar(index, 1);
     return !isIdentBoundary(before) && !isIdentBoundary(after) ? ' ' : '';
-  });
+  }).join('');
 }
 
 function collapseWhitespace(text) {
@@ -183,23 +218,58 @@ function findTopLevelColon(text) {
 }
 
 /**
- * Rewrites every `:` that appears inside parentheses (e.g. media features
- * like `(min-width: 600px)`) to use `replacement` for its surrounding
- * whitespace, leaving colons outside of parens (selector pseudo-classes such
- * as `:hover`) completely untouched.
+ * A `(` that is directly attached to a preceding identifier - `selector(`,
+ * `:not(`, `:is(` - opens a function/pseudo-class argument list, never a
+ * media-feature group. A media-feature group's `(` is always "bare": the
+ * start of the prelude, or preceded by whitespace/a combinator (`@media (`,
+ * `and (`, `not (`), a comma, or another paren. Only bare parens can contain
+ * a feature colon such as `(min-width: 600px)`.
+ */
+function isBareParenStart(out) {
+  const lastChar = out.slice(-1);
+  return lastChar === '' || !/[\w-]/.test(lastChar);
+}
+
+/**
+ * A `:` inside a bare (media-feature) paren is only a media-feature
+ * separator (e.g. `(min-width: 600px)`) when it directly follows the
+ * feature's identifier, ignoring intervening whitespace such as
+ * `(min-width : 600px)`.
+ */
+function isFeatureColonContext(out) {
+  const lastChar = out.replace(/\s+$/, '').slice(-1);
+  return lastChar !== '' && /[\w-]/.test(lastChar);
+}
+
+/**
+ * Rewrites every `:` that appears inside a bare (media-feature) paren AND
+ * directly follows an identifier (e.g. media features like
+ * `(min-width: 600px)`) to use `replacement` for its surrounding whitespace.
+ * Colons outside of parens are left untouched, and so are colons inside a
+ * function/pseudo-class argument list - `selector(:hover)`, `:not(:hover)`,
+ * `:is(div:hover)` - since that paren isn't a feature group at all, whatever
+ * an identifier may sit directly before the colon inside it.
  */
 function transformColonsInParens(text, replacement) {
   let depth = 0;
   let out = '';
+  const parenIsFeatureGroup = [];
   for (let k = 0; k < text.length; k += 1) {
     const char = text[k];
     if (char === '(') {
+      parenIsFeatureGroup.push(isBareParenStart(out));
       depth += 1;
       out += char;
     } else if (char === ')') {
+      parenIsFeatureGroup.pop();
       depth = Math.max(0, depth - 1);
       out += char;
-    } else if (char === ':' && depth > 0) {
+    } else if (
+      char === ':' &&
+      depth > 0 &&
+      parenIsFeatureGroup[parenIsFeatureGroup.length - 1] &&
+      isFeatureColonContext(out)
+    ) {
       out = out.replace(/\s+$/, '') + replacement;
       let k2 = k + 1;
       while (k2 < text.length && /\s/.test(text[k2])) k2 += 1;

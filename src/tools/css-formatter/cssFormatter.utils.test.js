@@ -182,6 +182,41 @@ describe('formatCss', () => {
     expect(result.output).toBe('.a {\n  content: "line\\\nbreak";\n}');
   });
 
+  it('does not corrupt a functional pseudo-class colon inside an @supports condition', () => {
+    // `selector(:hover)` is a functional selector() condition, not a media
+    // feature - the `:hover` colon must survive untouched, not become
+    // `: hover` as though it were `(min-width: 600px)`.
+    const css = '@supports selector(:hover) { .a { color: red; } }';
+    const result = formatCss(css);
+    expect(result.warning).toBeNull();
+    expect(result.output).toBe(
+      '@supports selector(:hover) {\n  .a {\n    color: red;\n  }\n}',
+    );
+  });
+
+  it('does not corrupt a nested pseudo-class colon such as :not(:hover)', () => {
+    const result = formatCss('.a:not(:hover) { color: red; }');
+    expect(result.output).toBe('.a:not(:hover) {\n  color: red;\n}');
+  });
+
+  it('still spaces a real media feature colon alongside an unrelated selector colon', () => {
+    const css = '@supports (selector(:hover)) and (display: grid) { .a { color: red; } }';
+    const result = formatCss(css);
+    expect(result.output).toBe(
+      '@supports (selector(:hover)) and (display: grid) {\n  .a {\n    color: red;\n  }\n}',
+    );
+  });
+
+  it('does not corrupt a pseudo-class colon on a compound selector inside :is()', () => {
+    // `:is(div:hover)` takes a selector list, not a media feature - the `:hover`
+    // colon is directly preceded by the identifier `div`, the same shape as a
+    // real feature colon like `(min-width: 600px)`, so the check has to key off
+    // whether the paren itself is a bare feature group, not just the character
+    // before the colon.
+    const result = formatCss(':is(div:hover) { color: red; }');
+    expect(result.output).toBe(':is(div:hover) {\n  color: red;\n}');
+  });
+
   it('never throws for non-string input and reports it as empty', () => {
     expect(() => formatCss(undefined)).not.toThrow();
     expect(formatCss(null)).toEqual({ output: '', warning: null });
@@ -223,6 +258,27 @@ describe('minifyCss', () => {
     expect(result.output).toBe('.a{color:red blue}');
   });
 
+  it('keeps a token boundary across a run of consecutive removable comments', () => {
+    // Two back-to-back comments between "red" and "blue" have no directly
+    // adjacent real character on either side (each one's neighbor is the
+    // other comment's placeholder), so the boundary check must look past
+    // the whole run rather than only the immediately adjacent character.
+    const result = minifyCss('.a { color: red/* one *//* two */blue; }');
+    expect(result.output).toBe('.a{color:red blue}');
+  });
+
+  it('keeps a token boundary across three consecutive removable comments', () => {
+    const result = minifyCss('.a { color: red/* a *//* b *//* c */blue; }');
+    expect(result.output).toBe('.a{color:red blue}');
+  });
+
+  it('does not introduce a boundary space when a comment run sits at a real boundary', () => {
+    // Here the comments sit between "red" and a space that already
+    // separates it from "!important" - no space should be manufactured.
+    const result = minifyCss('.a { color: red/* one *//* two */ !important; }');
+    expect(result.output).toBe('.a{color:red!important}');
+  });
+
   it('preserves "important" /*! ... */ comments', () => {
     const result = minifyCss('/*! keep me */\n.a { color: red; }');
     expect(result.output).toBe('/*! keep me */.a{color:red}');
@@ -255,6 +311,17 @@ describe('minifyCss', () => {
   it('tightens spacing inside media feature parentheses', () => {
     const result = minifyCss('@media ( max-width: 600px ) { .a { color: red; } }');
     expect(result.output).toBe('@media (max-width:600px){.a{color:red}}');
+  });
+
+  it('does not corrupt a functional pseudo-class colon inside an @supports condition', () => {
+    const css = '@supports selector(:hover) { .a { color: red; } }';
+    const result = minifyCss(css);
+    expect(result.output).toBe('@supports selector(:hover){.a{color:red}}');
+  });
+
+  it('does not corrupt a pseudo-class colon on a compound selector inside :is()', () => {
+    const result = minifyCss(':is(div:hover) { color: red; }');
+    expect(result.output).toBe(':is(div:hover){color:red}');
   });
 
   it('removes spacing around !important', () => {
