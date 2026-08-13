@@ -66,6 +66,7 @@ export const TOOL_CATEGORIES = Object.freeze([
   'Tester',
   'Text',
   'Utility',
+  'Web',
 ]);
 
 /**
