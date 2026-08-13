@@ -88,6 +88,44 @@ function withNotBefore(der, text) {
   return mutated;
 }
 
+function concatBytes(parts) {
+  const total = parts.reduce((sum, part) => sum + part.length, 0);
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const part of parts) {
+    bytes.set(part, offset);
+    offset += part.length;
+  }
+  return bytes;
+}
+
+/** Re-encodes a SEQUENCE with one surplus `NULL` field appended to its content. */
+function withSurplusField(node) {
+  return encodeSequence(concatBytes([node.content, Uint8Array.from([ASN1_TAG.NULL, 0x00])]));
+}
+
+/**
+ * Rebuilds the certificate with a surplus field appended to the chosen signature
+ * AlgorithmIdentifiers, re-encoding every enclosing DER length so the result
+ * stays well-formed. Padding both sides keeps the two identifiers byte-equal,
+ * which is what makes this a structural rather than a mismatch defect.
+ */
+function withSurplusSignatureFields(der, { body = false, outer = false } = {}) {
+  const certificate = parseAsn1(der);
+  const tbs = certificate.children[0];
+  const bodySignatureIndex = tbsVersionFields(der) + 1;
+  const tbsContent = tbs.children.map((field, index) =>
+    body && index === bodySignatureIndex ? withSurplusField(field) : field.raw,
+  );
+  return encodeSequence(
+    concatBytes([
+      encodeSequence(concatBytes(tbsContent)),
+      outer ? withSurplusField(certificate.children[1]) : certificate.children[1].raw,
+      certificate.children[2].raw,
+    ]),
+  );
+}
+
 /** Parses a standalone UTCTime or GeneralizedTime element from its text. */
 function timeNode(tag, text) {
   const bytes = Uint8Array.from([tag, text.length, ...text.split('').map((c) => c.charCodeAt(0))]);
@@ -504,6 +542,66 @@ describe('parseCertificate error handling', () => {
     expect(entry.certificate).toBeUndefined();
     expect(entry.error).toMatch(
       'The certificate body signature algorithm does not match the outer signature algorithm',
+    );
+  });
+
+  it('re-encodes the sample certificate unchanged when no surplus field is added', () => {
+    expect(Array.from(withSurplusSignatureFields(sampleDer))).toEqual(Array.from(sampleDer));
+  });
+
+  it('rejects an outer signature algorithm with fields after its parameters', () => {
+    expect(() => parseCertificate(withSurplusSignatureFields(sampleDer, { outer: true }))).toThrow(
+      'The signature algorithm has unexpected fields after its parameters',
+    );
+  });
+
+  it('rejects a signed body signature algorithm with fields after its parameters', () => {
+    expect(() => parseCertificate(withSurplusSignatureFields(sampleDer, { body: true }))).toThrow(
+      'The signed certificate body signature algorithm has unexpected fields after its parameters',
+    );
+  });
+
+  it('rejects equally padded signature algorithms that DER equality alone would accept', () => {
+    // Both identifiers gain the same surplus field, so they stay byte-equal and
+    // only the per-identifier shape check can reject them.
+    const mutated = withSurplusSignatureFields(sampleDer, { body: true, outer: true });
+    const outerAlgorithm = parseAsn1(mutated).children[1];
+    expect(Array.from(outerAlgorithm.raw)).toEqual(Array.from(tbsSignatureField(mutated).raw));
+    expect(outerAlgorithm.children).toHaveLength(3);
+    expect(() => parseCertificate(mutated)).toThrow(
+      'The signature algorithm has unexpected fields after its parameters',
+    );
+  });
+
+  it('reports a surplus signature algorithm field as a per-block decode error', () => {
+    const mutated = withSurplusSignatureFields(sampleDer, { body: true, outer: true });
+    const entry = decodeOne(toPem(btoa(String.fromCharCode(...mutated))));
+    expect(entry.certificate).toBeUndefined();
+    expect(entry.error).toMatch(
+      'The signature algorithm has unexpected fields after its parameters',
+    );
+  });
+
+  it('rejects a public key algorithm with fields after its parameters', () => {
+    const certificate = parseAsn1(sampleDer);
+    const tbs = certificate.children[0];
+    const keyIndex = tbsVersionFields(sampleDer) + 5;
+    const keyInfo = tbs.children[keyIndex];
+    const paddedKeyInfo = encodeSequence(
+      concatBytes([withSurplusField(keyInfo.children[0]), keyInfo.children[1].raw]),
+    );
+    const tbsContent = tbs.children.map((field, index) =>
+      index === keyIndex ? paddedKeyInfo : field.raw,
+    );
+    const mutated = encodeSequence(
+      concatBytes([
+        encodeSequence(concatBytes(tbsContent)),
+        certificate.children[1].raw,
+        certificate.children[2].raw,
+      ]),
+    );
+    expect(() => parseCertificate(mutated)).toThrow(
+      'The public key algorithm has unexpected fields after its parameters',
     );
   });
 
