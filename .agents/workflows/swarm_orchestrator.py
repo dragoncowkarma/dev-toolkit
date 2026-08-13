@@ -1605,21 +1605,75 @@ def dispatch_reviewer(
         log.error("Failed to dispatch Reviewer: %s", e)
 
 
+def select_maintainer_for_issueless_pr(
+    reviewer: RoleAssignment,
+    worker: Optional[RoleAssignment] = None,
+) -> RoleAssignment:
+    """Choose a Maintainer for a PR that has no linked Issue.
+
+    When a Worker is known (from the Issue or PR body), the remaining AI in
+    DEFAULT_ROTATION that is neither Worker nor Reviewer is used. When no
+    Worker is known, the Reviewer's rotation entry is used instead.
+    """
+    all_ais = set(DEFAULT_ROTATION.keys())  # {"codex", "antigravity", "claude"}
+    excluded = {reviewer.ai}
+    if worker:
+        excluded.add(worker.ai)
+    candidates = all_ais - excluded
+    # If somehow excluded covers all known AIs, fall back to reviewer rotation.
+    if not candidates:
+        maintainer_ai = DEFAULT_ROTATION.get(reviewer.ai, {}).get("maintainer", "codex")
+    else:
+        maintainer_ai = next(iter(candidates))
+    # Use sensible defaults for model/reasoning (Reviewer's values as proxy).
+    return RoleAssignment(
+        ai=maintainer_ai,
+        model=reviewer.model,
+        reasoning=reviewer.reasoning,
+    )
+
+
 def dispatch_maintainer(
     pr: TaskPR,
-    issue: TaskIssue,
+    issue: Optional[TaskIssue],
     maintainer: RoleAssignment,
     dry_run: bool = False,
     task_ref: Optional[str] = None,
 ):
     """Dispatch AI3 to maintain the PR and seed the next autonomous task."""
+    if issue is not None:
+        issue_context = (
+            f"(Issue #{issue.number}).\n"
+            f"3. Close Issue #{issue.number} only after the merge succeeds.\n"
+        )
+        post_merge_tasks = (
+            f"5. Only after a successful merge, analyze the updated project and all "
+            f"open Issues.\n"
+            f"6. Only after a successful merge, create exactly ONE non-duplicate "
+            f"follow-up Issue titled "
+            f"'[Task] <Tool Name> - <Summary>'. Include requirements, acceptance criteria, "
+            f"and a valid [Worker: <ai> | Model: <model> | Reasoning: <level>] tag.\n"
+            f"7. Do not implement the follow-up Issue yourself. The orchestrator will "
+            f"dispatch its Worker in the next polling cycle.\n"
+        )
+    else:
+        issue_context = ".\n3. This PR has no linked Issue; skip Issue closure.\n"
+        post_merge_tasks = (
+            f"5. Only after a successful merge, analyze the updated project and all "
+            f"open Issues.\n"
+            f"6. Only after a successful merge, create exactly ONE non-duplicate "
+            f"follow-up Issue titled "
+            f"'[Task] <Tool Name> - <Summary>'. Include requirements, acceptance criteria, "
+            f"and a valid [Worker: <ai> | Model: <model> | Reasoning: <level>] tag.\n"
+            f"7. Do not implement the follow-up Issue yourself. The orchestrator will "
+            f"dispatch its Worker in the next polling cycle.\n"
+        )
     prompt = (
         f"You are AI3, the Maintainer and post-merge Analyst for PR #{pr.number} "
-        f"(Issue #{issue.number}).\n"
+        f"{issue_context}"
         f"Read AGENTS.md and .agents/rules/ for all project rules.\n"
         f"1. Verify that the independent review is complete and CI passes.\n"
         f"2. Merge PR #{pr.number}. A successful merge closes the PR.\n"
-        f"3. Close Issue #{issue.number} only after the merge succeeds.\n"
         f"4. Comment on the PR with your exact metadata:\n"
         f"   [Maintainer: {maintainer.ai} | Model: {maintainer.model} | "
         f"Reasoning: {maintainer.reasoning}]\n"
@@ -1628,15 +1682,8 @@ def dispatch_maintainer(
         f"post the metadata above plus an exact '[Maintainer Blocked]' line, "
         f"the blocker classification, and reproducible evidence. The "
         f"orchestrator will return the PR to the assigned Reviewer; do not "
-        f"close the Issue or create a follow-up Issue.\n"
-        f"5. Only after a successful merge, analyze the updated project and all "
-        f"open Issues.\n"
-        f"6. Only after a successful merge, create exactly ONE non-duplicate "
-        f"follow-up Issue titled "
-        f"'[Task] <Tool Name> - <Summary>'. Include requirements, acceptance criteria, "
-        f"and a valid [Worker: <ai> | Model: <model> | Reasoning: <level>] tag.\n"
-        f"7. Do not implement the follow-up Issue yourself. The orchestrator will "
-        f"dispatch its Worker in the next polling cycle.\n"
+        f"close any Issue or create a follow-up Issue.\n"
+        f"{post_merge_tasks}"
         f"8. The orchestrator will safely remove the merged worktree.\n\n"
         f"{EXECUTION_INTEGRITY_NOTICE}"
     )
@@ -1688,17 +1735,17 @@ def dispatch_maintainer(
 
 def dispatch_worker_revision(
     pr: TaskPR,
-    issue: TaskIssue,
+    issue: Optional[TaskIssue],
     feedback_text: str,
     dry_run: bool = False,
     task_ref: Optional[str] = None,
 ):
     """Dispatch the original Worker AI to fix the PR based on feedback."""
-    worker = issue.worker
+    worker = issue.worker if issue else None
     if not worker:
         log.warning(
-            "Issue #%d has no Worker tag, cannot dispatch revision for PR #%d.",
-            issue.number,
+            "No Worker tag available (issue=%s) for PR #%d revision; skipping.",
+            f"#{issue.number}" if issue else "none",
             pr.number,
         )
         return
@@ -1708,15 +1755,16 @@ def dispatch_worker_revision(
     if not branch_name:
         log.warning("PR #%d has no head branch, cannot dispatch revision.", pr.number)
         return
-    
-    # We must run inside the same worktree or recreate it. Dry-run only reports
-    # the intended path and must not mutate git worktree state.
-    worktree_path = WORKTREE_DIR / str(issue.number)
-    if not dry_run:
-        worktree_path = create_worktree(issue.number, branch_name)
 
+    # Use issue number as worktree key when available, else PR number.
+    worktree_key = issue.number if issue else pr.number
+    worktree_path = WORKTREE_DIR / str(worktree_key)
+    if not dry_run:
+        worktree_path = create_worktree(worktree_key, branch_name)
+
+    issue_ref = f"(Issue #{issue.number}: {issue.title})" if issue else ""
     prompt = (
-        f"You are the Worker for PR #{pr.number} (Issue #{issue.number}: {issue.title}).\n"
+        f"You are the Worker for PR #{pr.number} {issue_ref}.\n"
         f"Read AGENTS.md and .agents/rules/ for all project rules.\n"
         f"You previously created this PR, but additional modifications were requested. "
         f"Here is the feedback/comments:\n\n{feedback_text}\n\n"
@@ -1854,7 +1902,13 @@ def process_prs(
     dry_run: bool = False,
     open_prs: Optional[list[dict]] = None,
 ):
-    """Advance each PR by one idempotent Worker/Reviewer/Maintainer event."""
+    """Advance each PR by one idempotent Worker/Reviewer/Maintainer event.
+
+    PRs without a linked Issue number are still processed as long as they carry
+    a [Reviewer: ...] tag in the body. Worker information is sourced from the
+    linked Issue when available; for issue-less PRs the revision path is
+    unavailable (no Worker to dispatch), but review and maintain events proceed.
+    """
     prs = open_prs if open_prs is not None else fetch_open_prs()
 
     for raw in prs:
@@ -1865,15 +1919,6 @@ def process_prs(
         head_sha = raw.get("headRefOid", "")
         issue_number = extract_issue_number_from_pr_title(pr_title)
 
-        # Validate cheaply before spending API calls on comments and the Issue.
-        if issue_number is None:
-            log_blocker(
-                f"pr-title:{pr_num}",
-                "PR #%d has no Issue number in its title; refusing role dispatch.",
-                pr_num,
-            )
-            continue
-
         reviewer = parse_role(REVIEWER_PATTERN, pr_body)
         if not reviewer:
             log_blocker(
@@ -1883,22 +1928,44 @@ def process_prs(
             )
             continue
 
-        issue_raw = fetch_issue(issue_number)
-        if not issue_raw:
-            log_blocker(
-                f"pr-issue:{pr_num}:{issue_number}",
-                "Could not fetch Issue #%d for PR #%d.", issue_number, pr_num,
+        # Attempt to resolve the linked Issue (optional — PRs without one are
+        # still routed through review and maintain phases).
+        issue_obj: Optional[TaskIssue] = None
+        worker: Optional[RoleAssignment] = None
+        if issue_number is not None:
+            issue_raw = fetch_issue(issue_number)
+            if issue_raw:
+                worker = parse_role(WORKER_PATTERN, issue_raw.get("body", ""))
+                if worker:
+                    issue_obj = TaskIssue(
+                        number=issue_number,
+                        title=issue_raw["title"],
+                        body=issue_raw.get("body", ""),
+                        worker=worker,
+                    )
+                else:
+                    log_blocker(
+                        f"pr-worker:{pr_num}:{issue_number}",
+                        "Issue #%d has no Worker metadata; proceeding without worker for PR #%d.",
+                        issue_number, pr_num,
+                        level=logging.WARNING,
+                    )
+            else:
+                log_blocker(
+                    f"pr-issue:{pr_num}:{issue_number}",
+                    "Could not fetch Issue #%d for PR #%d; proceeding without issue context.",
+                    issue_number, pr_num,
+                    level=logging.WARNING,
+                )
+        else:
+            log.debug(
+                "PR #%d has no Issue number in its title; processing with Reviewer tag only.",
+                pr_num,
             )
-            continue
 
-        worker = parse_role(WORKER_PATTERN, issue_raw.get("body", ""))
-        if not worker:
-            log_blocker(
-                f"pr-worker:{pr_num}:{issue_number}",
-                "Issue #%d has no Worker metadata; refusing dispatch for PR #%d.",
-                issue_number, pr_num,
-            )
-            continue
+        # Also check if Worker info is embedded in the PR body itself.
+        if worker is None:
+            worker = parse_role(WORKER_PATTERN, pr_body)
 
         comments = fetch_pr_comments(pr_num)
 
@@ -1909,13 +1976,6 @@ def process_prs(
             head_branch=head_branch,
             head_sha=head_sha,
             issue_number=issue_number,
-        )
-
-        issue_obj = TaskIssue(
-            number=issue_number,
-            title=issue_raw["title"],
-            body=issue_raw.get("body", ""),
-            worker=worker,
         )
         pr_obj.reviewer = reviewer
         action, signal_comment, signal_index = determine_pr_action(comments)
@@ -1942,6 +2002,13 @@ def process_prs(
                     reviewer.ai,
                 )
                 continue
+            # Auto-select Maintainer when the approval comment lacks one.
+            if maintainer is None:
+                maintainer = select_maintainer_for_issueless_pr(reviewer, worker)
+                log.info(
+                    "PR #%d: no [Maintainer] tag in approval; auto-selected '%s'.",
+                    pr_num, maintainer.ai,
+                )
             valid, why = validate_distinct_roles(worker, reviewer, maintainer)
             if not valid:
                 log_blocker(
@@ -2047,6 +2114,16 @@ def process_prs(
                 dry_run,
                 task_ref=task_ref,
                 trigger=review_trigger,
+            )
+            continue
+
+        # "revise" action requires a Worker; skip if unavailable.
+        if worker is None:
+            log_blocker(
+                f"revise-no-worker:{pr_num}:{signal_id}",
+                "PR #%d needs Worker revision but no Worker is known; skipping.",
+                pr_num,
+                level=logging.WARNING,
             )
             continue
 
