@@ -1,0 +1,174 @@
+.duration-tool {
+  --duration-accent: var(--color-primary);
+  --duration-surface: var(--color-surface);
+  display: flex;
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.duration-tool__intro,
+.duration-tool__panel,
+.duration-tool__output,
+.duration-tool__notice {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--duration-surface);
+  padding: 1rem;
+}
+
+.duration-tool__intro h2,
+.duration-tool__output h3 {
+  margin: 0;
+}
+
+.duration-tool__intro > p:last-child,
+.duration-tool__hint {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.duration-tool__eyebrow {
+  margin: 0 0 0.3rem;
+  color: var(--color-primary-light);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.duration-tool__panel,
+.duration-tool__reverse-grid,
+.duration-tool__outputs {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.duration-tool__heading-row,
+.duration-tool__actions,
+.duration-tool__inline-input,
+.duration-tool__output {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.duration-tool__heading-row,
+.duration-tool__output {
+  justify-content: space-between;
+}
+
+.duration-tool label,
+.duration-tool legend {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.duration-tool fieldset,
+.duration-tool__sign,
+.duration-tool__component-grid {
+  display: grid;
+  min-width: 0;
+  gap: 0.6rem;
+}
+
+.duration-tool fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.duration-tool__component-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.duration-tool__component-grid label,
+.duration-tool__sign {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.duration-tool input,
+.duration-tool select,
+.duration-tool__value {
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: calc(var(--radius) - 4px);
+  background: var(--color-code-bg);
+  color: var(--color-text);
+  font: inherit;
+  padding: 0.55rem 0.65rem;
+}
+
+.duration-tool__value {
+  display: block;
+  overflow-wrap: anywhere;
+  color: var(--color-primary-light);
+  font-family: 'SFMono-Regular', Consolas, monospace;
+}
+
+.duration-tool input:focus,
+.duration-tool select:focus {
+  outline: 0;
+  border-color: var(--duration-accent);
+}
+
+.duration-tool button {
+  border: 1px solid var(--color-border);
+  border-radius: calc(var(--radius) - 4px);
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 0.5rem 0.7rem;
+}
+
+.duration-tool button:hover {
+  border-color: var(--duration-accent);
+  color: var(--color-primary-light);
+}
+
+.duration-tool__inline-input input {
+  width: 100%;
+}
+
+.duration-tool__error,
+.duration-tool__notice,
+.duration-tool__status {
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+  padding: 0.75rem 1rem;
+}
+
+.duration-tool__error {
+  border: 1px solid var(--color-error-border);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+}
+
+.duration-tool__notice {
+  border-color: color-mix(in srgb, var(--color-warning) 40%, transparent);
+  background: color-mix(in srgb, var(--color-warning) 14%, transparent);
+  color: var(--color-warning);
+}
+
+.duration-tool__status {
+  border: 1px solid color-mix(in srgb, var(--color-success) 40%, transparent);
+  background: color-mix(in srgb, var(--color-success) 14%, transparent);
+  color: var(--color-success);
+}
+
+@media (min-width: 700px) {
+  .duration-tool__reverse-grid {
+    grid-template-columns: 1fr 1.5fr;
+  }
+
+  .duration-tool__component-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
