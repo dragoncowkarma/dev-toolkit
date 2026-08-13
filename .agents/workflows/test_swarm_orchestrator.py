@@ -461,13 +461,18 @@ class LifecycleSignalTests(unittest.TestCase):
         self.assertEqual("negated-approval-1", comment["id"])
 
     def test_negative_lgtm_feedback_returns_revise(self):
-        """Review comments with negative LGTM wording must return revise action."""
+        """Review comments with negative or conditional LGTM wording must return revise action."""
         cases = [
             "Not LGTM: regression remains.",
             "not LGTM",
             "No LGTM",
             "cannot LGTM",
             "not LGTM at all",
+            "Changes are still required; LGTM after the regression test is added.",
+            "Changes are still required",
+            "LGTM after the regression test is added",
+            "LGTM once tests are added",
+            "Approved once docs are updated",
         ]
         for phrase in cases:
             with self.subTest(phrase=phrase):
@@ -1201,6 +1206,70 @@ class PollingLifecycleTests(unittest.TestCase):
 
         dispatch_maintainer.assert_not_called()
         dispatch_worker_revision.assert_called_once()
+
+    def test_issueless_pr_conditional_feedback_dispatches_worker_revision(self):
+        """Issueless PR receiving 'Changes are still required; LGTM after...' must dispatch Worker revision, not Maintainer."""
+        issueless_pr = {
+            "number": 24,
+            "title": "[PR] standalone feature",
+            "body": (
+                "[Worker: codex | Model: 5.6 terra | Reasoning: 높음]\n"
+                "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]"
+            ),
+            "headRefName": "feat-branch",
+            "headRefOid": "sha100",
+        }
+        conditional_comment = {
+            "id": "c-conditional-issueless",
+            "body": (
+                "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]\n"
+                "Changes are still required; LGTM after the regression test is added."
+            ),
+        }
+        tracker = FakeTracker()
+        with (
+            patch.object(swarm, "tracker", tracker),
+            patch.object(swarm, "fetch_pr_comments", return_value=[conditional_comment]),
+            patch.object(swarm, "dispatch_maintainer") as dispatch_maintainer,
+            patch.object(swarm, "dispatch_worker_revision") as dispatch_worker_revision,
+        ):
+            swarm.process_prs(open_prs=[issueless_pr])
+
+        dispatch_maintainer.assert_not_called()
+        dispatch_worker_revision.assert_called_once()
+
+    def test_issueless_pr_genuine_approval_auto_selects_maintainer(self):
+        """Issueless PR with genuine [Approved] tag must auto-select Maintainer and dispatch Maintainer."""
+        issueless_pr = {
+            "number": 25,
+            "title": "[PR] standalone feature",
+            "body": (
+                "[Worker: codex | Model: 5.6 terra | Reasoning: 높음]\n"
+                "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]"
+            ),
+            "headRefName": "feat-branch",
+            "headRefOid": "sha101",
+        }
+        approval_comment = {
+            "id": "c-approval-issueless",
+            "body": (
+                "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]\n"
+                "[Approved] Looks great to me, LGTM!"
+            ),
+        }
+        tracker = FakeTracker()
+        with (
+            patch.object(swarm, "tracker", tracker),
+            patch.object(swarm, "fetch_pr_comments", return_value=[approval_comment]),
+            patch.object(swarm, "dispatch_maintainer") as dispatch_maintainer,
+            patch.object(swarm, "dispatch_worker_revision") as dispatch_worker_revision,
+        ):
+            swarm.process_prs(open_prs=[issueless_pr])
+
+        dispatch_worker_revision.assert_not_called()
+        dispatch_maintainer.assert_called_once()
+        maintainer_arg = dispatch_maintainer.call_args[1].get("maintainer") or dispatch_maintainer.call_args[0][2]
+        self.assertEqual("claude", maintainer_arg.ai)
 
 
 class CleanupTests(unittest.TestCase):

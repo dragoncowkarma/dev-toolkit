@@ -118,7 +118,7 @@ MAINTAINER_PATTERN = re.compile(
 )
 MAINTAINER_BLOCKED_PATTERN = re.compile(r"\[Maintainer Blocked\]", re.IGNORECASE)
 REVIEWER_APPROVED_PATTERN = re.compile(
-    r"\[Approved\]|\[Reviewer Approved\]|\bApproved\b|\bLGTM\b",
+    r"\[(?:Reviewer\s+)?Approved(?:\s*:[^\]]*)?\]|\[LGTM(?:\s*:[^\]]*)?\]",
     re.IGNORECASE,
 )
 REVIEWER_REJECTED_PATTERN = re.compile(
@@ -130,7 +130,23 @@ REVIEWER_REJECTED_PATTERN = re.compile(
     r"|\bdoes(?:n't|\s+not)\s+(?:\w+\s+){0,3}(?:approve[ds]?|lgtm)\b"
     r"|\bdid(?:n't|\s+not)\s+(?:\w+\s+){0,3}(?:approve[ds]?|lgtm)\b"
     r"|\bis(?:n't|\s+not)\s+(?:\w+\s+){0,3}(?:approve[ds]?|lgtm)\b"
-    r"|\bunapproved\b|\bdisapproved\b|\bchanges?\s+requested\b",
+    r"|\bunapproved\b|\bdisapproved\b|\bchanges?\s+requested\b"
+    r"|\bchanges?\s+(?:are\s+)?(?:still\s+)?required\b"
+    r"|\bchanges?\s+(?:are\s+)?(?:still\s+)?needed\b"
+    r"|\b(?:still\s+)?needs?\s+(?:further\s+)?changes?\b"
+    r"|\b(?:still\s+)?needs?\s+(?:further\s+)?fixes?\b"
+    r"|\b(?:still\s+)?needs?\s+(?:further\s+)?revision\b"
+    r"|\brequires?\s+(?:further\s+)?changes?\b"
+    r"|\brequesting\s+changes?\b"
+    r"|\brevision\s+(?:is\s+)?(?:still\s+)?required\b"
+    r"|\brevision\s+(?:is\s+)?(?:still\s+)?needed\b"
+    r"|\bfixes?\s+(?:are\s+)?(?:still\s+)?required\b"
+    r"|\bfixes?\s+(?:are\s+)?(?:still\s+)?needed\b"
+    r"|\bnot\s+(?:yet\s+)?approved\b"
+    r"|\bnot\s+ready\b"
+    r"|\b(?:lgtm|approve[ds]?)\s+(?:after|once|when|if|provided)\b"
+    r"|\bconditional(?:ly)?\s+(?:approve[ds]?|lgtm)\b"
+    r"|\b(?:approve[ds]?|lgtm)\s+conditional(?:ly)?\b",
     re.IGNORECASE,
 )
 
@@ -939,11 +955,11 @@ def determine_pr_action(comments: list[dict]) -> tuple[str, Optional[dict], int]
     """Return the next action from the newest recognized lifecycle signal.
 
     Recognized signals are Reviewer feedback, Worker revision completion,
-    Reviewer approval (containing a Maintainer tag or explicit approval signal),
+    Reviewer approval (containing a Maintainer tag or dedicated approval tag),
     and a Maintainer block. Informational comments do not change state.
 
     An approval is recognized when a comment carries a Reviewer tag along with
-    either a Maintainer tag or an explicit approval indicator (e.g. [Approved] or LGTM).
+    either a Maintainer tag or a dedicated approval tag (e.g. [Approved] or [LGTM]).
     A lone Maintainer tag without a Reviewer tag is informational.
     """
     latest_action = "review"
