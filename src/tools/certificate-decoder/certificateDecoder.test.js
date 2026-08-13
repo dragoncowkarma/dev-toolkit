@@ -485,6 +485,28 @@ describe('parseCertificate error handling', () => {
     );
   });
 
+  it('rejects a signed body whose algorithm parameters differ from the outer ones', () => {
+    const mutated = Uint8Array.from(sampleDer);
+    const parameters = tbsSignatureField(sampleDer).children[1];
+    // Same sha256WithRSAEncryption OID on both sides; only the tbsCertificate
+    // parameters change, from NULL to an equally long empty OCTET STRING.
+    expect(Array.from(parameters.raw)).toEqual([ASN1_TAG.NULL, 0x00]);
+    mutated[parameters.start] = ASN1_TAG.OCTET_STRING;
+    expect(() => parseCertificate(mutated)).toThrow(
+      'The certificate body signature algorithm does not match the outer signature algorithm',
+    );
+  });
+
+  it('reports mismatched signature algorithm parameters as a per-block decode error', () => {
+    const mutated = Uint8Array.from(sampleDer);
+    mutated[tbsSignatureField(sampleDer).children[1].start] = ASN1_TAG.OCTET_STRING;
+    const entry = decodeOne(toPem(btoa(String.fromCharCode(...mutated))));
+    expect(entry.certificate).toBeUndefined();
+    expect(entry.error).toMatch(
+      'The certificate body signature algorithm does not match the outer signature algorithm',
+    );
+  });
+
   it('rejects a notBefore whose month is outside the calendar range', () => {
     // Only the two month characters change: 260812040820Z becomes month 13.
     expect(() => parseCertificate(withNotBefore(sampleDer, '261312040820Z'))).toThrow(
