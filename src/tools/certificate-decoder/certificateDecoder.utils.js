@@ -790,6 +790,10 @@ export function parseCertificate(der) {
   if (certificate.children.length > 3) {
     throw new Error('The certificate has unexpected fields after its signature value.');
   }
+  const signatureAlgorithm = parseAlgorithmIdentifier(
+    certificate.children[1],
+    'The signature algorithm',
+  );
   // Validated for shape only; the decoder never verifies the signature itself.
   readBitStringBytes(certificate.children[2], 'The certificate signature value');
 
@@ -813,8 +817,18 @@ export function parseCertificate(der) {
     'The certificate serial number',
   );
   cursor += 1;
-  // fields[cursor] repeats the signature algorithm inside the signed body; the
-  // outer AlgorithmIdentifier below is the one conventionally displayed.
+  // The signed body repeats the signature AlgorithmIdentifier, and RFC 5280
+  // §4.1.1.2 requires it to equal the outer one. Both are checked so a tampered
+  // body cannot decode; the outer copy is the one conventionally displayed.
+  const tbsSignatureAlgorithm = parseAlgorithmIdentifier(
+    fields[cursor],
+    'The signed certificate body signature algorithm',
+  );
+  if (tbsSignatureAlgorithm.oid !== signatureAlgorithm.oid) {
+    throw new Error(
+      'The certificate body signature algorithm does not match the outer signature algorithm.',
+    );
+  }
   cursor += 1;
   const issuer = parseName(fields[cursor], 'The issuer name');
   cursor += 1;
@@ -852,9 +866,7 @@ export function parseCertificate(der) {
       notBefore: decodeAsn1Time(validityNode.children[0]),
       notAfter: decodeAsn1Time(validityNode.children[1]),
     },
-    signatureAlgorithm: toAlgorithmSummary(
-      parseAlgorithmIdentifier(certificate.children[1], 'The signature algorithm'),
-    ),
+    signatureAlgorithm: toAlgorithmSummary(signatureAlgorithm),
     publicKey,
     extensions,
     subjectMatchesIssuer: issuer.text === subject.text,
