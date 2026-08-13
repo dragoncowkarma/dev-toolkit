@@ -57,6 +57,15 @@ describe('formatCss', () => {
     );
   });
 
+  it('treats an escaped ")" inside an unquoted url() as part of the URL value', () => {
+    const css = '.a { background: url(foo\\)bar); }';
+    const result = formatCss(css);
+    expect(result.warning).toBeNull();
+    expect(result.output).toBe(
+      '.a {\n  background: url(foo\\)bar);\n}',
+    );
+  });
+
   it('places a standalone comment on its own line', () => {
     const css = '/* header */\n.a { color: red; }';
     const result = formatCss(css);
@@ -299,6 +308,13 @@ describe('minifyCss', () => {
     const css = '.a { width: calc(100% - 10px); }';
     const result = minifyCss(css);
     expect(result.output).toBe('.a{width:calc(100% - 10px)}');
+  });
+
+  it('treats an escaped ")" inside an unquoted url() as part of the URL value', () => {
+    const css = '.a { background: url(foo\\)bar); }';
+    const result = minifyCss(css);
+    expect(result.warning).toBeNull();
+    expect(result.output).toBe('.a{background:url(foo\\)bar)}');
   });
 
   it('preserves the descendant-combinator space between a compound and a pseudo-class', () => {

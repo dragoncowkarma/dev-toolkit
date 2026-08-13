@@ -106,6 +106,12 @@ export function extractProtectedRegions(rawInput) {
             j += input[j] === '\\' ? 2 : 1;
           }
           j += 1;
+        } else if (input[j] === '\\') {
+          // An escaped code point inside an unquoted url() (e.g. `\)`) is
+          // part of the URL value, not the closing paren - skip both the
+          // backslash and the escaped character together so scanning
+          // doesn't stop early on an escaped `)`.
+          j += 2;
         } else {
           j += 1;
         }
