@@ -1521,7 +1521,7 @@ def dispatch_worker(
 
 def dispatch_reviewer(
     pr: TaskPR,
-    worker: RoleAssignment,
+    worker: Optional[RoleAssignment],
     dry_run: bool = False,
     task_ref: Optional[str] = None,
     trigger: Optional[str] = None,
@@ -1552,7 +1552,9 @@ def dispatch_reviewer(
         f"If the PR is approved and ready to merge, your final comment MUST also include:\n"
         f"  [Maintainer: <ai_name> | Model: <model> | Reasoning: <level>]\n"
         f"Choose the Maintainer using .agents/rules/role_assignment.md. It MUST differ "
-        f"from Worker '{worker.ai}' and Reviewer '{reviewer.ai}'.\n\n"
+        f"from Reviewer '{reviewer.ai}'"
+        + (f" and Worker '{worker.ai}'" if worker else "")
+        + f".\n\n"
         f"If changes are needed, your final comment MUST include your [Reviewer: ...] tag "
         f"AND clearly describe all required changes. Do NOT include "
         f"[Maintainer: ...] in this case.\n\n"
