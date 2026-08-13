@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ASN1_TAG,
   decodeAsn1String,
+  decodeAsn1Time,
   decodeBase64ToBytes,
   decodeCertificates,
   decodeOid,
@@ -57,12 +58,40 @@ function encodeSequence(content) {
   return Uint8Array.from([...header, ...content]);
 }
 
+/** Counts the optional context-specific version wrapper in front of `tbsCertificate`. */
+function tbsVersionFields(der) {
+  return parseAsn1(der).children[0].children[0].tagClass === 0 ? 0 : 1;
+}
+
 /** Locates the AlgorithmIdentifier that `tbsCertificate` repeats before its issuer. */
 function tbsSignatureField(der) {
-  const tbs = parseAsn1(der).children[0];
-  // A context-specific wrapper in first position is the optional version field.
-  const versionFields = tbs.children[0].tagClass === 0 ? 0 : 1;
-  return tbs.children[versionFields + 1];
+  return parseAsn1(der).children[0].children[tbsVersionFields(der) + 1];
+}
+
+/** Locates the `validity` SEQUENCE, which follows serialNumber, signature and issuer. */
+function tbsValidityField(der) {
+  return parseAsn1(der).children[0].children[tbsVersionFields(der) + 3];
+}
+
+/**
+ * Rewrites the sample certificate's `notBefore` text in place, so a mutation
+ * changes nothing but the validity characters under test.
+ */
+function withNotBefore(der, text) {
+  const notBefore = tbsValidityField(der).children[0];
+  const mutated = Uint8Array.from(der);
+  const start = notBefore.end - notBefore.content.length;
+  expect(notBefore.content).toHaveLength(text.length);
+  for (let index = 0; index < text.length; index += 1) {
+    mutated[start + index] = text.charCodeAt(index);
+  }
+  return mutated;
+}
+
+/** Parses a standalone UTCTime or GeneralizedTime element from its text. */
+function timeNode(tag, text) {
+  const bytes = Uint8Array.from([tag, text.length, ...text.split('').map((c) => c.charCodeAt(0))]);
+  return parseAsn1(bytes);
 }
 
 describe('extractPemBlocks', () => {
@@ -286,6 +315,51 @@ describe('getValidityStatus', () => {
   });
 });
 
+describe('decodeAsn1Time', () => {
+  const utcTime = (text) => decodeAsn1Time(timeNode(ASN1_TAG.UTC_TIME, text));
+  const generalizedTime = (text) => decodeAsn1Time(timeNode(ASN1_TAG.GENERALIZED_TIME, text));
+
+  it('decodes in-range UTCTime and GeneralizedTime values', () => {
+    expect(utcTime('260812040820Z').utc).toBe('2026-08-12T04:08:20Z');
+    expect(generalizedTime('20900101000000Z').utc).toBe('2090-01-01T00:00:00Z');
+  });
+
+  it('applies a numeric zone offset to reach UTC', () => {
+    expect(utcTime('260812040820+0900').utc).toBe('2026-08-11T19:08:20Z');
+    expect(utcTime('260812040820-0230').utc).toBe('2026-08-12T06:38:20Z');
+  });
+
+  it('rejects out-of-range calendar fields instead of normalising them', () => {
+    // `Date.UTC()` would turn each of these into a different, valid instant.
+    expect(() => utcTime('261312040820Z')).toThrow('is not a valid ASN.1 time value');
+    expect(() => utcTime('260012040820Z')).toThrow('is not a valid ASN.1 time value');
+    expect(() => utcTime('260832040820Z')).toThrow('is not a valid ASN.1 time value');
+    expect(() => utcTime('260800040820Z')).toThrow('is not a valid ASN.1 time value');
+    expect(() => utcTime('260812250820Z')).toThrow('is not a valid ASN.1 time value');
+    expect(() => utcTime('260812046020Z')).toThrow('is not a valid ASN.1 time value');
+    expect(() => utcTime('260812040860Z')).toThrow('is not a valid ASN.1 time value');
+  });
+
+  it('rejects a day beyond the actual length of its month', () => {
+    expect(() => utcTime('260431040820Z')).toThrow('is not a valid ASN.1 time value');
+    expect(() => utcTime('260229040820Z')).toThrow('is not a valid ASN.1 time value');
+    expect(utcTime('260430040820Z').utc).toBe('2026-04-30T04:08:20Z');
+    // 2024 is a leap year; 2100 is not, despite being divisible by four.
+    expect(utcTime('240229040820Z').utc).toBe('2024-02-29T04:08:20Z');
+    expect(() => generalizedTime('21000229040820Z')).toThrow('is not a valid ASN.1 time value');
+    expect(generalizedTime('20000229040820Z').utc).toBe('2000-02-29T04:08:20Z');
+  });
+
+  it('rejects an out-of-range zone offset', () => {
+    expect(() => utcTime('260812040820+2400')).toThrow('is not a valid ASN.1 time value');
+    expect(() => utcTime('260812040820-0060')).toThrow('is not a valid ASN.1 time value');
+  });
+
+  it('keeps a sub-100 GeneralizedTime year literal rather than remapping it to the 1900s', () => {
+    expect(generalizedTime('00500101000000Z').utc).toBe('0050-01-01T00:00:00Z');
+  });
+});
+
 describe('decodeCertificates', () => {
   it('decodes a concatenated chain and indexes each block', () => {
     const results = decodeCertificates(`${SAMPLE_CERTIFICATE}\n${EC_CERTIFICATE}`);
@@ -409,6 +483,35 @@ describe('parseCertificate error handling', () => {
     expect(() => parseCertificate(mutated)).toThrow(
       'The certificate body signature algorithm does not match the outer signature algorithm',
     );
+  });
+
+  it('rejects a notBefore whose month is outside the calendar range', () => {
+    // Only the two month characters change: 260812040820Z becomes month 13.
+    expect(() => parseCertificate(withNotBefore(sampleDer, '261312040820Z'))).toThrow(
+      '"261312040820Z" is not a valid ASN.1 time value',
+    );
+  });
+
+  it('rejects a notBefore whose day exceeds the length of its month', () => {
+    expect(() => parseCertificate(withNotBefore(sampleDer, '260931040820Z'))).toThrow(
+      '"260931040820Z" is not a valid ASN.1 time value',
+    );
+  });
+
+  it('reports an out-of-range notBefore as a per-block decode error', () => {
+    const mutated = withNotBefore(sampleDer, '261312040820Z');
+    const entry = decodeOne(toPem(btoa(String.fromCharCode(...mutated))));
+    expect(entry.certificate).toBeUndefined();
+    expect(entry.error).toMatch('"261312040820Z" is not a valid ASN.1 time value');
+  });
+
+  it('keeps decoding a chain when only one block has corrupt validity data', () => {
+    const mutated = withNotBefore(sampleDer, '261312040820Z');
+    const results = decodeCertificates(
+      `${toPem(btoa(String.fromCharCode(...mutated)))}\n${SAMPLE_CERTIFICATE}`,
+    );
+    expect(results[0].error).toMatch('is not a valid ASN.1 time value');
+    expect(results[1].certificate.validity.notBefore.utc).toBe('2026-08-12T04:08:20Z');
   });
 
   it('reports a retagged signatureValue as a per-block decode error', () => {
