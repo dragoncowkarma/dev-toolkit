@@ -57,6 +57,14 @@ function encodeSequence(content) {
   return Uint8Array.from([...header, ...content]);
 }
 
+/** Locates the AlgorithmIdentifier that `tbsCertificate` repeats before its issuer. */
+function tbsSignatureField(der) {
+  const tbs = parseAsn1(der).children[0];
+  // A context-specific wrapper in first position is the optional version field.
+  const versionFields = tbs.children[0].tagClass === 0 ? 0 : 1;
+  return tbs.children[versionFields + 1];
+}
+
 describe('extractPemBlocks', () => {
   it('returns every block in document order with whitespace stripped', () => {
     const blocks = extractPemBlocks(`noise\n${SAMPLE_CERTIFICATE}\nnoise\n${EC_CERTIFICATE}`);
@@ -373,6 +381,33 @@ describe('parseCertificate error handling', () => {
     );
     expect(() => parseCertificate(extended)).toThrow(
       'unexpected fields after its signature value',
+    );
+  });
+
+  it('rejects a signed body whose signature field is not a SEQUENCE', () => {
+    const mutated = Uint8Array.from(sampleDer);
+    // Retag only the AlgorithmIdentifier inside tbsCertificate, SEQUENCE to NULL.
+    mutated[tbsSignatureField(sampleDer).start] = ASN1_TAG.NULL;
+    expect(() => parseCertificate(mutated)).toThrow(
+      'The signed certificate body signature algorithm is not a valid DER SEQUENCE',
+    );
+  });
+
+  it('rejects a signed body whose signature field starts with a non-OID', () => {
+    const mutated = Uint8Array.from(sampleDer);
+    mutated[tbsSignatureField(sampleDer).children[0].start] = ASN1_TAG.NULL;
+    expect(() => parseCertificate(mutated)).toThrow(
+      'The signed certificate body signature algorithm OID is not a valid DER OBJECT IDENTIFIER',
+    );
+  });
+
+  it('rejects a signed body whose signature algorithm differs from the outer one', () => {
+    const mutated = Uint8Array.from(sampleDer);
+    const oid = tbsSignatureField(sampleDer).children[0];
+    // sha256WithRSAEncryption ends in 11; 13 is sha512WithRSAEncryption.
+    mutated[oid.end - 1] = 13;
+    expect(() => parseCertificate(mutated)).toThrow(
+      'The certificate body signature algorithm does not match the outer signature algorithm',
     );
   });
 
