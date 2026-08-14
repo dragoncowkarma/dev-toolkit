@@ -1,0 +1,137 @@
+.ssh-key-inspector {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 1rem 2rem;
+}
+
+.ssh-key-inspector__back,
+.ssh-key-inspector__fingerprint button {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.ssh-key-inspector__back {
+  margin-bottom: 1rem;
+  padding: 0.45rem 0.85rem;
+}
+
+.ssh-key-inspector__intro {
+  margin-bottom: 1rem;
+}
+
+.ssh-key-inspector__intro h2 {
+  font-size: 1.35rem;
+}
+
+.ssh-key-inspector__intro p,
+.ssh-key-inspector__hint {
+  color: var(--color-text-muted);
+}
+
+.ssh-key-inspector__label {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-weight: 700;
+}
+
+.ssh-key-inspector__input {
+  width: 100%;
+  min-height: 170px;
+  resize: vertical;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: 0.85rem/1.5 'SF Mono', Consolas, monospace;
+  padding: 0.8rem;
+}
+
+.ssh-key-inspector__input:focus {
+  border-color: var(--color-primary);
+  outline: none;
+}
+
+.ssh-key-inspector__hint {
+  margin-top: 0.35rem;
+  font-size: 0.85rem;
+}
+
+.ssh-key-inspector__results {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.ssh-key-inspector__card, .ssh-key-inspector__failure {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  padding: 1rem;
+}
+
+.ssh-key-inspector__card header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.ssh-key-inspector__card header p,
+.ssh-key-inspector__comment {
+  color: var(--color-text-muted);
+}
+
+.ssh-key-inspector__comment {
+  margin: 0.35rem 0 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.ssh-key-inspector__fingerprint {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.3rem 0.6rem;
+  align-items: center;
+  border-top: 1px solid var(--color-border);
+  margin-top: 0.7rem;
+  padding-top: 0.7rem;
+}
+
+.ssh-key-inspector__fingerprint span {
+  color: var(--color-text-muted);
+  font-weight: 700;
+}
+
+.ssh-key-inspector__fingerprint code,
+.ssh-key-inspector__failure code {
+  overflow-wrap: anywhere;
+}
+
+.ssh-key-inspector__fingerprint button {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  padding: 0.35rem 0.65rem;
+}
+
+.ssh-key-inspector__notice {
+  margin-top: 0.75rem;
+  color: var(--color-success);
+}
+
+.ssh-key-inspector__error,
+.ssh-key-inspector__failure p {
+  margin-top: 0.5rem;
+  color: var(--color-error-light);
+}
+
+.ssh-key-inspector__failure {
+  border-color: var(--color-error-border);
+  background: var(--color-error-bg);
+}
+
+@media (min-width: 560px) {
+  .ssh-key-inspector { padding-left: 1.25rem; padding-right: 1.25rem; }
+  .ssh-key-inspector__fingerprint { grid-template-columns: 5.5rem 1fr auto; }
+  .ssh-key-inspector__fingerprint button { grid-column: 3; grid-row: auto; }
+}
