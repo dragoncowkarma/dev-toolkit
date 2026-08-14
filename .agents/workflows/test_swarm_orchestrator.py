@@ -1433,6 +1433,87 @@ class MainSyncRestartTests(unittest.TestCase):
 
 
 class RuntimeLifecycleTests(unittest.TestCase):
+    def test_reset_preserves_live_running_dispatch_across_once_invocations(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            registry = Path(tmp_dir) / "registry.json"
+            log_file = Path(tmp_dir) / "child.log"
+            log_file.write_text("", encoding="utf-8")
+            proc = subprocess.Popen(
+                [sys.executable, "-c", "import time; time.sleep(60)"],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+
+            try:
+                original_tracker = make_tracker([])
+                with patch.object(swarm, "PROCESS_REGISTRY_FILE", registry):
+                    original_tracker.register(
+                        proc=proc,
+                        role="worker",
+                        ai_name="codex",
+                        model="5.6 sol",
+                        reasoning="high",
+                        task_ref="issue#231:initial",
+                        branch="worker/231-codex-once-mode",
+                        command="long-lived child",
+                        cwd=tmp_dir,
+                        log_file=str(log_file),
+                    )
+                    restarted_tracker = swarm.ProcessTracker()
+
+                with (
+                    patch.object(swarm, "tracker", restarted_tracker),
+                    patch.object(swarm, "PROCESS_REGISTRY_FILE", registry),
+                ):
+                    swarm.reset_process_history(preserve_running=False)
+
+                    self.assertEqual(1, len(restarted_tracker._history))
+                    allowed, reason = restarted_tracker.should_dispatch(
+                        "issue#231:initial",
+                        "worker",
+                    )
+                    self.assertFalse(allowed)
+                    self.assertEqual(swarm.DISPATCH_RUNNING, reason)
+                    self.assertTrue(registry.exists())
+            finally:
+                proc.terminate()
+                proc.wait(timeout=5)
+
+    def test_reset_reclaims_running_dispatch_after_pid_dies(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            registry = Path(tmp_dir) / "registry.json"
+            registry.write_text("{}", encoding="utf-8")
+            proc = subprocess.Popen(
+                [sys.executable, "-c", "pass"],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            proc.wait(timeout=5)
+            running = record(
+                "issue#231:initial",
+                "worker",
+                swarm.ProcessStatus.RUNNING,
+                pid=proc.pid,
+            )
+            restarted_tracker = make_tracker([running])
+
+            with (
+                patch.object(swarm, "tracker", restarted_tracker),
+                patch.object(swarm, "PROCESS_REGISTRY_FILE", registry),
+            ):
+                swarm.reset_process_history(preserve_running=False)
+
+                self.assertEqual([], restarted_tracker._history)
+                self.assertFalse(registry.exists())
+                allowed, reason = restarted_tracker.should_dispatch(
+                    "issue#231:initial",
+                    "worker",
+                )
+                self.assertTrue(allowed)
+                self.assertEqual("new event", reason)
+
     def test_self_restart_supervises_live_pid_until_same_run_reconciles_it(self):
         real_sleep = time.sleep
         with tempfile.TemporaryDirectory() as tmp_dir:
