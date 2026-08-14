@@ -96,6 +96,38 @@ describe('JwkInspectorTool Component', () => {
     });
   });
 
+  it('resets copy feedback after 1500ms and cleans up timer on unmount', async () => {
+    vi.useFakeTimers();
+    const { unmount } = render(<JwkInspectorTool />);
+    fireEvent.click(screen.getByRole('button', { name: /Load sample/i }));
+
+    await vi.waitFor(() => {
+      expect(screen.getByText('NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs')).toBeInTheDocument();
+    });
+
+    const copyButtons = screen.getAllByRole('button', { name: /^Copy$/i });
+    fireEvent.click(copyButtons[0]);
+
+    await vi.waitFor(() => {
+      expect(screen.getByText('Copied!')).toBeInTheDocument();
+    });
+
+    vi.advanceTimersByTime(1500);
+
+    await vi.waitFor(() => {
+      expect(screen.queryByText('Copied!')).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(copyButtons[0]);
+    await vi.waitFor(() => {
+      expect(screen.getByText('Copied!')).toBeInTheDocument();
+    });
+
+    unmount();
+    expect(() => vi.advanceTimersByTime(1500)).not.toThrow();
+    vi.useRealTimers();
+  });
+
   it('has aria-live polite status region for accessibility', () => {
     const { container } = render(<JwkInspectorTool />);
     const liveRegion = container.querySelector('[aria-live="polite"]');
