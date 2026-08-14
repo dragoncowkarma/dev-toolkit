@@ -1,0 +1,120 @@
+.json-patch-tool {
+  display: grid;
+  gap: 1rem;
+  max-width: 1080px;
+  margin: 0 auto;
+}
+
+.json-patch-tool__intro,
+.json-patch-tool__inputs,
+.json-patch-tool__controls,
+.json-patch-tool__actions {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.json-patch-tool__eyebrow {
+  color: var(--color-accent);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.json-patch-tool__intro p:last-child {
+  color: var(--color-text-muted);
+}
+
+.json-patch-tool__controls,
+.json-patch-tool__actions {
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+}
+
+.json-patch-tool button {
+  min-height: 2.75rem;
+  padding: 0.55rem 0.8rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  cursor: pointer;
+  transition:
+    background var(--transition),
+    border-color var(--transition);
+}
+
+.json-patch-tool button:hover,
+.json-patch-tool button[aria-pressed="true"] {
+  border-color: var(--color-primary);
+  background: var(--color-surface-hover);
+}
+
+.json-patch-tool__pane,
+.json-patch-tool__pointer {
+  display: grid;
+  gap: 0.4rem;
+  color: var(--color-text);
+  font-weight: 700;
+}
+
+.json-patch-tool textarea {
+  width: 100%;
+  min-height: 180px;
+  padding: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-code-bg);
+  color: var(--color-text);
+  font:
+    0.9rem/1.5 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace;
+  resize: vertical;
+}
+
+.json-patch-tool__pointer textarea {
+  min-height: 2.8rem;
+}
+
+.json-patch-tool textarea:focus {
+  border-color: var(--color-primary-light);
+  outline: 2px solid color-mix(in srgb, var(--color-primary) 35%, transparent);
+}
+
+.json-patch-tool__error,
+.json-patch-tool__result {
+  padding: 0.85rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.json-patch-tool__error {
+  border-color: var(--color-error-border);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+}
+
+.json-patch-tool__result {
+  background: var(--color-surface);
+}
+
+.json-patch-tool__result pre {
+  margin-top: 0.6rem;
+  overflow: auto;
+  color: var(--color-success);
+  font:
+    0.9rem/1.5 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+@media (min-width: 760px) {
+  .json-patch-tool__inputs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
