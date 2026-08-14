@@ -283,7 +283,7 @@ function parseTreeBranch(line) {
 
 /**
  * Parses an existing ASCII or Unicode tree diagram into a hierarchy.
- * A non-branch first line is treated as an optional root header.
+ * A first line without tree syntax is treated as an optional root header.
  * @param {string} treeText An ASCII or Unicode tree diagram.
  * @returns {TreeNode} A synthetic root node containing parsed children.
  * @throws {Error} When the diagram has invalid branch structure.
@@ -295,10 +295,9 @@ export function parseTreeDiagram(treeText) {
   if (!lines.length) return root;
 
   const firstBranch = parseTreeBranch(lines[0]);
-  const branchLines = firstBranch ? lines : lines.slice(1);
-  if (!firstBranch && parseTreeBranch(lines[0]) !== null) {
-    throw new Error('Invalid root header.');
-  }
+  // Indentation and branch characters indicate an attempted tree entry, not a header.
+  const hasTreeSyntaxPrefix = /^[\s│├└|`]/u.test(lines[0]);
+  const branchLines = firstBranch || hasTreeSyntaxPrefix ? lines : lines.slice(1);
   if (!branchLines.length) return root;
 
   const stack = [root];

@@ -89,6 +89,16 @@ describe('renderTree', () => {
 });
 
 describe('parseTreeDiagram', () => {
+  it('rejects a malformed first branch line instead of treating it as a root header', () => {
+    expect(() => parseTreeDiagram('├──src\n├── main.js\n└── README.md'))
+      .toThrow('Malformed tree line: ├──src');
+  });
+
+  it('accepts a plain-text root header', () => {
+    const tree = parseTreeDiagram('project\n└── README.md');
+    expect(treeToPaths(tree)).toEqual(['README.md']);
+  });
+
   it('round-trips a Unicode diagram with an optional root header', () => {
     const original = parseTreeInput('src/components/Button.jsx\nsrc/main.jsx\nREADME.md');
     const diagram = renderTree(original, { showRoot: true, rootName: 'project' });
