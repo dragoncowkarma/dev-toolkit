@@ -1,0 +1,16 @@
+.isbn-validator { display: flex; width: 100%; max-width: 980px; margin: 0 auto; padding: 0 1.25rem 2rem; flex-direction: column; gap: 1rem; }
+.isbn-validator__intro, .isbn-validator__panel, .isbn-validator__result { border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-surface); padding: 1rem; }
+.isbn-validator__intro h2, .isbn-validator__heading h3 { margin: 0; font-size: 1.25rem; }
+.isbn-validator__intro > p:last-child, .isbn-validator__heading p, .isbn-validator__result > span, .isbn-validator__field { color: var(--color-text-muted); font-size: 0.85rem; }
+.isbn-validator__eyebrow { color: var(--color-primary-light); font-size: 0.7rem; font-weight: 800; letter-spacing: 0.08em; }
+.isbn-validator__panel, .isbn-validator__heading, .isbn-validator__field, .isbn-validator__actions, .isbn-validator__samples, .isbn-validator__result { display: flex; flex-direction: column; gap: 0.75rem; }
+.isbn-validator__field { font-weight: 800; letter-spacing: 0.04em; }
+.isbn-validator__field input { min-width: 0; border: 1px solid var(--color-border); border-radius: calc(var(--radius) - 5px); background: var(--color-code-bg); color: var(--color-text); font: inherit; font-family: 'SFMono-Regular', Consolas, monospace; padding: 0.65rem 0.7rem; }
+.isbn-validator__field input:focus { outline: 0; border-color: var(--color-primary); }
+.isbn-validator button { align-self: flex-start; border: 1px solid var(--color-border); border-radius: calc(var(--radius) - 5px); background: var(--color-surface-hover); color: var(--color-text); cursor: pointer; font: inherit; font-size: 0.8rem; font-weight: 700; padding: 0.45rem 0.65rem; }
+.isbn-validator button:hover { border-color: var(--color-primary); color: var(--color-primary-light); }
+.isbn-validator__actions, .isbn-validator__samples { flex-direction: row; flex-wrap: wrap; }
+.isbn-validator__result { background: var(--color-code-bg); }
+.isbn-validator__result code, .isbn-validator__result strong { overflow-x: auto; color: var(--color-primary-light); font-family: 'SFMono-Regular', Consolas, monospace; font-size: 0.9rem; }
+.isbn-validator__error { margin: 0; border: 1px solid var(--color-error-border); border-radius: var(--radius); background: var(--color-error-bg); color: var(--color-error-light); font-size: 0.85rem; padding: 0.75rem 1rem; }
+@media (min-width: 650px) { .isbn-validator__heading { align-items: flex-start; flex-direction: row; justify-content: space-between; } }
