@@ -1,0 +1,215 @@
+.ascii-tree {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 3rem;
+}
+
+.ascii-tree__header,
+.ascii-tree__tabs,
+.ascii-tree__parse-controls,
+.ascii-tree__toggles,
+.ascii-tree__symbols {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.ascii-tree__header {
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.ascii-tree__eyebrow {
+  color: var(--color-primary-light);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ascii-tree h2 {
+  margin-top: 0.2rem;
+  font-size: clamp(1.4rem, 3vw, 2rem);
+}
+
+.ascii-tree__header p:last-child {
+  color: var(--color-text-muted);
+}
+
+.ascii-tree button,
+.ascii-tree select,
+.ascii-tree input {
+  font: inherit;
+}
+
+.ascii-tree__copy,
+.ascii-tree__tabs button {
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.ascii-tree__copy {
+  padding: 0.55rem 0.9rem;
+}
+
+.ascii-tree__copy:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.ascii-tree__tabs {
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: 1rem;
+}
+
+.ascii-tree__tabs button {
+  border-radius: 7px 7px 0 0;
+  border-bottom: 0;
+  padding: 0.55rem 0.9rem;
+}
+
+.ascii-tree__tabs .is-active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.ascii-tree__content {
+  display: grid;
+  grid-template-columns: minmax(190px, 0.32fr) minmax(0, 1fr);
+  gap: 1rem;
+}
+
+.ascii-tree__content--parse {
+  display: block;
+}
+
+.ascii-tree__controls {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.9rem;
+  padding: 1rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.ascii-tree label,
+.ascii-tree fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.ascii-tree fieldset {
+  border: 0;
+}
+
+.ascii-tree legend {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.ascii-tree__choice,
+.ascii-tree__toggles label,
+.ascii-tree__parse-controls label {
+  flex-direction: row;
+  align-items: center;
+  color: var(--color-text);
+}
+
+.ascii-tree select,
+.ascii-tree input:not([type='radio']):not([type='checkbox']) {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 0.4rem 0.5rem;
+  background: var(--color-code-bg);
+  color: var(--color-text);
+}
+
+.ascii-tree__symbols {
+  align-items: stretch;
+}
+
+.ascii-tree__symbols label {
+  flex: 1 1 42%;
+}
+
+.ascii-tree__panes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.ascii-tree__pane {
+  min-height: 390px;
+  padding: 1rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.ascii-tree__pane > span {
+  display: block;
+  margin-bottom: 0.6rem;
+  color: var(--color-text);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.ascii-tree textarea,
+.ascii-tree__output {
+  width: 100%;
+  min-height: 340px;
+  border: 0;
+  border-radius: 6px;
+  padding: 0.85rem;
+  background: var(--color-code-bg);
+  color: var(--color-text);
+  font-family: 'Fira Code', 'Courier New', monospace;
+  font-size: 0.84rem;
+  line-height: 1.55;
+  white-space: pre;
+  overflow: auto;
+}
+
+.ascii-tree textarea {
+  resize: vertical;
+}
+
+.ascii-tree__error {
+  padding: 0.8rem;
+  border: 1px solid var(--color-error-border);
+  border-radius: 6px;
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+}
+
+.ascii-tree__parse-controls {
+  justify-content: flex-end;
+  margin-bottom: 0.8rem;
+}
+
+@media (max-width: 800px) {
+  .ascii-tree__content,
+  .ascii-tree__panes {
+    grid-template-columns: 1fr;
+  }
+
+  .ascii-tree__pane {
+    min-height: 280px;
+  }
+
+  .ascii-tree textarea,
+  .ascii-tree__output {
+    min-height: 230px;
+  }
+}
