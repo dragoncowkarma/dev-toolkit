@@ -817,25 +817,30 @@ def reset_process_history(preserve_running: bool = False):
     re-dispatch a prompt to an AI we already know will reject it — silently
     reintroducing the failure the provider-cooldown check exists to prevent.
 
-    Unexpired provider-scoped DEFERRED records always survive. A real polling
-    daemon also retains live RUNNING records so a replacement process can
-    harvest their child PIDs. Every other kind of stale state is cleared as
-    before.
+    Unexpired provider-scoped DEFERRED records always survive. RUNNING records
+    also survive whenever their PID is still alive, including across separate
+    `--once` scheduler invocations where the new orchestrator is not the
+    process's parent. Every other kind of stale state is cleared as before.
     """
     tracker._active.clear()
     surviving = [
         record
         for record in tracker._history
         if tracker._is_active_provider_cooldown(record)
-        or (preserve_running and record.status == ProcessStatus.RUNNING)
+        or (
+            record.status == ProcessStatus.RUNNING
+            and tracker.check_pid_alive(record.pid)
+        )
     ]
     for record in surviving:
         if record.status == ProcessStatus.RUNNING:
+            restart_kind = "self-restart" if preserve_running else "restart"
             log.info(
-                "♻️ Preserving %s %s [PID %d] across self-restart.",
+                "♻️ Preserving %s %s [PID %d] across %s.",
                 record.role,
                 record.task_ref,
                 record.pid,
+                restart_kind,
             )
         else:
             log.info(
