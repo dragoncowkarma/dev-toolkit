@@ -191,7 +191,7 @@ export function getTreeSymbols(mode = 'unicode', customSymbols = {}) {
   if (mode !== 'unicode' && mode !== 'ascii' && mode !== 'custom') {
     throw new Error(`Unknown tree style: ${mode}`);
   }
-  const symbols = { ...base, ...customSymbols };
+  const symbols = mode === 'custom' ? { ...base, ...customSymbols } : { ...base };
   if (Object.values(symbols).some((symbol) => typeof symbol !== 'string')) {
     throw new TypeError('Tree symbols must be strings.');
   }

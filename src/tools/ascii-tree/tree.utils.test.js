@@ -51,6 +51,9 @@ describe('renderTree', () => {
   const tree = parseTreeInput([
     'README.md', 'src/main.jsx', 'src/components/Button.jsx', 'package.json',
   ].join('\n'));
+  const defaultCustomSymbols = {
+    branch: '+-- ', lastBranch: '`-- ', vertical: '|   ', space: '    ',
+  };
 
   it('renders default Unicode branches, folders first, and directory slashes', () => {
     expect(renderTree(tree)).toBe([
@@ -78,6 +81,34 @@ describe('renderTree', () => {
       foldersFirst: false,
       customSymbols: { branch: '+ ', lastBranch: '- ', vertical: '> ', space: '  ' },
     })).toBe('+ a.js\n- z.js');
+  });
+
+  it('ignores populated custom symbols for Unicode and ASCII modes', () => {
+    expect(getTreeSymbols('unicode', defaultCustomSymbols)).toEqual({
+      branch: '├── ', lastBranch: '└── ', vertical: '│   ', space: '    ',
+    });
+    expect(getTreeSymbols('ascii', defaultCustomSymbols)).toEqual({
+      branch: '|-- ', lastBranch: '`-- ', vertical: '|   ', space: '    ',
+    });
+  });
+
+  it('renders the tool default options with Unicode symbols despite custom state', () => {
+    const defaultTree = parseTreeInput('src/components/Button.jsx\nsrc/main.jsx\nREADME.md');
+    expect(renderTree(defaultTree, {
+      mode: 'unicode',
+      showRoot: true,
+      rootName: 'project',
+      trailingSlashes: true,
+      foldersFirst: true,
+      customSymbols: defaultCustomSymbols,
+    })).toBe([
+      'project',
+      '├── src/',
+      '│   ├── components/',
+      '│   │   └── Button.jsx',
+      '│   └── main.jsx',
+      '└── README.md',
+    ].join('\n'));
   });
 
   it('returns symbols and rejects invalid symbol modes', () => {
