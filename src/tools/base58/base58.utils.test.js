@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  assertDecodeInputWithinLimit,
+  assertEncodeInputWithinLimit,
   decodeBase58CheckDetails,
   decodeBase58Details,
   decodeBase58ToBytes,
@@ -13,6 +15,8 @@ import {
   formatFileSize,
   hexToBytes,
   isValidBase58,
+  MAX_BASE58_CHARS,
+  MAX_INPUT_BYTES,
 } from './base58.utils.js';
 
 describe('base58.utils', () => {
@@ -214,18 +218,147 @@ describe('base58.utils', () => {
       expect(details.text).toBe('Hello World');
     });
 
-    it('rejects files larger than MAX_FILE_SIZE (16 KB)', async () => {
-      const largeContent = new Uint8Array(20 * 1024);
+    it('rejects files larger than MAX_INPUT_BYTES (2 KB)', async () => {
+      const largeContent = new Uint8Array(MAX_INPUT_BYTES + 1024);
       const blob = new Blob([largeContent], { type: 'application/octet-stream' });
       await expect(fileToBase58(blob)).rejects.toThrow(
-        'File is too large for Base58 (max 16 KB)'
+        `exceeds the ${formatFileSize(MAX_INPUT_BYTES)} Base58 limit`
       );
+    });
+
+    it('accepts a file exactly at MAX_INPUT_BYTES', async () => {
+      const content = new Uint8Array(MAX_INPUT_BYTES).fill(1);
+      const blob = new Blob([content], { type: 'application/octet-stream' });
+      const result = await fileToBase58(blob);
+      expect(result.length).toBeGreaterThan(0);
     });
 
     it('formats file sizes accurately', () => {
       expect(formatFileSize(500)).toBe('500 B');
       expect(formatFileSize(1500)).toBe('1.5 KB');
       expect(formatFileSize(1048576)).toBe('1.0 MB');
+    });
+  });
+
+  describe('Size Limit Policy', () => {
+    it('accepts text input exactly at the MAX_INPUT_BYTES boundary', () => {
+      const text = 'a'.repeat(MAX_INPUT_BYTES);
+      expect(() => encodeToBase58(text)).not.toThrow();
+      expect(assertEncodeInputWithinLimit(text)).toBe(MAX_INPUT_BYTES);
+    });
+
+    it('rejects text input exceeding MAX_INPUT_BYTES with a size error', () => {
+      const text = 'a'.repeat(MAX_INPUT_BYTES + 1);
+      expect(() => encodeToBase58(text)).toThrow(
+        `exceeds the ${formatFileSize(MAX_INPUT_BYTES)} Base58 limit`
+      );
+      expect(() => encodeToBase58(text)).toThrow(
+        'Base58 is intended for short identifiers and keys'
+      );
+    });
+
+    it('measures oversized text limit by UTF-8 byte length, not character count', () => {
+      // Each '한' is 3 bytes in UTF-8, so 1000 chars is well over MAX_INPUT_BYTES
+      // in bytes even though the raw character count is smaller.
+      const text = '한'.repeat(1000);
+      expect(text.length).toBeLessThan(MAX_INPUT_BYTES);
+      expect(() => encodeToBase58(text)).toThrow(
+        `exceeds the ${formatFileSize(MAX_INPUT_BYTES)} Base58 limit`
+      );
+    });
+
+    it('accepts hex input at the MAX_INPUT_BYTES boundary (measured by decoded bytes)', () => {
+      const hex = '00'.repeat(MAX_INPUT_BYTES);
+      expect(() => encodeToBase58(hex, { inputType: 'hex' })).not.toThrow();
+    });
+
+    it('rejects hex input whose decoded byte length exceeds MAX_INPUT_BYTES', () => {
+      const hex = '00'.repeat(MAX_INPUT_BYTES + 1);
+      expect(() => encodeToBase58(hex, { inputType: 'hex' })).toThrow(
+        `exceeds the ${formatFileSize(MAX_INPUT_BYTES)} Base58 limit`
+      );
+    });
+
+    it('keeps the invalid-hex error over a size error, even for long malformed hex', () => {
+      const invalidHex = 'zz'.repeat(MAX_INPUT_BYTES + 1);
+      expect(() => encodeToBase58(invalidHex, { inputType: 'hex' })).toThrow(
+        'Hex input contains invalid characters.'
+      );
+
+      const oddLengthHex = '0'.repeat((MAX_INPUT_BYTES + 1) * 2 + 1);
+      expect(() => encodeToBase58(oddLengthHex, { inputType: 'hex' })).toThrow(
+        'Hex input must have an even number of digits.'
+      );
+    });
+
+    it('rejects oversized encode input for Base58Check too', async () => {
+      const text = 'a'.repeat(MAX_INPUT_BYTES + 1);
+      await expect(encodeToBase58Check(text)).rejects.toThrow(
+        `exceeds the ${formatFileSize(MAX_INPUT_BYTES)} Base58 limit`
+      );
+    });
+
+    it('accepts decode input exactly at the MAX_BASE58_CHARS boundary', () => {
+      const base58 = '1'.repeat(MAX_BASE58_CHARS);
+      expect(() => decodeFromBase58(base58, { outputType: 'hex' })).not.toThrow();
+      expect(assertDecodeInputWithinLimit(base58)).toBe(MAX_BASE58_CHARS);
+    });
+
+    it('rejects decode input exceeding MAX_BASE58_CHARS with a size error', () => {
+      const base58 = '1'.repeat(MAX_BASE58_CHARS + 1);
+      expect(() => decodeFromBase58(base58)).toThrow(
+        `exceeds the ${MAX_BASE58_CHARS}-character Base58 limit`
+      );
+      expect(() => decodeBase58Details(base58)).toThrow(
+        `exceeds the ${MAX_BASE58_CHARS}-character Base58 limit`
+      );
+    });
+
+    it('rejects oversized decode input for Base58Check too', async () => {
+      const base58 = '1'.repeat(MAX_BASE58_CHARS + 1);
+      await expect(decodeBase58CheckDetails(base58)).rejects.toThrow(
+        `exceeds the ${MAX_BASE58_CHARS}-character Base58 limit`
+      );
+    });
+
+    it('throws the invalid-character error for malformed decode input under the limit', () => {
+      // Below the size limit, so the character error (not the size error) should surface.
+      const withInvalidChar = `${'1'.repeat(MAX_BASE58_CHARS - 1)}0`;
+      expect(() => decodeFromBase58(withInvalidChar)).toThrow(
+        "Invalid Base58 character: '0'."
+      );
+    });
+
+    it('recovers normally after a rejected oversized input is replaced with valid input', () => {
+      const oversized = 'a'.repeat(MAX_INPUT_BYTES + 1);
+      expect(() => encodeToBase58(oversized)).toThrow();
+      // A subsequent call with valid input must succeed as if nothing happened.
+      expect(encodeToBase58('Hello World')).toBe('JxF12TrwUP45BMd');
+    });
+  });
+
+  describe('Timing Guard (no multi-second stall at the accepted boundary)', () => {
+    it('encodes a MAX_INPUT_BYTES payload well under a multi-second stall', () => {
+      const bytes = new Uint8Array(MAX_INPUT_BYTES);
+      crypto.getRandomValues(bytes);
+      const start = performance.now();
+      encodeBytesToBase58(bytes);
+      const elapsedMs = performance.now() - start;
+      // Measured ~27ms warmed on Node v22.18.0 (x86_64 Darwin) for 2048 bytes;
+      // 1000ms leaves generous headroom for slower/loaded CI hardware while
+      // still catching any regression back toward multi-second behavior.
+      expect(elapsedMs).toBeLessThan(1000);
+    });
+
+    it('decodes a realistic MAX_INPUT_BYTES-derived Base58 string well under a stall', () => {
+      const bytes = new Uint8Array(MAX_INPUT_BYTES);
+      crypto.getRandomValues(bytes);
+      const encoded = encodeBytesToBase58(bytes);
+      expect(encoded.length).toBeLessThanOrEqual(MAX_BASE58_CHARS);
+      const start = performance.now();
+      decodeBase58ToBytes(encoded);
+      const elapsedMs = performance.now() - start;
+      expect(elapsedMs).toBeLessThan(1000);
     });
   });
 });

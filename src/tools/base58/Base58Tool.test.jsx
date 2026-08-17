@@ -10,6 +10,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import Base58Tool from './Base58Tool.jsx';
 import * as base58Utils from './base58.utils.js';
 
+const { MAX_BASE58_CHARS, MAX_INPUT_BYTES } = base58Utils;
+
 vi.mock('./base58.utils.js', async (importOriginal) => {
   const actual = await importOriginal();
   return { ...actual, fileToBase58: vi.fn(actual.fileToBase58) };
@@ -268,9 +270,9 @@ describe('Base58Tool File Upload', () => {
     });
   });
 
-  it('rejects file upload exceeding max size (16 KB) with role alert', async () => {
+  it('rejects file upload exceeding max size (2 KB) with role alert', async () => {
     render(<Base58Tool />);
-    const largeContent = new Uint8Array(20 * 1024);
+    const largeContent = new Uint8Array(MAX_INPUT_BYTES + 1024);
     const file = new File([largeContent], 'large.bin', {
       type: 'application/octet-stream',
     });
@@ -278,7 +280,10 @@ describe('Base58Tool File Upload', () => {
     await act(async () => selectFile(fileInput, file));
 
     expect(screen.getByRole('alert')).toHaveTextContent(
-      'File is too large for Base58 (max 16 KB)'
+      'exceeds the 2.0 KB Base58 limit'
+    );
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Base58 is intended for short identifiers and keys'
     );
   });
 
@@ -300,5 +305,111 @@ describe('Base58Tool File Upload', () => {
 
     expect(screen.getByLabelText('Text')).toHaveValue('');
     expect(screen.getByLabelText('Base58')).toHaveValue('');
+  });
+});
+
+describe('Base58Tool Textarea Size Limit', () => {
+  it('rejects pasted text over MAX_INPUT_BYTES without freezing, with role alert', async () => {
+    render(<Base58Tool />);
+    const oversizedText = 'a'.repeat(MAX_INPUT_BYTES + 1);
+    fireEvent.change(screen.getByLabelText('Text'), {
+      target: { value: oversizedText },
+    });
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'exceeds the 2.0 KB Base58 limit'
+    );
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Base58 is intended for short identifiers and keys'
+    );
+    expect(screen.getByLabelText('Base58')).toHaveValue('');
+  });
+
+  it('encodes text exactly at the MAX_INPUT_BYTES boundary without an error', async () => {
+    render(<Base58Tool />);
+    const boundaryText = 'a'.repeat(MAX_INPUT_BYTES);
+    fireEvent.change(screen.getByLabelText('Text'), {
+      target: { value: boundaryText },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Base58').value.length).toBeGreaterThan(0);
+    });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('rejects oversized hex input based on decoded bytes, not character count', async () => {
+    render(<Base58Tool />);
+    fireEvent.click(screen.getByRole('button', { name: 'Hex' }));
+
+    const oversizedHex = '00'.repeat(MAX_INPUT_BYTES + 1);
+    fireEvent.change(screen.getByLabelText('Hex Bytes'), {
+      target: { value: oversizedHex },
+    });
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'exceeds the 2.0 KB Base58 limit'
+    );
+  });
+
+  it('keeps the existing invalid-hex error instead of a size error for malformed hex', async () => {
+    render(<Base58Tool />);
+    fireEvent.click(screen.getByRole('button', { name: 'Hex' }));
+
+    fireEvent.change(screen.getByLabelText('Hex Bytes'), {
+      target: { value: '66Z' },
+    });
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Hex input contains invalid characters.'
+    );
+  });
+
+  it('rejects oversized Base58 decode input with role alert', async () => {
+    render(<Base58Tool />);
+    fireEvent.click(screen.getByRole('button', { name: 'Decode' }));
+
+    const oversizedBase58 = '1'.repeat(MAX_BASE58_CHARS + 1);
+    fireEvent.change(screen.getByLabelText('Base58'), {
+      target: { value: oversizedBase58 },
+    });
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      `exceeds the ${MAX_BASE58_CHARS}-character Base58 limit`
+    );
+  });
+
+  it('rejects oversized Base58Check decode input with role alert', async () => {
+    render(<Base58Tool />);
+    fireEvent.click(screen.getByRole('button', { name: 'Decode' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Base58Check' }));
+
+    const oversizedBase58 = '1'.repeat(MAX_BASE58_CHARS + 1);
+    fireEvent.change(screen.getByLabelText('Base58Check'), {
+      target: { value: oversizedBase58 },
+    });
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      `exceeds the ${MAX_BASE58_CHARS}-character Base58 limit`
+    );
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it('recovers and encodes after oversized input is replaced with valid text', async () => {
+    render(<Base58Tool />);
+    const oversizedText = 'a'.repeat(MAX_INPUT_BYTES + 1);
+    fireEvent.change(screen.getByLabelText('Text'), {
+      target: { value: oversizedText },
+    });
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Text'), {
+      target: { value: 'Hello World' },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Base58')).toHaveValue('JxF12TrwUP45BMd');
+    });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });
