@@ -1275,6 +1275,58 @@ class PollingLifecycleTests(unittest.TestCase):
         self.assertEqual("claude", maintainer_arg.ai)
 
 
+class CreateWorktreeTests(unittest.TestCase):
+    def test_create_worktree_uses_force_and_prune(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        target_path = tmp_dir / "156"
+        with (
+            patch.object(swarm, "WORKTREE_DIR", tmp_dir),
+            patch.object(swarm, "local_branch_exists", return_value=False),
+            patch.object(swarm.subprocess, "run") as run,
+        ):
+            wt = swarm.create_worktree(156, "worker/156-branch")
+            self.assertEqual(wt, target_path)
+            # Verify git worktree prune, git branch, and git worktree add --force were called
+            run.assert_any_call(["git", "worktree", "prune"], cwd=swarm.REPO_ROOT, check=False)
+            run.assert_any_call(["git", "branch", "worker/156-branch"], cwd=swarm.REPO_ROOT, check=True)
+            run.assert_any_call(
+                ["git", "worktree", "add", "--force", str(target_path), "worker/156-branch"],
+                cwd=swarm.REPO_ROOT,
+                check=True,
+            )
+
+    def test_create_worktree_returns_existing_valid_worktree(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        target_path = tmp_dir / "156"
+        target_path.mkdir(parents=True)
+        (target_path / ".git").write_text("gitdir: ...")
+        with (
+            patch.object(swarm, "WORKTREE_DIR", tmp_dir),
+            patch.object(swarm.subprocess, "run") as run,
+        ):
+            wt = swarm.create_worktree(156, "worker/156-branch")
+            self.assertEqual(wt, target_path)
+            run.assert_not_called()
+
+    def test_create_worktree_recreates_corrupted_worktree_dir(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        target_path = tmp_dir / "156"
+        target_path.mkdir(parents=True)
+        (target_path / "stale.txt").write_text("stale")
+        with (
+            patch.object(swarm, "WORKTREE_DIR", tmp_dir),
+            patch.object(swarm, "local_branch_exists", return_value=True),
+            patch.object(swarm.subprocess, "run") as run,
+        ):
+            wt = swarm.create_worktree(156, "worker/156-branch")
+            self.assertEqual(wt, target_path)
+            run.assert_any_call(
+                ["git", "worktree", "add", "--force", str(target_path), "worker/156-branch"],
+                cwd=swarm.REPO_ROOT,
+                check=True,
+            )
+
+
 class CleanupTests(unittest.TestCase):
     def test_cleanup_is_a_no_op_when_nothing_remains(self):
         with (

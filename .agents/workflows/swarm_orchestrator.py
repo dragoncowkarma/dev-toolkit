@@ -1094,10 +1094,22 @@ def create_worktree(issue_number: int, branch_name: str) -> Path:
     worktree_path = WORKTREE_DIR / str(issue_number)
 
     if worktree_path.exists():
-        log.info("Worktree already exists: %s", worktree_path)
-        return worktree_path
+        if (worktree_path / ".git").exists():
+            log.info("Worktree already exists: %s", worktree_path)
+            return worktree_path
+        log.warning(
+            "Worktree directory %s exists but missing .git; cleaning up and recreating.",
+            worktree_path,
+        )
+        subprocess.run(["git", "worktree", "prune"], cwd=REPO_ROOT, check=False)
+        shutil.rmtree(worktree_path, ignore_errors=True)
 
     WORKTREE_DIR.mkdir(parents=True, exist_ok=True)
+
+    subprocess.run(
+        ["git", "worktree", "prune"],
+        cwd=REPO_ROOT, check=False,
+    )
 
     # Create branch from current HEAD if it doesn't exist
     if not local_branch_exists(branch_name):
@@ -1107,7 +1119,7 @@ def create_worktree(issue_number: int, branch_name: str) -> Path:
         )
 
     subprocess.run(
-        ["git", "worktree", "add", str(worktree_path), branch_name],
+        ["git", "worktree", "add", "--force", str(worktree_path), branch_name],
         cwd=REPO_ROOT, check=True,
     )
     log.info("Created worktree: %s on branch %s", worktree_path, branch_name)
