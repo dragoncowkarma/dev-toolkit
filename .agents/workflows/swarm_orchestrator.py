@@ -1113,7 +1113,7 @@ def find_worktree_for_branch(branch_name: str) -> Optional[Path]:
     return None
 
 
-def create_worktree(issue_number: int, branch_name: str) -> Path:
+def create_worktree(issue_number: int, branch_name: str) -> Optional[Path]:
     """Create an isolated git worktree for a task or reuse existing one."""
     worktree_path = WORKTREE_DIR / str(issue_number)
 
@@ -1121,11 +1121,32 @@ def create_worktree(issue_number: int, branch_name: str) -> Path:
         if (worktree_path / ".git").exists():
             log.info("Worktree already exists: %s", worktree_path)
             return worktree_path
-        log.warning(
-            "Worktree directory %s exists but missing .git; cleaning up and recreating.",
-            worktree_path,
+
+        # Attempt to repair broken .git link via git worktree repair
+        subprocess.run(
+            ["git", "worktree", "repair", str(worktree_path)],
+            cwd=REPO_ROOT, check=False,
         )
-        subprocess.run(["git", "worktree", "prune"], cwd=REPO_ROOT, check=False)
+        if (worktree_path / ".git").exists():
+            log.info("Repaired existing worktree: %s", worktree_path)
+            return worktree_path
+
+        # If .git is still missing, preserve non-empty directories to avoid data loss
+        try:
+            has_files = any(worktree_path.iterdir())
+        except OSError:
+            has_files = True
+
+        if has_files:
+            log_blocker(
+                f"unclean-worktree-dir:{issue_number}",
+                "Cannot create worktree at %s: directory exists with non-empty content "
+                "but missing .git metadata. Preserving files to avoid data loss.",
+                worktree_path,
+                level=logging.ERROR,
+            )
+            return None
+
         shutil.rmtree(worktree_path, ignore_errors=True)
 
     subprocess.run(
@@ -1693,6 +1714,8 @@ def dispatch_worker(
     worktree_path = WORKTREE_DIR / str(issue.number)
     if not dry_run:
         worktree_path = create_worktree(issue.number, branch_name)
+        if not worktree_path:
+            return
 
     prompt = (
         f"You are the Worker for Issue #{issue.number}: {issue.title}.\n"
@@ -1966,6 +1989,8 @@ def dispatch_worker_revision(
     worktree_path = WORKTREE_DIR / str(worktree_key)
     if not dry_run:
         worktree_path = create_worktree(worktree_key, branch_name)
+        if not worktree_path:
+            return
 
     issue_ref = f"(Issue #{issue.number}: {issue.title})" if issue else ""
     prompt = (

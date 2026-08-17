@@ -1347,11 +1347,47 @@ class CreateWorktreeTests(unittest.TestCase):
             self.assertEqual(wt, target_path)
             run.assert_not_called()
 
-    def test_create_worktree_recreates_corrupted_worktree_dir(self):
+    def test_create_worktree_repairs_broken_git_link(self):
         tmp_dir = Path(tempfile.mkdtemp())
         target_path = tmp_dir / "156"
         target_path.mkdir(parents=True)
-        (target_path / "stale.txt").write_text("stale")
+        (target_path / "important.txt").write_text("user changes")
+
+        def fake_run(args, cwd=None, check=False, capture_output=False, text=False):
+            if args[:3] == ["git", "worktree", "repair"]:
+                # Simulate repair restoring .git file
+                (target_path / ".git").write_text("gitdir: ...")
+            return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+
+        with (
+            patch.object(swarm, "WORKTREE_DIR", tmp_dir),
+            patch.object(swarm.subprocess, "run", side_effect=fake_run),
+        ):
+            wt = swarm.create_worktree(156, "worker/156-branch")
+            self.assertEqual(wt, target_path)
+            self.assertTrue((target_path / "important.txt").exists())
+            self.assertTrue((target_path / ".git").exists())
+
+    def test_create_worktree_blocks_and_preserves_non_empty_unlinked_dir(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        target_path = tmp_dir / "156"
+        target_path.mkdir(parents=True)
+        (target_path / "uncommitted_code.py").write_text("def work(): pass")
+        with (
+            patch.object(swarm, "WORKTREE_DIR", tmp_dir),
+            patch.object(swarm, "log_blocker") as log_blocker,
+            patch.object(swarm.subprocess, "run") as run,
+        ):
+            wt = swarm.create_worktree(156, "worker/156-branch")
+            self.assertIsNone(wt)
+            # Files must NOT be deleted
+            self.assertTrue((target_path / "uncommitted_code.py").exists())
+            log_blocker.assert_called_once()
+
+    def test_create_worktree_cleans_empty_broken_directory(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        target_path = tmp_dir / "156"
+        target_path.mkdir(parents=True)
         with (
             patch.object(swarm, "WORKTREE_DIR", tmp_dir),
             patch.object(swarm, "find_worktree_for_branch", return_value=None),
