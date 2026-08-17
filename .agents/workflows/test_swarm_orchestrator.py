@@ -1275,6 +1275,134 @@ class PollingLifecycleTests(unittest.TestCase):
         self.assertEqual("claude", maintainer_arg.ai)
 
 
+class CreateWorktreeTests(unittest.TestCase):
+    def test_find_worktree_for_branch_parses_porcelain(self):
+        porcelain_output = (
+            "worktree /repo/root\n"
+            "HEAD abc1234\n"
+            "branch refs/heads/main\n\n"
+            "worktree /repo/.worktrees/156\n"
+            "HEAD def5678\n"
+            "branch refs/heads/worker/156-branch\n\n"
+        )
+        fake_res = subprocess.CompletedProcess(
+            args=["git", "worktree", "list", "--porcelain"],
+            returncode=0,
+            stdout=porcelain_output,
+            stderr="",
+        )
+        with patch.object(swarm.subprocess, "run", return_value=fake_res):
+            found = swarm.find_worktree_for_branch("worker/156-branch")
+            self.assertEqual(found, Path("/repo/.worktrees/156"))
+
+            not_found = swarm.find_worktree_for_branch("worker/nonexistent")
+            self.assertIsNone(not_found)
+
+    def test_create_worktree_creates_new_without_force(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        target_path = tmp_dir / "156"
+        with (
+            patch.object(swarm, "WORKTREE_DIR", tmp_dir),
+            patch.object(swarm, "find_worktree_for_branch", return_value=None),
+            patch.object(swarm, "local_branch_exists", return_value=False),
+            patch.object(swarm.subprocess, "run") as run,
+        ):
+            wt = swarm.create_worktree(156, "worker/156-branch")
+            self.assertEqual(wt, target_path)
+            run.assert_any_call(["git", "worktree", "prune"], cwd=swarm.REPO_ROOT, check=False)
+            run.assert_any_call(["git", "branch", "worker/156-branch"], cwd=swarm.REPO_ROOT, check=True)
+            run.assert_any_call(
+                ["git", "worktree", "add", str(target_path), "worker/156-branch"],
+                cwd=swarm.REPO_ROOT,
+                check=True,
+            )
+
+    def test_create_worktree_reuses_existing_worktree_for_branch(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        existing_path = tmp_dir / "existing_156"
+        existing_path.mkdir(parents=True)
+        (existing_path / ".git").write_text("gitdir: ...")
+        with (
+            patch.object(swarm, "WORKTREE_DIR", tmp_dir),
+            patch.object(swarm, "find_worktree_for_branch", return_value=existing_path),
+            patch.object(swarm.subprocess, "run") as run,
+        ):
+            wt = swarm.create_worktree(156, "worker/156-branch")
+            self.assertEqual(wt, existing_path)
+            # Should not attempt to add another worktree for the same branch
+            for call in run.call_args_list:
+                args = call[0][0]
+                self.assertNotIn("add", args)
+
+    def test_create_worktree_returns_existing_valid_worktree(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        target_path = tmp_dir / "156"
+        target_path.mkdir(parents=True)
+        (target_path / ".git").write_text("gitdir: ...")
+        with (
+            patch.object(swarm, "WORKTREE_DIR", tmp_dir),
+            patch.object(swarm.subprocess, "run") as run,
+        ):
+            wt = swarm.create_worktree(156, "worker/156-branch")
+            self.assertEqual(wt, target_path)
+            run.assert_not_called()
+
+    def test_create_worktree_repairs_broken_git_link(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        target_path = tmp_dir / "156"
+        target_path.mkdir(parents=True)
+        (target_path / "important.txt").write_text("user changes")
+
+        def fake_run(args, cwd=None, check=False, capture_output=False, text=False):
+            if args[:3] == ["git", "worktree", "repair"]:
+                # Simulate repair restoring .git file
+                (target_path / ".git").write_text("gitdir: ...")
+            return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+
+        with (
+            patch.object(swarm, "WORKTREE_DIR", tmp_dir),
+            patch.object(swarm.subprocess, "run", side_effect=fake_run),
+        ):
+            wt = swarm.create_worktree(156, "worker/156-branch")
+            self.assertEqual(wt, target_path)
+            self.assertTrue((target_path / "important.txt").exists())
+            self.assertTrue((target_path / ".git").exists())
+
+    def test_create_worktree_blocks_and_preserves_non_empty_unlinked_dir(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        target_path = tmp_dir / "156"
+        target_path.mkdir(parents=True)
+        (target_path / "uncommitted_code.py").write_text("def work(): pass")
+        with (
+            patch.object(swarm, "WORKTREE_DIR", tmp_dir),
+            patch.object(swarm, "log_blocker") as log_blocker,
+            patch.object(swarm.subprocess, "run") as run,
+        ):
+            wt = swarm.create_worktree(156, "worker/156-branch")
+            self.assertIsNone(wt)
+            # Files must NOT be deleted
+            self.assertTrue((target_path / "uncommitted_code.py").exists())
+            log_blocker.assert_called_once()
+
+    def test_create_worktree_cleans_empty_broken_directory(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        target_path = tmp_dir / "156"
+        target_path.mkdir(parents=True)
+        with (
+            patch.object(swarm, "WORKTREE_DIR", tmp_dir),
+            patch.object(swarm, "find_worktree_for_branch", return_value=None),
+            patch.object(swarm, "local_branch_exists", return_value=True),
+            patch.object(swarm.subprocess, "run") as run,
+        ):
+            wt = swarm.create_worktree(156, "worker/156-branch")
+            self.assertEqual(wt, target_path)
+            run.assert_any_call(
+                ["git", "worktree", "add", str(target_path), "worker/156-branch"],
+                cwd=swarm.REPO_ROOT,
+                check=True,
+            )
+
+
 class CleanupTests(unittest.TestCase):
     def test_cleanup_is_a_no_op_when_nothing_remains(self):
         with (
