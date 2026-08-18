@@ -640,6 +640,35 @@ class DispatchSafetyTests(unittest.TestCase):
 
         create_worktree.assert_not_called()
 
+    def test_maintainer_prompt_recovers_draft_pr_before_merge(self):
+        pr = swarm.TaskPR(
+            number=12,
+            title="[PR] 7 - formatter",
+            body="",
+            head_branch="worker/7-codex-formatter",
+        )
+        maintainer = swarm.RoleAssignment("claude", "sonnet 5", "높음")
+        with (
+            patch.object(swarm, "write_prompt_file", return_value=Path("prompt")) as write_prompt,
+            patch.object(swarm, "build_ai_argv", return_value=["claude"]),
+        ):
+            swarm.dispatch_maintainer(
+                pr,
+                issue=None,
+                maintainer=maintainer,
+                dry_run=True,
+            )
+
+        prompt = write_prompt.call_args.args[0]
+        draft_check = "gh pr view 12 --json isDraft"
+        mark_ready = "gh pr ready 12"
+        reverify = "re-verify `mergeStateStatus` and CI before merging"
+        merge = "Merge PR #12 after these checks"
+        self.assertIn("not a '[Maintainer Blocked]' condition", prompt)
+        self.assertLess(prompt.index(draft_check), prompt.index(mark_ready))
+        self.assertLess(prompt.index(mark_ready), prompt.index(reverify))
+        self.assertLess(prompt.index(reverify), prompt.index(merge))
+
 
 class PollingLifecycleTests(unittest.TestCase):
     def setUp(self):

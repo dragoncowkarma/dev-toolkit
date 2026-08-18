@@ -24,6 +24,7 @@ Reviewers MUST check every item before approving a PR.
 - [ ] Branch follows `worker/<issue#>-<ai>-<desc>` pattern
 - [ ] Commits use conventional commit format
 - [ ] PR title follows `[PR] <issue#> - <summary>` pattern
+- [ ] PR is not left in draft (`isDraft: false`) before approval
 - [ ] Worker/Reviewer/Maintainer are different AIs
 - [ ] Decisions and reproducible verification evidence are documented
 - [ ] Final review summary contains exactly one Reviewer metadata tag
