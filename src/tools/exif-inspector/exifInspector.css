@@ -1,0 +1,15 @@
+.exif-inspector { max-width: 1000px; margin: 0 auto; padding: 0 1rem 2rem; color: var(--color-text); }
+.exif-inspector, .exif-inspector__controls, .exif-inspector__results, .exif-inspector__group { display: flex; flex-direction: column; gap: .75rem; }
+.exif-inspector__privacy, .exif-inspector__limit, .exif-inspector__resolved { color: var(--color-text-muted); font-size: .9rem; }
+.exif-inspector__controls { align-items: flex-start; }
+.exif-inspector select, .exif-inspector textarea, .exif-inspector button { border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-surface); color: var(--color-text); font: inherit; padding: .55rem .75rem; }
+.exif-inspector textarea { width: 100%; min-height: 220px; resize: vertical; font-family: ui-monospace, monospace; }
+.exif-inspector button { cursor: pointer; } .exif-inspector button:hover { border-color: var(--color-primary); }
+.exif-inspector__error { padding: .75rem; border: 1px solid var(--color-error-border); border-radius: var(--radius); background: var(--color-error-bg); color: var(--color-error-light); }
+.exif-inspector__result-header, .exif-inspector__gps { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; justify-content: space-between; }
+.exif-inspector__gps { padding: .75rem; border-radius: var(--radius); background: var(--color-surface); } .exif-inspector code { overflow-wrap: anywhere; }
+.exif-inspector__table-wrap { overflow-x: auto; border: 1px solid var(--color-border); border-radius: var(--radius); }
+.exif-inspector table { width: 100%; min-width: 620px; border-collapse: collapse; font-size: .88rem; }
+.exif-inspector th, .exif-inspector td { padding: .55rem; border-bottom: 1px solid var(--color-border); text-align: left; vertical-align: top; }
+.exif-inspector th { color: var(--color-text-muted); } .exif-inspector tr:last-child td { border-bottom: 0; }
+@media (min-width: 640px) { .exif-inspector { padding: 0 2rem 3rem; } .exif-inspector__controls { flex-direction: row; align-items: center; flex-wrap: wrap; } }
