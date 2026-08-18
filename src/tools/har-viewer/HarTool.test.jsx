@@ -1,6 +1,84 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import HarTool from './HarTool.jsx';
+
+/** A second archive that shares no method, status class, MIME or URL text with the sample. */
+const OTHER_HAR = {
+  log: {
+    version: '1.2',
+    creator: { name: 'HarTool test fixture', version: '1.0' },
+    entries: [
+      {
+        startedDateTime: '2024-03-01T10:00:00.000Z',
+        time: 42,
+        request: {
+          method: 'GET',
+          url: 'https://cdn.example.org/dashboard/index.html',
+          httpVersion: 'HTTP/1.1',
+          headers: [],
+          cookies: [],
+          queryString: [],
+        },
+        response: {
+          status: 200,
+          statusText: 'OK',
+          httpVersion: 'HTTP/1.1',
+          headers: [],
+          cookies: [],
+          content: { size: 512, mimeType: 'text/html' },
+          redirectURL: '',
+          headersSize: 120,
+          bodySize: 512,
+        },
+        timings: { blocked: 1, dns: 2, connect: 3, ssl: 0, send: 1, wait: 30, receive: 5 },
+        cache: {},
+      },
+    ],
+  },
+};
+
+const OTHER_HAR_TEXT = JSON.stringify(OTHER_HAR, null, 2);
+const OTHER_HAR_PATH = '/dashboard/index.html';
+const SAMPLE_FIRST_PATH = '/v1/users?page=1&limit=10';
+
+/**
+ * Filter controls that must not leak across archives, with a value that keeps
+ * the sample's first entry hidden and excludes every OTHER_HAR entry.
+ */
+const STALE_FILTER_CASES = [
+  {
+    name: 'search text',
+    label: /Filter network requests by text query/i,
+    value: 'logo.svg',
+    resetValue: '',
+  },
+  {
+    name: 'status class',
+    label: /Filter by status code class/i,
+    value: '4xx',
+    resetValue: 'all',
+  },
+  {
+    name: 'HTTP method',
+    label: /Filter by HTTP method/i,
+    value: 'DELETE',
+    resetValue: 'all',
+  },
+  {
+    name: 'MIME category',
+    label: /Filter by MIME type category/i,
+    value: 'image',
+    resetValue: 'all',
+  },
+];
+
+function selectFile(input, file) {
+  Object.defineProperty(input, 'files', {
+    value: [file],
+    configurable: true,
+  });
+  fireEvent.change(input);
+}
 
 describe('HarTool.jsx Component', () => {
   afterEach(() => {
@@ -164,5 +242,130 @@ describe('HarTool.jsx Component', () => {
     expect(
       screen.getByText(/Drag & drop a browser DevTools \.har file here/i)
     ).toBeInTheDocument();
+  });
+});
+
+describe('HarTool.jsx Archive Transitions', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it('resets stale filters when a new archive arrives through the file input', async () => {
+    render(<HarTool />);
+    fireEvent.click(screen.getByRole('button', { name: /Load sample/i }));
+
+    const methodSelect = screen.getByLabelText(/Filter by HTTP method/i);
+    fireEvent.change(methodSelect, { target: { value: 'DELETE' } });
+    expect(screen.queryByText(SAMPLE_FIRST_PATH)).not.toBeInTheDocument();
+
+    const file = new File([OTHER_HAR_TEXT], 'other.har', { type: 'application/json' });
+    selectFile(screen.getByLabelText(/Choose HAR file/i), file);
+
+    await waitFor(() => {
+      expect(screen.getByText(OTHER_HAR_PATH)).toBeInTheDocument();
+    });
+    expect(screen.getByLabelText(/Filter by HTTP method/i)).toHaveValue('all');
+  });
+
+  it('resets stale filters when a new archive is dropped on the dropzone', async () => {
+    render(<HarTool />);
+    fireEvent.click(screen.getByRole('button', { name: /Load sample/i }));
+
+    const searchInput = screen.getByLabelText(/Filter network requests by text query/i);
+    fireEvent.change(searchInput, { target: { value: 'logo.svg' } });
+
+    // Emptying the textarea brings the dropzone back while the search filter is
+    // still set, because an unparseable source must not discard the filters.
+    fireEvent.change(screen.getByLabelText(/Raw HAR JSON input/i), { target: { value: '' } });
+    const dropzone = screen.getByRole('button', { name: /Drag and drop a HAR file here/i });
+    const file = new File([OTHER_HAR_TEXT], 'other.har', { type: 'application/json' });
+    fireEvent.drop(dropzone, { dataTransfer: { files: [file] } });
+
+    await waitFor(() => {
+      expect(screen.getByText(OTHER_HAR_PATH)).toBeInTheDocument();
+    });
+    expect(screen.getByLabelText(/Filter network requests by text query/i)).toHaveValue('');
+  });
+
+  it.each(STALE_FILTER_CASES)(
+    'resets the $name filter when raw JSON is replaced with another archive',
+    ({ label, value, resetValue }) => {
+      render(<HarTool />);
+      fireEvent.click(screen.getByRole('button', { name: /Load sample/i }));
+
+      fireEvent.change(screen.getByLabelText(label), { target: { value } });
+      expect(screen.queryByText(SAMPLE_FIRST_PATH)).not.toBeInTheDocument();
+
+      const textarea = screen.getByLabelText(/Raw HAR JSON input/i);
+      fireEvent.change(textarea, { target: { value: OTHER_HAR_TEXT } });
+
+      expect(screen.getByText(OTHER_HAR_PATH)).toBeInTheDocument();
+      expect(screen.getByLabelText(label)).toHaveValue(resetValue);
+    }
+  );
+
+  it('keeps the sort order across archives because sorting is never stale', () => {
+    render(<HarTool />);
+    fireEvent.click(screen.getByRole('button', { name: /Load sample/i }));
+
+    const sortSelect = screen.getByLabelText(/Sort entries by column/i);
+    fireEvent.change(sortSelect, { target: { value: 'time-desc' } });
+
+    const textarea = screen.getByLabelText(/Raw HAR JSON input/i);
+    fireEvent.change(textarea, { target: { value: OTHER_HAR_TEXT } });
+
+    expect(screen.getByText(OTHER_HAR_PATH)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Sort entries by column/i)).toHaveValue('time-desc');
+  });
+
+  it('reports incomplete JSON without swapping in a new archive', () => {
+    render(<HarTool />);
+    fireEvent.click(screen.getByRole('button', { name: /Load sample/i }));
+
+    fireEvent.change(screen.getByLabelText(/Filter network requests by text query/i), {
+      target: { value: 'logo.svg' },
+    });
+
+    const textarea = screen.getByLabelText(/Raw HAR JSON input/i);
+    fireEvent.change(textarea, { target: { value: '{ "log": { "entries": [' } });
+
+    expect(screen.getByRole('alert')).toHaveTextContent(/Invalid JSON syntax/i);
+    // No archive was accepted, so no entry table replaces the previous view.
+    expect(screen.queryByRole('table', { name: /HAR network entries table/i })).toBeNull();
+    expect(screen.queryByText(OTHER_HAR_PATH)).not.toBeInTheDocument();
+  });
+
+  it('reports a structurally invalid HAR without swapping in a new archive', () => {
+    render(<HarTool />);
+    fireEvent.click(screen.getByRole('button', { name: /Load sample/i }));
+
+    fireEvent.change(screen.getByLabelText(/Filter by status code class/i), {
+      target: { value: '4xx' },
+    });
+
+    const textarea = screen.getByLabelText(/Raw HAR JSON input/i);
+    fireEvent.change(textarea, { target: { value: '{ "log": {} }' } });
+
+    expect(screen.getByRole('alert')).toHaveTextContent(/"log.entries"/i);
+    expect(screen.queryByRole('table', { name: /HAR network entries table/i })).toBeNull();
+  });
+
+  it('resets filters and restores the dropzone when clearing a filtered archive', () => {
+    render(<HarTool />);
+    fireEvent.click(screen.getByRole('button', { name: /Load sample/i }));
+
+    fireEvent.change(screen.getByLabelText(/Filter by HTTP method/i), {
+      target: { value: 'DELETE' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Clear HAR data/i }));
+
+    expect(
+      screen.getByText(/Drag & drop a browser DevTools \.har file here/i)
+    ).toBeInTheDocument();
+
+    // Re-loading the sample must show every entry, not just the DELETE request.
+    fireEvent.click(screen.getByRole('button', { name: /Load sample/i }));
+    expect(screen.getByLabelText(/Filter by HTTP method/i)).toHaveValue('all');
+    expect(screen.getByText(SAMPLE_FIRST_PATH)).toBeInTheDocument();
   });
 });

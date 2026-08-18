@@ -14,6 +14,9 @@ import './har.css';
  */
 export default function HarTool() {
   const [inputRaw, setInputRaw] = useState('');
+  // Parse result is kept next to the raw source so a single parse per source
+  // transition can both drive rendering and decide whether filters must reset.
+  const [parseResult, setParseResult] = useState(() => parseHar(''));
   const [selectedEntryId, setSelectedEntryId] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
   const [searchQuery, setSearchQuery] = useState('');
@@ -35,11 +38,6 @@ export default function HarTool() {
       }
     };
   }, []);
-
-  // Parse HAR data
-  const parseResult = useMemo(() => {
-    return parseHar(inputRaw);
-  }, [inputRaw]);
 
   const { success, error, entries, summary, warnings } = parseResult;
 
@@ -107,6 +105,34 @@ export default function HarTool() {
     }
   };
 
+  // Reset the transient per-archive filters. Sorting is intentionally excluded:
+  // it stays applicable to any archive, so it is not stale after a new load.
+  const resetFilters = () => {
+    setSearchQuery('');
+    setStatusFilter('all');
+    setMethodFilter('all');
+    setMimeFilter('all');
+  };
+
+  /**
+   * Apply new HAR source text and perform the shared input transition.
+   * Filters are dropped only once the incoming text parses into a valid
+   * archive, so a transient editing typo never discards the current view.
+   * @param {string} text Raw HAR JSON source text.
+   * @param {number|null} [nextSelectedEntryId] Entry id to select after loading.
+   * @returns {void}
+   */
+  const applyHarSource = (text, nextSelectedEntryId = null) => {
+    const result = parseHar(text);
+    setInputRaw(text);
+    setParseResult(result);
+    setSelectedEntryId(nextSelectedEntryId);
+    setActiveTab('overview');
+    if (result.success) {
+      resetFilters();
+    }
+  };
+
   const handleFileChange = (e) => {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
@@ -116,10 +142,7 @@ export default function HarTool() {
   const readFile = (file) => {
     const reader = new FileReader();
     reader.onload = (event) => {
-      const content = event.target.result;
-      setInputRaw(content);
-      setSelectedEntryId(null);
-      setActiveTab('overview');
+      applyHarSource(event.target.result);
     };
     reader.onerror = () => {
       showToast('Failed to read HAR file.');
@@ -146,25 +169,15 @@ export default function HarTool() {
   };
 
   const handleLoadSample = () => {
-    setInputRaw(JSON.stringify(SAMPLE_HAR, null, 2));
-    setSelectedEntryId(1);
-    setActiveTab('overview');
-    setSearchQuery('');
-    setStatusFilter('all');
-    setMethodFilter('all');
-    setMimeFilter('all');
+    applyHarSource(JSON.stringify(SAMPLE_HAR, null, 2), 1);
     setSortBy('index');
     setSortOrder('asc');
   };
 
   const handleClear = () => {
-    setInputRaw('');
-    setSelectedEntryId(null);
-    setActiveTab('overview');
-    setSearchQuery('');
-    setStatusFilter('all');
-    setMethodFilter('all');
-    setMimeFilter('all');
+    // Empty input never parses, so the cleared view resets filters explicitly.
+    applyHarSource('');
+    resetFilters();
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -291,11 +304,7 @@ export default function HarTool() {
           <textarea
             className="har-textarea"
             value={inputRaw}
-            onChange={(e) => {
-              setInputRaw(e.target.value);
-              setSelectedEntryId(null);
-              setActiveTab('overview');
-            }}
+            onChange={(e) => applyHarSource(e.target.value)}
             placeholder="Paste .har JSON content here..."
             aria-label="Raw HAR JSON input"
           />
