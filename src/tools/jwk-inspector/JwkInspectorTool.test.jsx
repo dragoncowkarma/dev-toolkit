@@ -16,6 +16,7 @@ describe('JwkInspectorTool Component', () => {
 
   afterEach(() => {
     cleanup();
+    vi.restoreAllMocks();
     vi.useRealTimers();
   });
 
@@ -142,4 +143,21 @@ describe('JwkInspectorTool Component', () => {
     expect(liveRegion).toBeInTheDocument();
     expect(liveRegion).toHaveAttribute('role', 'status');
   });
+
+  it(
+    'observes real timer APIs in a subsequent test after fake timers and spies are restored',
+    async () => {
+      expect(vi.isFakeTimers()).toBe(false);
+      expect(globalThis.clearTimeout.toString()).not.toContain('clock[method]');
+      let fired = false;
+      const timerId = setTimeout(() => {
+        fired = true;
+      }, 10);
+      clearTimeout(timerId);
+      await new Promise((resolve) => {
+        setTimeout(resolve, 30);
+      });
+      expect(fired).toBe(false);
+    }
+  );
 });
