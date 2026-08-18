@@ -11,6 +11,7 @@ function getInput() {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -134,6 +135,83 @@ describe('JsonTool Copy', () => {
 
     expect(writeText).toHaveBeenCalledTimes(1);
     expect(await screen.findByRole('status')).toHaveTextContent('Copied to clipboard!');
+  });
+
+  it('dismisses the copy toast after 3000 ms while mounted', async () => {
+    Object.assign(navigator, {
+      clipboard: { writeText: vi.fn().mockResolvedValue(undefined) },
+    });
+
+    render(<JsonTool />);
+
+    fireEvent.change(getInput(), { target: { value: VALID_JSON_UNFORMATTED } });
+    await waitFor(() => expect(screen.getByText('Valid')).toBeInTheDocument());
+    vi.useFakeTimers();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy output to clipboard' }));
+    });
+
+    expect(screen.getByRole('status')).toHaveTextContent('Copied to clipboard!');
+
+    act(() => {
+      vi.advanceTimersByTime(3000);
+    });
+
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it('replaces pending dismissal timers in both copy result paths', async () => {
+    const writeText = vi.fn()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('denied'))
+      .mockResolvedValueOnce(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    render(<JsonTool />);
+
+    fireEvent.change(getInput(), { target: { value: VALID_JSON_UNFORMATTED } });
+    await waitFor(() => expect(screen.getByText('Valid')).toBeInTheDocument());
+    vi.useFakeTimers();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy output to clipboard' }));
+    });
+    expect(vi.getTimerCount()).toBe(1);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy output to clipboard' }));
+    });
+    expect(screen.getByRole('status')).toHaveTextContent('Failed to copy to clipboard.');
+    expect(vi.getTimerCount()).toBe(1);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy output to clipboard' }));
+    });
+    expect(screen.getByRole('status')).toHaveTextContent('Copied to clipboard!');
+    expect(vi.getTimerCount()).toBe(1);
+  });
+
+  it('clears a pending copy-toast timeout on unmount', async () => {
+    Object.assign(navigator, {
+      clipboard: { writeText: vi.fn().mockResolvedValue(undefined) },
+    });
+
+    const { unmount } = render(<JsonTool />);
+
+    fireEvent.change(getInput(), { target: { value: VALID_JSON_UNFORMATTED } });
+    await waitFor(() => expect(screen.getByText('Valid')).toBeInTheDocument());
+    vi.useFakeTimers();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy output to clipboard' }));
+    });
+    expect(vi.getTimerCount()).toBe(1);
+
+    unmount();
+
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
 

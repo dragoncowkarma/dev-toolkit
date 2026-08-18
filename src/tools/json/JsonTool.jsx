@@ -444,10 +444,29 @@ export default function JsonTool({ onBack }) {
   const [viewMode, setViewMode] = useState('text');
   const [validation, setValidation] = useState({ isValid: true, message: '', snippet: '' });
   const [toast, setToast] = useState(null);
+  const toastTimeoutRef = useRef(null);
   const [treeExpansionCommand, setTreeExpansionCommand] = useState({
     expanded: true,
     revision: 0,
   });
+
+  const scheduleToastDismissal = useCallback(() => {
+    if (toastTimeoutRef.current !== null) {
+      clearTimeout(toastTimeoutRef.current);
+    }
+
+    toastTimeoutRef.current = setTimeout(() => {
+      toastTimeoutRef.current = null;
+      setToast(null);
+    }, 3000);
+  }, []);
+
+  useEffect(() => () => {
+    if (toastTimeoutRef.current !== null) {
+      clearTimeout(toastTimeoutRef.current);
+      toastTimeoutRef.current = null;
+    }
+  }, []);
 
   // Perform real-time validation
   useEffect(() => {
@@ -519,12 +538,12 @@ export default function JsonTool({ onBack }) {
     navigator.clipboard.writeText(textToCopy)
       .then(() => {
         setToast({ text: 'Copied to clipboard!', type: 'success' });
-        setTimeout(() => setToast(null), 3000);
+        scheduleToastDismissal();
       })
       .catch((err) => {
         console.error('Failed to copy: ', err);
         setToast({ text: 'Failed to copy to clipboard.', type: 'error' });
-        setTimeout(() => setToast(null), 3000);
+        scheduleToastDismissal();
       });
   };
 
