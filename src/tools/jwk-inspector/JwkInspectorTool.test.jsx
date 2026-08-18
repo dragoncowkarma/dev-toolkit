@@ -148,6 +148,7 @@ describe('JwkInspectorTool Component', () => {
     'observes real timer APIs in a subsequent test after fake timers and spies are restored',
     async () => {
       expect(vi.isFakeTimers()).toBe(false);
+      // Sinon fake timers expose 'clock[method]' in globalThis.clearTimeout.toString() while active
       expect(globalThis.clearTimeout.toString()).not.toContain('clock[method]');
       let fired = false;
       const timerId = setTimeout(() => {
