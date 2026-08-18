@@ -178,15 +178,55 @@ export function decodeBase58ToBytes(base58) {
 export const MAX_INPUT_BYTES = 2 * 1024; // 2 KB
 
 /**
- * Conservative upper bound, in Base58 characters, for a decoded payload of
- * MAX_INPUT_BYTES bytes. Base58 expands data by log(256)/log(58) ≈ 1.3657x;
- * 138/100 is the standard conservative rounding for that ratio (used by
- * Bitcoin Core's base58 buffer-size estimate). Any decode-mode input longer
- * than this cannot decode to MAX_INPUT_BYTES bytes or fewer, so it can be
- * rejected by a cheap O(n) string-length check before running the O(n^2)
- * BigInt decode loop.
+ * Exact per-byte-budget table of the longest run of non-leading-zero Base58
+ * digits that is *guaranteed* to decode to at most that many bytes.
+ *
+ * A fixed expansion-ratio estimate (e.g. the ~1.38 chars/byte conservative
+ * rounding of log(256)/log(58) ≈ 1.3657, used by Bitcoin Core for buffer
+ * *allocation*) is the wrong tool for an *acceptance* threshold: it only
+ * bounds the average case, not the worst case. The worst case for a numeric
+ * run of length L (digits drawn from the 58-symbol alphabet, none of them
+ * the zero-valued '1') is the value 58^L - 1 -- e.g. an all-'z' run, 'z'
+ * being the highest-value digit. That worst case must fit within the byte
+ * budget for the length to be safe to accept, i.e. 58^L <= 256^budget. Using
+ * 1.38 as an acceptance cutoff instead of this exact inequality let
+ * `'z'.repeat(ceil(2048 * 1.38))` (2,828 chars) through, which decodes to
+ * 2,071 bytes -- over MAX_INPUT_BYTES.
+ *
+ * table[budget] is computed once at module load by walking budget from 0 to
+ * MAX_INPUT_BYTES and, for each step, extending the longest-safe-length so
+ * far only while the next digit still fits (58^(length+1) <= 256^budget).
+ * Because the length is monotonic in budget, the total work across the
+ * whole table is bounded by the final length (a few thousand BigInt
+ * multiplications, ~10ms), not by budget^2 -- and every subsequent lookup
+ * during decode is an O(1) array read instead of a per-call computation.
+ * @type {number[]}
  */
-export const MAX_BASE58_CHARS = Math.ceil((MAX_INPUT_BYTES * 138) / 100);
+const NUMERIC_CHAR_LIMIT_TABLE = (() => {
+  const table = new Array(MAX_INPUT_BYTES + 1);
+  table[0] = 0;
+  let length = 0;
+  let value = 1n; // 58^length
+  let capacity = 1n; // 256^budget
+  for (let budget = 1; budget <= MAX_INPUT_BYTES; budget += 1) {
+    capacity *= 256n;
+    while (value * 58n <= capacity) {
+      value *= 58n;
+      length += 1;
+    }
+    table[budget] = length;
+  }
+  return table;
+})();
+
+/**
+ * Exact upper bound, in Base58 characters, for a decoded payload of
+ * MAX_INPUT_BYTES bytes (see NUMERIC_CHAR_LIMIT_TABLE). Any decode-mode
+ * input longer than this cannot decode to MAX_INPUT_BYTES bytes or fewer,
+ * so it can be rejected by a cheap O(1) table lookup before running the
+ * O(n^2) BigInt decode loop.
+ */
+export const MAX_BASE58_CHARS = NUMERIC_CHAR_LIMIT_TABLE[MAX_INPUT_BYTES];
 
 const BASE58_LIMIT_HINT =
   'Base58 is intended for short identifiers and keys (e.g. addresses, ' +
@@ -219,21 +259,33 @@ export function assertEncodeInputWithinLimit(value, { inputType = 'text' } = {})
 /**
  * Guards decode-mode Base58/Base58Check input against MAX_BASE58_CHARS
  * before the BigInt decode loop starts. Uses the whitespace-stripped
- * character count, which is a cheap O(n) upper bound on decoded byte
- * length, avoiding a full decode just to measure size.
+ * character count, which is a cheap O(1) upper bound (via
+ * NUMERIC_CHAR_LIMIT_TABLE) on decoded byte length, avoiding a full decode
+ * just to measure size.
  *
  * The MAX_BASE58_CHARS bound alone is not sufficient: each leading '1'
  * decodes 1:1 to a leading zero byte (see `decodeBase58ToBytes`), which is a
- * denser char-to-byte ratio than the ~1.3657 chars/byte the general estimate
- * assumes for the numeric portion. A string of `MAX_BASE58_CHARS` leading
- * '1's would pass the plain length check yet decode to `MAX_BASE58_CHARS`
- * bytes -- well over MAX_INPUT_BYTES. So the leading-'1' run is counted and
- * charged against the byte budget directly, and only the remaining
- * (non-zero-prefixed) numeric portion is checked against the conservative
- * char-per-byte ratio.
+ * denser char-to-byte ratio than the general numeric-portion table assumes.
+ * A string of `MAX_BASE58_CHARS` leading '1's would pass the plain length
+ * check yet decode to `MAX_BASE58_CHARS` bytes -- well over MAX_INPUT_BYTES.
+ * So the leading-'1' run is counted and charged against the byte budget
+ * directly, and only the remaining (non-zero-prefixed) numeric portion is
+ * checked against NUMERIC_CHAR_LIMIT_TABLE for the bytes left in the budget.
+ *
+ * This length check alone is deliberately given one character of slack
+ * beyond NUMERIC_CHAR_LIMIT_TABLE's guaranteed-safe length: that table entry
+ * is the longest length for which *every* digit combination is safe, but a
+ * full MAX_INPUT_BYTES-byte payload typically needs one more digit to encode
+ * (most byte values fall in the top ~1/8 of the range NUMERIC_CHAR_LIMIT_TABLE's
+ * length can't reach) -- rejecting on length alone at that exact boundary
+ * would reject the majority of legitimate MAX_INPUT_BYTES round-trips. So
+ * this check only filters out lengths that can *never* fit (avoiding an O(n^2)
+ * BigInt decode stall on grossly oversized input); the exact byte-length
+ * guarantee for accepted input is enforced afterward, on the real decoded
+ * value, by `assertDecodedBytesWithinLimit`.
  * @param {string} value
  * @returns {number} The whitespace-stripped character length.
- * @throws {Error} When the decoded output would exceed MAX_INPUT_BYTES.
+ * @throws {Error} When the input cannot possibly decode within MAX_INPUT_BYTES.
  */
 export function assertDecodeInputWithinLimit(value) {
   const cleaned = typeof value === 'string' ? stripWhitespace(value) : '';
@@ -253,7 +305,8 @@ export function assertDecodeInputWithinLimit(value) {
 
   const numericLength = cleaned.length - zeroCount;
   const remainingBudgetBytes = MAX_INPUT_BYTES - zeroCount;
-  const maxNumericChars = Math.ceil((remainingBudgetBytes * 138) / 100);
+  // +1: see the "one character of slack" note above.
+  const maxNumericChars = NUMERIC_CHAR_LIMIT_TABLE[remainingBudgetBytes] + 1;
 
   if (numericLength > maxNumericChars) {
     throw new Error(
@@ -264,6 +317,27 @@ export function assertDecodeInputWithinLimit(value) {
   }
 
   return cleaned.length;
+}
+
+/**
+ * Guards a decoded byte array against MAX_INPUT_BYTES. This is the exact
+ * complement to `assertDecodeInputWithinLimit`'s length-based prefilter: the
+ * prefilter admits a one-character margin so it never rejects a legitimate
+ * MAX_INPUT_BYTES payload (see that function's doc comment), which means a
+ * small band of inputs just above the guaranteed-safe length can still
+ * decode to more than MAX_INPUT_BYTES bytes. This check catches those,
+ * comparing the actual decoded length rather than an estimate, so it is
+ * exact for every accepted input, not merely long inputs.
+ * @param {Uint8Array} bytes
+ * @throws {Error} When bytes.length exceeds MAX_INPUT_BYTES.
+ */
+function assertDecodedBytesWithinLimit(bytes) {
+  if (bytes.length > MAX_INPUT_BYTES) {
+    throw new Error(
+      `Input decodes to ${formatFileSize(bytes.length)}, which exceeds the ` +
+        `${formatFileSize(MAX_INPUT_BYTES)} Base58 limit. ${BASE58_LIMIT_HINT}`
+    );
+  }
 }
 
 /**
@@ -292,6 +366,7 @@ export function encodeToBase58(input, { inputType = 'text' } = {}) {
 export function decodeFromBase58(base58, { outputType = 'text' } = {}) {
   assertDecodeInputWithinLimit(base58);
   const bytes = decodeBase58ToBytes(base58);
+  assertDecodedBytesWithinLimit(bytes);
   if (bytes.length === 0) return '';
   if (outputType === 'hex') return bytesToHex(bytes);
 
@@ -315,6 +390,7 @@ export function decodeFromBase58(base58, { outputType = 'text' } = {}) {
 export function decodeBase58Details(base58) {
   assertDecodeInputWithinLimit(base58);
   const bytes = decodeBase58ToBytes(base58);
+  assertDecodedBytesWithinLimit(bytes);
   const hex = bytesToHex(bytes);
   if (bytes.length === 0) {
     return { bytes, text: '', hex: '', isUtf8: true };
@@ -405,6 +481,7 @@ export async function encodeToBase58Check(input, { inputType = 'text' } = {}) {
 export async function decodeBase58CheckDetails(base58) {
   assertDecodeInputWithinLimit(base58);
   const rawBytes = decodeBase58ToBytes(base58);
+  assertDecodedBytesWithinLimit(rawBytes);
 
   if (rawBytes.length < 4) {
     const hex = bytesToHex(rawBytes);
