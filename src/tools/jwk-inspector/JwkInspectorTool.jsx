@@ -94,7 +94,7 @@ export default function JwkInspectorTool() {
   useEffect(() => {
     if (!copiedId) return undefined;
     const timer = setTimeout(() => setCopiedId(''), 1500);
-    return () => clearInterval(timer);
+    return () => clearTimeout(timer);
   }, [copiedId]);
 
   function handleLoadSample() {

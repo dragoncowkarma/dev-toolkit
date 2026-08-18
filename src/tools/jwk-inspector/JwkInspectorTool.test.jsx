@@ -16,6 +16,7 @@ describe('JwkInspectorTool Component', () => {
 
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
   });
 
   it('renders tool header, toolbar, mode selector, and empty state', () => {
@@ -94,6 +95,45 @@ describe('JwkInspectorTool Component', () => {
       );
       expect(screen.getByText('Copied!')).toBeInTheDocument();
     });
+  });
+
+  it('resets copy feedback after 1500ms and cleans up timer on unmount', async () => {
+    vi.useFakeTimers();
+    const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
+    const clearIntervalSpy = vi.spyOn(globalThis, 'clearInterval');
+
+    const { unmount } = render(<JwkInspectorTool />);
+    fireEvent.click(screen.getByRole('button', { name: /Load sample/i }));
+
+    await vi.waitFor(() => {
+      expect(screen.getByText('NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs')).toBeInTheDocument();
+    });
+
+    const copyButtons = screen.getAllByRole('button', { name: /^Copy$/i });
+    fireEvent.click(copyButtons[0]);
+
+    await vi.waitFor(() => {
+      expect(screen.getByText('Copied!')).toBeInTheDocument();
+    });
+
+    vi.advanceTimersByTime(1500);
+
+    await vi.waitFor(() => {
+      expect(screen.queryByText('Copied!')).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(copyButtons[0]);
+    await vi.waitFor(() => {
+      expect(screen.getByText('Copied!')).toBeInTheDocument();
+    });
+
+    clearTimeoutSpy.mockClear();
+    clearIntervalSpy.mockClear();
+
+    unmount();
+
+    expect(clearTimeoutSpy).toHaveBeenCalled();
+    expect(clearIntervalSpy).not.toHaveBeenCalled();
   });
 
   it('has aria-live polite status region for accessibility', () => {
