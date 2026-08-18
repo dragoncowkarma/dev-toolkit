@@ -371,7 +371,12 @@ describe('Base58Tool Textarea Size Limit', () => {
 
     // 'z' has no leading-zero-byte effect, exercising the general char-count
     // bound rather than the leading-'1' bound covered separately below.
-    const oversizedBase58 = 'z'.repeat(MAX_BASE58_CHARS + 1);
+    // MAX_BASE58_CHARS + 2 (not +1): the length prefilter allows one
+    // character of slack past MAX_BASE58_CHARS so it never rejects a
+    // legitimate MAX_INPUT_BYTES round-trip (see assertDecodeInputWithinLimit),
+    // so +1 alone would be caught by the byte-length check instead, with a
+    // different message -- covered by the dedicated test below.
+    const oversizedBase58 = 'z'.repeat(MAX_BASE58_CHARS + 2);
     fireEvent.change(screen.getByLabelText('Base58'), {
       target: { value: oversizedBase58 },
     });
@@ -386,7 +391,7 @@ describe('Base58Tool Textarea Size Limit', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Decode' }));
     fireEvent.click(screen.getByRole('button', { name: 'Base58Check' }));
 
-    const oversizedBase58 = 'z'.repeat(MAX_BASE58_CHARS + 1);
+    const oversizedBase58 = 'z'.repeat(MAX_BASE58_CHARS + 2);
     fireEvent.change(screen.getByLabelText('Base58Check'), {
       target: { value: oversizedBase58 },
     });
@@ -395,6 +400,24 @@ describe('Base58Tool Textarea Size Limit', () => {
       `exceeds the ${MAX_BASE58_CHARS}-character Base58 limit`
     );
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it('rejects Base58 input one char past MAX_BASE58_CHARS via the byte-length check', async () => {
+    render(<Base58Tool />);
+    fireEvent.click(screen.getByRole('button', { name: 'Decode' }));
+
+    // At exactly MAX_BASE58_CHARS + 1, the length prefilter's one-character
+    // slack lets this through, but an all-'z' (max-value-digit) run at this
+    // length decodes to more than MAX_INPUT_BYTES bytes, so it must still be
+    // rejected -- by the post-decode exact byte-length check this time.
+    const oversizedBase58 = 'z'.repeat(MAX_BASE58_CHARS + 1);
+    fireEvent.change(screen.getByLabelText('Base58'), {
+      target: { value: oversizedBase58 },
+    });
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'which exceeds the'
+    );
   });
 
   it('rejects a Base58 decode input with more than MAX_INPUT_BYTES leading 1s', async () => {

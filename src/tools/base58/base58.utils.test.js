@@ -306,8 +306,21 @@ describe('base58.utils', () => {
       expect(assertDecodeInputWithinLimit(base58)).toBe(MAX_BASE58_CHARS);
     });
 
+    it('decodes the maximal accepted non-leading-1 input to at most MAX_INPUT_BYTES bytes', () => {
+      // 'z' is the highest-value Base58 digit, so an all-'z' run of the
+      // accepted length is the worst case for decoded byte length; this must
+      // be an exact upper bound, not just a length-based approximation.
+      const base58 = 'z'.repeat(MAX_BASE58_CHARS);
+      const bytes = decodeBase58ToBytes(base58);
+      expect(bytes.length).toBeLessThanOrEqual(MAX_INPUT_BYTES);
+    });
+
     it('rejects decode input exceeding MAX_BASE58_CHARS with a size error', () => {
-      const base58 = 'z'.repeat(MAX_BASE58_CHARS + 1);
+      // +2, not +1: the length prefilter allows one character of slack past
+      // MAX_BASE58_CHARS so a legitimate MAX_INPUT_BYTES round-trip (which
+      // usually needs one extra digit -- see the boundary test below) is
+      // never rejected by length alone. +2 is unambiguously past that slack.
+      const base58 = 'z'.repeat(MAX_BASE58_CHARS + 2);
       expect(() => decodeFromBase58(base58)).toThrow(
         `exceeds the ${MAX_BASE58_CHARS}-character Base58 limit`
       );
@@ -317,10 +330,94 @@ describe('base58.utils', () => {
     });
 
     it('rejects oversized decode input for Base58Check too', async () => {
-      const base58 = 'z'.repeat(MAX_BASE58_CHARS + 1);
+      const base58 = 'z'.repeat(MAX_BASE58_CHARS + 2);
       await expect(decodeBase58CheckDetails(base58)).rejects.toThrow(
         `exceeds the ${MAX_BASE58_CHARS}-character Base58 limit`
       );
+    });
+
+    describe('one-character prefilter slack (MAX_BASE58_CHARS + 1)', () => {
+      // The length prefilter alone can't distinguish a numeric run at
+      // MAX_BASE58_CHARS + 1 that happens to decode within budget (most real
+      // MAX_INPUT_BYTES payloads) from one that doesn't (e.g. all-'z', the
+      // max-value digit). So it lets the length through, and the exact
+      // byte-length check after decoding is the one that must catch the
+      // oversized case -- this is exactly the reviewer-requested "actual
+      // upper bound on every accepted decoded value".
+      it('lets an all-"z" run at MAX_BASE58_CHARS + 1 chars past the length prefilter', () => {
+        const base58 = 'z'.repeat(MAX_BASE58_CHARS + 1);
+        expect(() => assertDecodeInputWithinLimit(base58)).not.toThrow();
+      });
+
+      it('still rejects that all-"z" run via the exact decoded-byte-length check', () => {
+        const base58 = 'z'.repeat(MAX_BASE58_CHARS + 1);
+        const bytes = decodeBase58ToBytes(base58);
+        expect(bytes.length).toBeGreaterThan(MAX_INPUT_BYTES);
+        expect(() => decodeFromBase58(base58)).toThrow(
+          `exceeds the ${formatFileSize(MAX_INPUT_BYTES)} Base58 limit`
+        );
+        expect(() => decodeBase58Details(base58)).toThrow(
+          `exceeds the ${formatFileSize(MAX_INPUT_BYTES)} Base58 limit`
+        );
+      });
+
+      it('rejects that all-"z" run for Base58Check too, via the byte-length check', async () => {
+        const base58 = 'z'.repeat(MAX_BASE58_CHARS + 1);
+        await expect(decodeBase58CheckDetails(base58)).rejects.toThrow(
+          `exceeds the ${formatFileSize(MAX_INPUT_BYTES)} Base58 limit`
+        );
+      });
+
+      it('accepts a MAX_INPUT_BYTES round-trip that needs MAX_BASE58_CHARS + 1 digits', () => {
+        // A high-valued (but not maximal) MAX_INPUT_BYTES payload: the most
+        // common real-world case that motivates the prefilter's slack.
+        const bytes = new Uint8Array(MAX_INPUT_BYTES).fill(0xff);
+        bytes[0] = 0x0f; // stay under the true 256^n ceiling so it's decodable
+        const encoded = encodeBytesToBase58(bytes);
+        expect(encoded.length).toBe(MAX_BASE58_CHARS + 1);
+        const decoded = decodeBase58ToBytes(encoded);
+        expect(decoded.length).toBe(MAX_INPUT_BYTES);
+        expect(() => decodeFromBase58(encoded, { outputType: 'hex' })).not.toThrow();
+      });
+    });
+
+    describe('regression: numeric-portion bound must be exact, not a ratio estimate', () => {
+      // Prior to this fix, the numeric-portion guard used a fixed 1.38
+      // chars/byte acceptance ratio (a conservative *allocation* estimate,
+      // not a valid *acceptance* bound). That let
+      // 'z'.repeat(Math.ceil(MAX_INPUT_BYTES * 1.38)) -- 2,828 chars for a
+      // 2,048-byte budget -- through the preflight check, even though it
+      // decodes to 2,071 bytes, over MAX_INPUT_BYTES.
+      const legacyRatioAcceptedLength = Math.ceil((MAX_INPUT_BYTES * 138) / 100);
+      const oversizedZeroLeadingInput = 'z'.repeat(legacyRatioAcceptedLength);
+
+      it('confirms the legacy ratio-accepted length actually decodes over the byte budget', () => {
+        // Sanity check that this test still exercises the reported defect.
+        expect(legacyRatioAcceptedLength).toBeGreaterThan(MAX_BASE58_CHARS);
+        const bytes = decodeBase58ToBytes(oversizedZeroLeadingInput);
+        expect(bytes.length).toBeGreaterThan(MAX_INPUT_BYTES);
+      });
+
+      it('rejects it via the preflight guard before the BigInt decode path', () => {
+        expect(() => assertDecodeInputWithinLimit(oversizedZeroLeadingInput)).toThrow(
+          `exceeds the ${MAX_BASE58_CHARS}-character Base58 limit`
+        );
+      });
+
+      it('rejects it for plain Base58 decode', () => {
+        expect(() => decodeFromBase58(oversizedZeroLeadingInput)).toThrow(
+          `exceeds the ${MAX_BASE58_CHARS}-character Base58 limit`
+        );
+        expect(() => decodeBase58Details(oversizedZeroLeadingInput)).toThrow(
+          `exceeds the ${MAX_BASE58_CHARS}-character Base58 limit`
+        );
+      });
+
+      it('rejects it for Base58Check decode', async () => {
+        await expect(decodeBase58CheckDetails(oversizedZeroLeadingInput)).rejects.toThrow(
+          `exceeds the ${MAX_BASE58_CHARS}-character Base58 limit`
+        );
+      });
     });
 
     it('throws the invalid-character error for malformed decode input under the limit', () => {
@@ -393,7 +490,12 @@ describe('base58.utils', () => {
       const bytes = new Uint8Array(MAX_INPUT_BYTES);
       crypto.getRandomValues(bytes);
       const encoded = encodeBytesToBase58(bytes);
-      expect(encoded.length).toBeLessThanOrEqual(MAX_BASE58_CHARS);
+      // MAX_BASE58_CHARS is the guaranteed-safe length (every digit
+      // combination of that length is <= MAX_INPUT_BYTES bytes); a real
+      // random MAX_INPUT_BYTES payload typically needs one more digit than
+      // that to reach its full value, so the bound here is +1, matching the
+      // decode-side prefilter's slack (see assertDecodeInputWithinLimit).
+      expect(encoded.length).toBeLessThanOrEqual(MAX_BASE58_CHARS + 1);
       const start = performance.now();
       decodeBase58ToBytes(encoded);
       const elapsedMs = performance.now() - start;
