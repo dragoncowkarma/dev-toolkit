@@ -48,7 +48,9 @@ export default function VinValidatorTool() {
         <div className="vin-validator__heading">
           <div>
             <h3 id="vin-validate-heading">Validate and decode a VIN</h3>
-            <p>Spaces and hyphens are automatically normalized. Letters I, O, and Q are forbidden.</p>
+            <p>
+              Spaces and hyphens are automatically normalized. Letters I, O, and Q are forbidden.
+            </p>
           </div>
           <div className="vin-validator__samples" aria-label="Sample VINs">
             {SAMPLES.map((sample) => (
@@ -157,9 +159,9 @@ export default function VinValidatorTool() {
                 <span className="vin-validator__grid-label">Model Year (Pos 10)</span>
                 <span className="vin-validator__grid-value">
                   {validation.decoded.candidateModelYears
-                    ? `Code '${validation.decoded.modelYearCode}': ${validation.decoded.candidateModelYears.join(
-                        ' or ',
-                      )}`
+                    ? `Code '${validation.decoded.modelYearCode}': ${
+                      validation.decoded.candidateModelYears.join(' or ')
+                    }`
                     : `Code '${validation.decoded.modelYearCode}' (Unknown)`}
                 </span>
               </div>
@@ -167,7 +169,8 @@ export default function VinValidatorTool() {
               <div className="vin-validator__grid-item">
                 <span className="vin-validator__grid-label">Check Digit (Pos 9)</span>
                 <span className="vin-validator__grid-value">
-                  Actual: '{validation.checkDigitInfo?.actual}' | Expected: '{validation.checkDigitInfo?.expected}'
+                  Actual: &apos;{validation.checkDigitInfo?.actual}&apos; | Expected:{' '}
+                  &apos;{validation.checkDigitInfo?.expected}&apos;
                 </span>
               </div>
 
@@ -193,7 +196,7 @@ export default function VinValidatorTool() {
         </p>
       )}
 
-      <p className="vin-validator__privacy" style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>
+      <p className="vin-validator__privacy">
         Offline validation and decoding only; no vehicle data is sent over the network.
       </p>
     </section>

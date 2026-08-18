@@ -112,21 +112,21 @@
 }
 
 .vin-validator__badge--valid {
-  background: rgba(46, 204, 113, 0.15);
-  color: #2ecc71;
-  border: 1px solid rgba(46, 204, 113, 0.4);
+  background: color-mix(in srgb, var(--color-success) 15%, transparent);
+  color: var(--color-success);
+  border: 1px solid color-mix(in srgb, var(--color-success) 40%, transparent);
 }
 
 .vin-validator__badge--info {
-  background: rgba(52, 152, 219, 0.15);
-  color: #3498db;
-  border: 1px solid rgba(52, 152, 219, 0.4);
+  background: color-mix(in srgb, var(--color-info) 15%, transparent);
+  color: var(--color-info);
+  border: 1px solid color-mix(in srgb, var(--color-info) 40%, transparent);
 }
 
 .vin-validator__badge--invalid {
-  background: rgba(231, 76, 60, 0.15);
-  color: #e74c3c;
-  border: 1px solid rgba(231, 76, 60, 0.4);
+  background: var(--color-error-bg);
+  color: var(--color-error);
+  border: 1px solid var(--color-error-border);
 }
 
 .vin-validator__grid {
@@ -185,3 +185,9 @@
     justify-content: space-between;
   }
 }
+
+.vin-validator__privacy {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+

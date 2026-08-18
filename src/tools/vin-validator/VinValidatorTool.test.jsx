@@ -8,7 +8,9 @@ describe('VinValidatorTool', () => {
   it('renders correctly and loads a sample VIN on button click', () => {
     render(<VinValidatorTool />);
 
-    expect(screen.getByRole('heading', { level: 2, name: /VIN Validator & Decoder/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { level: 2, name: /VIN Validator & Decoder/i }),
+    ).toBeInTheDocument();
 
     const sampleButton = screen.getByRole('button', { name: /Load USA \(Honda 2017\)/i });
     fireEvent.click(sampleButton);

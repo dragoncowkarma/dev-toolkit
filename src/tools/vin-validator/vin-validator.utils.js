@@ -76,7 +76,8 @@ export function transliterateChar(char) {
 /**
  * Calculates the NHTSA/SAE J853 MOD-11 check digit for a 17-character VIN.
  * @param {string} vin - 17-character normalized VIN.
- * @returns {{ expected: string, actual: string, matches: boolean, sum: number, remainder: number }} Check digit result.
+ * @returns {{ expected: string, actual: string, matches: boolean, sum: number, remainder: number }}
+ *   Check digit result.
  */
 export function calculateCheckDigit(vin) {
   if (typeof vin !== 'string' || vin.length !== 17) {
@@ -109,7 +110,8 @@ export function calculateCheckDigit(vin) {
 /**
  * Decodes WMI region and country/continent information from WMI prefix.
  * @param {string} wmi - 3-character WMI string.
- * @returns {{ wmi: string, region: string, country: string, isNorthAmerica: boolean, manufacturer?: string }} WMI details.
+ * @returns {{ wmi: string, region: string, country: string, isNorthAmerica: boolean,
+ *   manufacturer?: string }} WMI details.
  */
 export function decodeWmi(wmi) {
   if (typeof wmi !== 'string' || wmi.length < 1) {
@@ -284,7 +286,8 @@ export function validateVin(input) {
       isFormatValid: false,
       isCheckDigitValid: false,
       isNorthAmerican: false,
-      error: `Disallowed letter '${char}' found. ISO 3779 prohibits letters I, O, and Q to prevent confusion with 1 and 0.`,
+      error: `Disallowed letter '${char}' found. ISO 3779 prohibits letters I, O,` +
+        ' and Q to prevent confusion with 1 and 0.',
       checkDigitInfo: null,
       decoded: null,
     };
@@ -300,7 +303,8 @@ export function validateVin(input) {
       isFormatValid: false,
       isCheckDigitValid: false,
       isNorthAmerican: false,
-      error: `Invalid character '${invalidCharMatch[0]}' found. VIN must contain only alphanumeric characters (A-Z, 0-9).`,
+      error: `Invalid character '${invalidCharMatch[0]}' found.` +
+        ' VIN must contain only alphanumeric characters (A-Z, 0-9).',
       checkDigitInfo: null,
       decoded: null,
     };
@@ -315,7 +319,8 @@ export function validateVin(input) {
       isFormatValid: false,
       isCheckDigitValid: false,
       isNorthAmerican: false,
-      error: `Invalid length (${normalized.length} characters). A valid VIN must be exactly 17 characters.`,
+      error: `Invalid length (${normalized.length} characters).` +
+        ' A valid VIN must be exactly 17 characters.',
       checkDigitInfo: null,
       decoded: null,
     };
@@ -337,8 +342,11 @@ export function validateVin(input) {
       : `Position 9 matches NHTSA check digit algorithm (optional for ${wmiInfo.region} VINs).`;
   } else {
     note = isNorthAmerican
-      ? `Check digit mismatch: position 9 is '${checkDigitResult.actual}', calculated '${checkDigitResult.expected}'.`
-      : `Position 9 ('${checkDigitResult.actual}') does not match NHTSA check digit ('${checkDigitResult.expected}'). Note: Check digit validation is informative for non-North American region (${wmiInfo.region}).`;
+      ? `Check digit mismatch: position 9 is '${checkDigitResult.actual}',` +
+        ` calculated '${checkDigitResult.expected}'.`
+      : `Position 9 ('${checkDigitResult.actual}') does not match NHTSA check digit` +
+        ` ('${checkDigitResult.expected}'). Note: Check digit validation is informative` +
+        ` for non-North American region (${wmiInfo.region}).`;
   }
 
   const checkDigitInfo = {
@@ -350,8 +358,9 @@ export function validateVin(input) {
   };
 
   const isValid = isNorthAmerican ? isCheckDigitValid : true;
-  const error = (!isValid && isNorthAmerican && !isCheckDigitValid)
-    ? `Check digit mismatch: position 9 is '${checkDigitResult.actual}', expected '${checkDigitResult.expected}'.`
+  const error = (!isValid && isNorthAmerican)
+    ? `Check digit mismatch: position 9 is '${checkDigitResult.actual}',` +
+      ` expected '${checkDigitResult.expected}'.`
     : null;
 
   const decoded = {
