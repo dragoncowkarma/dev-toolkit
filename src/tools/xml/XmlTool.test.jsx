@@ -11,6 +11,7 @@ function getInput() {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -83,6 +84,92 @@ describe('XmlTool Copy & Download', () => {
 
     expect(writeText).toHaveBeenCalledTimes(1);
     expect(await screen.findByRole('alert')).toHaveTextContent('Copied to clipboard!');
+  });
+
+  it('dismisses the copy toast after 3000 ms while mounted', async () => {
+    Object.assign(navigator, {
+      clipboard: { writeText: vi.fn().mockResolvedValue(undefined) },
+    });
+
+    render(<XmlTool />);
+
+    fireEvent.change(getInput(), { target: { value: VALID_XML_UNFORMATTED } });
+    await waitFor(() => expect(screen.getByText('Valid')).toBeInTheDocument());
+    vi.useFakeTimers();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy output to clipboard' }));
+    });
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Copied to clipboard!');
+
+    act(() => {
+      vi.advanceTimersByTime(3000);
+    });
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('resets the copy toast dismissal timer for consecutive copies', async () => {
+    Object.assign(navigator, {
+      clipboard: { writeText: vi.fn().mockResolvedValue(undefined) },
+    });
+
+    render(<XmlTool />);
+
+    fireEvent.change(getInput(), { target: { value: VALID_XML_UNFORMATTED } });
+    await waitFor(() => expect(screen.getByText('Valid')).toBeInTheDocument());
+    vi.useFakeTimers();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy output to clipboard' }));
+    });
+    expect(vi.getTimerCount()).toBe(1);
+
+    act(() => {
+      vi.advanceTimersByTime(2500);
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy output to clipboard' }));
+    });
+    expect(vi.getTimerCount()).toBe(1);
+
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+    expect(screen.getByRole('alert')).toHaveTextContent('Copied to clipboard!');
+
+    act(() => {
+      vi.advanceTimersByTime(2500);
+    });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('clears the pending copy toast timeout on unmount', async () => {
+    Object.assign(navigator, {
+      clipboard: { writeText: vi.fn().mockResolvedValue(undefined) },
+    });
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const { unmount } = render(<XmlTool />);
+
+    fireEvent.change(getInput(), { target: { value: VALID_XML_UNFORMATTED } });
+    await waitFor(() => expect(screen.getByText('Valid')).toBeInTheDocument());
+    vi.useFakeTimers();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy output to clipboard' }));
+    });
+    expect(vi.getTimerCount()).toBe(1);
+
+    unmount();
+    expect(vi.getTimerCount()).toBe(0);
+
+    act(() => {
+      vi.advanceTimersByTime(3000);
+    });
+    expect(consoleError).not.toHaveBeenCalled();
   });
 
   it('triggers a file download for current output', async () => {

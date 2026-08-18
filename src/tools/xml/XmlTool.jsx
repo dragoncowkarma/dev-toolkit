@@ -135,6 +135,25 @@ export default function XmlTool({ onBack }) {
   const [validation, setValidation] = useState({ valid: true, error: null });
   const [toast, setToast] = useState('');
   const [ariaLiveMessage, setAriaLiveMessage] = useState('');
+  const toastTimeoutRef = useRef(null);
+
+  const scheduleToastDismissal = () => {
+    if (toastTimeoutRef.current !== null) {
+      clearTimeout(toastTimeoutRef.current);
+    }
+
+    toastTimeoutRef.current = setTimeout(() => {
+      toastTimeoutRef.current = null;
+      setToast('');
+    }, 3000);
+  };
+
+  useEffect(() => () => {
+    if (toastTimeoutRef.current !== null) {
+      clearTimeout(toastTimeoutRef.current);
+      toastTimeoutRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     if (!input.trim()) {
@@ -215,7 +234,7 @@ export default function XmlTool({ onBack }) {
       .then(() => {
         setToast('Copied to clipboard!');
         setAriaLiveMessage('Copied output to clipboard!');
-        setTimeout(() => setToast(''), 3000);
+        scheduleToastDismissal();
       })
       .catch((err) => {
         console.error('Failed to copy: ', err);
