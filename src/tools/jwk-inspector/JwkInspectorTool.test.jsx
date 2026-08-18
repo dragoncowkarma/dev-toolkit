@@ -16,6 +16,7 @@ describe('JwkInspectorTool Component', () => {
 
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
   });
 
   it('renders tool header, toolbar, mode selector, and empty state', () => {
@@ -98,6 +99,9 @@ describe('JwkInspectorTool Component', () => {
 
   it('resets copy feedback after 1500ms and cleans up timer on unmount', async () => {
     vi.useFakeTimers();
+    const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
+    const clearIntervalSpy = vi.spyOn(globalThis, 'clearInterval');
+
     const { unmount } = render(<JwkInspectorTool />);
     fireEvent.click(screen.getByRole('button', { name: /Load sample/i }));
 
@@ -123,9 +127,13 @@ describe('JwkInspectorTool Component', () => {
       expect(screen.getByText('Copied!')).toBeInTheDocument();
     });
 
+    clearTimeoutSpy.mockClear();
+    clearIntervalSpy.mockClear();
+
     unmount();
-    expect(() => vi.advanceTimersByTime(1500)).not.toThrow();
-    vi.useRealTimers();
+
+    expect(clearTimeoutSpy).toHaveBeenCalled();
+    expect(clearIntervalSpy).not.toHaveBeenCalled();
   });
 
   it('has aria-live polite status region for accessibility', () => {
