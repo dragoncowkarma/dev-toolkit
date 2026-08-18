@@ -299,13 +299,15 @@ describe('base58.utils', () => {
     });
 
     it('accepts decode input exactly at the MAX_BASE58_CHARS boundary', () => {
-      const base58 = '1'.repeat(MAX_BASE58_CHARS);
+      // 'z' has no leading-zero-byte effect, so this exercises the general
+      // char-count bound rather than the leading-'1' bound below.
+      const base58 = 'z'.repeat(MAX_BASE58_CHARS);
       expect(() => decodeFromBase58(base58, { outputType: 'hex' })).not.toThrow();
       expect(assertDecodeInputWithinLimit(base58)).toBe(MAX_BASE58_CHARS);
     });
 
     it('rejects decode input exceeding MAX_BASE58_CHARS with a size error', () => {
-      const base58 = '1'.repeat(MAX_BASE58_CHARS + 1);
+      const base58 = 'z'.repeat(MAX_BASE58_CHARS + 1);
       expect(() => decodeFromBase58(base58)).toThrow(
         `exceeds the ${MAX_BASE58_CHARS}-character Base58 limit`
       );
@@ -315,7 +317,7 @@ describe('base58.utils', () => {
     });
 
     it('rejects oversized decode input for Base58Check too', async () => {
-      const base58 = '1'.repeat(MAX_BASE58_CHARS + 1);
+      const base58 = 'z'.repeat(MAX_BASE58_CHARS + 1);
       await expect(decodeBase58CheckDetails(base58)).rejects.toThrow(
         `exceeds the ${MAX_BASE58_CHARS}-character Base58 limit`
       );
@@ -323,10 +325,47 @@ describe('base58.utils', () => {
 
     it('throws the invalid-character error for malformed decode input under the limit', () => {
       // Below the size limit, so the character error (not the size error) should surface.
-      const withInvalidChar = `${'1'.repeat(MAX_BASE58_CHARS - 1)}0`;
+      const withInvalidChar = `${'z'.repeat(MAX_BASE58_CHARS - 1)}0`;
       expect(() => decodeFromBase58(withInvalidChar)).toThrow(
         "Invalid Base58 character: '0'."
       );
+    });
+
+    describe('leading-1 (zero-byte) decode boundary', () => {
+      // Each leading '1' decodes 1:1 to a zero byte, a denser ratio than the
+      // ~1.3657 chars/byte the general MAX_BASE58_CHARS estimate assumes.
+      // A run of leading '1's must therefore be bounded by MAX_INPUT_BYTES
+      // directly, not by MAX_BASE58_CHARS (see assertDecodeInputWithinLimit).
+      it('accepts MAX_INPUT_BYTES leading 1s for plain Base58', () => {
+        const base58 = '1'.repeat(MAX_INPUT_BYTES);
+        expect(assertDecodeInputWithinLimit(base58)).toBe(MAX_INPUT_BYTES);
+        const bytes = decodeBase58ToBytes(base58);
+        expect(bytes.length).toBe(MAX_INPUT_BYTES);
+        expect(() => decodeFromBase58(base58, { outputType: 'hex' })).not.toThrow();
+      });
+
+      it('rejects MAX_INPUT_BYTES + 1 leading 1s for plain Base58', () => {
+        const base58 = '1'.repeat(MAX_INPUT_BYTES + 1);
+        expect(() => decodeFromBase58(base58, { outputType: 'hex' })).toThrow(
+          `exceeds the ${formatFileSize(MAX_INPUT_BYTES)} Base58 limit`
+        );
+        expect(() => decodeBase58Details(base58)).toThrow(
+          `exceeds the ${formatFileSize(MAX_INPUT_BYTES)} Base58 limit`
+        );
+      });
+
+      it('accepts MAX_INPUT_BYTES leading 1s for Base58Check', async () => {
+        const base58 = '1'.repeat(MAX_INPUT_BYTES);
+        const result = await decodeBase58CheckDetails(base58);
+        expect(result.rawBytes.length).toBe(MAX_INPUT_BYTES);
+      });
+
+      it('rejects MAX_INPUT_BYTES + 1 leading 1s for Base58Check', async () => {
+        const base58 = '1'.repeat(MAX_INPUT_BYTES + 1);
+        await expect(decodeBase58CheckDetails(base58)).rejects.toThrow(
+          `exceeds the ${formatFileSize(MAX_INPUT_BYTES)} Base58 limit`
+        );
+      });
     });
 
     it('recovers normally after a rejected oversized input is replaced with valid input', () => {

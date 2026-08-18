@@ -221,19 +221,48 @@ export function assertEncodeInputWithinLimit(value, { inputType = 'text' } = {})
  * before the BigInt decode loop starts. Uses the whitespace-stripped
  * character count, which is a cheap O(n) upper bound on decoded byte
  * length, avoiding a full decode just to measure size.
+ *
+ * The MAX_BASE58_CHARS bound alone is not sufficient: each leading '1'
+ * decodes 1:1 to a leading zero byte (see `decodeBase58ToBytes`), which is a
+ * denser char-to-byte ratio than the ~1.3657 chars/byte the general estimate
+ * assumes for the numeric portion. A string of `MAX_BASE58_CHARS` leading
+ * '1's would pass the plain length check yet decode to `MAX_BASE58_CHARS`
+ * bytes -- well over MAX_INPUT_BYTES. So the leading-'1' run is counted and
+ * charged against the byte budget directly, and only the remaining
+ * (non-zero-prefixed) numeric portion is checked against the conservative
+ * char-per-byte ratio.
  * @param {string} value
  * @returns {number} The whitespace-stripped character length.
- * @throws {Error} When the character length exceeds MAX_BASE58_CHARS.
+ * @throws {Error} When the decoded output would exceed MAX_INPUT_BYTES.
  */
 export function assertDecodeInputWithinLimit(value) {
   const cleaned = typeof value === 'string' ? stripWhitespace(value) : '';
-  if (cleaned.length > MAX_BASE58_CHARS) {
+
+  let zeroCount = 0;
+  while (zeroCount < cleaned.length && cleaned[zeroCount] === '1') {
+    zeroCount += 1;
+  }
+
+  if (zeroCount > MAX_INPUT_BYTES) {
+    throw new Error(
+      `Input has ${zeroCount} leading '1' characters, which decode to ` +
+        `${formatFileSize(zeroCount)} of leading zero bytes alone -- this ` +
+        `exceeds the ${formatFileSize(MAX_INPUT_BYTES)} Base58 limit. ${BASE58_LIMIT_HINT}`
+    );
+  }
+
+  const numericLength = cleaned.length - zeroCount;
+  const remainingBudgetBytes = MAX_INPUT_BYTES - zeroCount;
+  const maxNumericChars = Math.ceil((remainingBudgetBytes * 138) / 100);
+
+  if (numericLength > maxNumericChars) {
     throw new Error(
       `Input is ${cleaned.length} characters, which exceeds the ` +
         `${MAX_BASE58_CHARS}-character Base58 limit (~${formatFileSize(MAX_INPUT_BYTES)} ` +
         `decoded). ${BASE58_LIMIT_HINT}`
     );
   }
+
   return cleaned.length;
 }
 
