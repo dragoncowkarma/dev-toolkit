@@ -369,7 +369,9 @@ describe('Base58Tool Textarea Size Limit', () => {
     render(<Base58Tool />);
     fireEvent.click(screen.getByRole('button', { name: 'Decode' }));
 
-    const oversizedBase58 = '1'.repeat(MAX_BASE58_CHARS + 1);
+    // 'z' has no leading-zero-byte effect, exercising the general char-count
+    // bound rather than the leading-'1' bound covered separately below.
+    const oversizedBase58 = 'z'.repeat(MAX_BASE58_CHARS + 1);
     fireEvent.change(screen.getByLabelText('Base58'), {
       target: { value: oversizedBase58 },
     });
@@ -384,7 +386,7 @@ describe('Base58Tool Textarea Size Limit', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Decode' }));
     fireEvent.click(screen.getByRole('button', { name: 'Base58Check' }));
 
-    const oversizedBase58 = '1'.repeat(MAX_BASE58_CHARS + 1);
+    const oversizedBase58 = 'z'.repeat(MAX_BASE58_CHARS + 1);
     fireEvent.change(screen.getByLabelText('Base58Check'), {
       target: { value: oversizedBase58 },
     });
@@ -393,6 +395,51 @@ describe('Base58Tool Textarea Size Limit', () => {
       `exceeds the ${MAX_BASE58_CHARS}-character Base58 limit`
     );
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it('rejects a Base58 decode input with more than MAX_INPUT_BYTES leading 1s', async () => {
+    render(<Base58Tool />);
+    fireEvent.click(screen.getByRole('button', { name: 'Decode' }));
+
+    // Each leading '1' decodes to one zero byte, so MAX_INPUT_BYTES + 1 of
+    // them alone exceeds the byte budget well under MAX_BASE58_CHARS chars.
+    const oversizedLeadingZeros = '1'.repeat(MAX_INPUT_BYTES + 1);
+    fireEvent.change(screen.getByLabelText('Base58'), {
+      target: { value: oversizedLeadingZeros },
+    });
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      `exceeds the 2.0 KB Base58 limit`
+    );
+  });
+
+  it('rejects a Base58Check decode input with more than MAX_INPUT_BYTES leading 1s', async () => {
+    render(<Base58Tool />);
+    fireEvent.click(screen.getByRole('button', { name: 'Decode' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Base58Check' }));
+
+    const oversizedLeadingZeros = '1'.repeat(MAX_INPUT_BYTES + 1);
+    fireEvent.change(screen.getByLabelText('Base58Check'), {
+      target: { value: oversizedLeadingZeros },
+    });
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      `exceeds the 2.0 KB Base58 limit`
+    );
+  });
+
+  it('accepts a Base58 decode input with exactly MAX_INPUT_BYTES leading 1s', async () => {
+    render(<Base58Tool />);
+    fireEvent.click(screen.getByRole('button', { name: 'Decode' }));
+
+    const boundaryLeadingZeros = '1'.repeat(MAX_INPUT_BYTES);
+    fireEvent.change(screen.getByLabelText('Base58'), {
+      target: { value: boundaryLeadingZeros },
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
   });
 
   it('recovers and encodes after oversized input is replaced with valid text', async () => {
