@@ -105,15 +105,18 @@ IDLE_EXIT_CYCLES = 1
 
 # Metadata tag patterns
 WORKER_PATTERN = re.compile(
-    r"\[Worker:\s*(?P<ai>\w+)\s*\|\s*Model:\s*(?P<model>[^|]+?)\s*\|\s*Reasoning:\s*(?P<reasoning>[^\]]+?)\]",
+    r"\[Worker:\s*(?P<ai>\w+)\s*\|\s*Model:\s*(?P<model>[^|]+?)\s*\|\s*"
+    r"Reasoning:\s*(?P<reasoning>[^\]]+?)\]",
     re.IGNORECASE,
 )
 REVIEWER_PATTERN = re.compile(
-    r"\[Reviewer:\s*(?P<ai>\w+)\s*\|\s*Model:\s*(?P<model>[^|]+?)\s*\|\s*Reasoning:\s*(?P<reasoning>[^\]]+?)\]",
+    r"\[Reviewer:\s*(?P<ai>\w+)\s*\|\s*Model:\s*(?P<model>[^|]+?)\s*\|\s*"
+    r"Reasoning:\s*(?P<reasoning>[^\]]+?)\]",
     re.IGNORECASE,
 )
 MAINTAINER_PATTERN = re.compile(
-    r"\[Maintainer:\s*(?P<ai>\w+)\s*\|\s*Model:\s*(?P<model>[^|]+?)\s*\|\s*Reasoning:\s*(?P<reasoning>[^\]]+?)\]",
+    r"\[Maintainer:\s*(?P<ai>\w+)\s*\|\s*Model:\s*(?P<model>[^|]+?)\s*\|\s*"
+    r"Reasoning:\s*(?P<reasoning>[^\]]+?)\]",
     re.IGNORECASE,
 )
 MAINTAINER_BLOCKED_PATTERN = re.compile(r"\[Maintainer Blocked\]", re.IGNORECASE)
@@ -1020,7 +1023,11 @@ def select_maintainer_for_issueless_pr(
 
     if worker:
         candidates = [ai for ai in ["codex", "antigravity", "claude"] if ai not in excluded]
-        maintainer_ai = candidates[0] if candidates else DEFAULT_ROTATION.get(reviewer.ai, {}).get("maintainer", "codex")
+        maintainer_ai = (
+            candidates[0]
+            if candidates
+            else DEFAULT_ROTATION.get(reviewer.ai, {}).get("maintainer", "codex")
+        )
     else:
         maintainer_ai = DEFAULT_ROTATION.get(reviewer.ai, {}).get("maintainer", "codex")
 
@@ -1059,7 +1066,11 @@ def determine_pr_action(comments: list[dict]) -> tuple[str, Optional[dict], int]
             latest_action = "review_after_maintainer_block"
             latest_comment = comment
             latest_index = index
-        elif reviewer and not REVIEWER_REJECTED_PATTERN.search(body) and (maintainer or REVIEWER_APPROVED_PATTERN.search(body)):
+        elif (
+            reviewer
+            and not REVIEWER_REJECTED_PATTERN.search(body)
+            and (maintainer or REVIEWER_APPROVED_PATTERN.search(body))
+        ):
             latest_action = "maintain"
             latest_comment = comment
             latest_index = index
@@ -1603,8 +1614,10 @@ def build_ai_argv(ai_name: str, model: str, reasoning: str,
     """Build an argv list for a specific AI CLI tool.
 
     Each tool's actual flags (verified via CLI):
-      codex exec -m <model> -C <dir> -s workspace-write --dangerously-bypass-approvals-and-sandbox <prompt>
-      agy --model "Gemini 3.6 Flash (High)" --print-timeout <dur> --dangerously-skip-permissions -p <prompt>
+      codex exec -m <model> -C <dir> -s workspace-write
+        --dangerously-bypass-approvals-and-sandbox <prompt>
+      agy --model "Gemini 3.6 Flash (High)" --print-timeout <dur>
+        --dangerously-skip-permissions -p <prompt>
       claude -p --model <model> --effort <level> --dangerously-skip-permissions <prompt>
     """
     prompt_text = prompt_file.read_text(encoding="utf-8")
