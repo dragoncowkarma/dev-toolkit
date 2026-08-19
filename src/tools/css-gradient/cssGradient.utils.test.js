@@ -343,6 +343,46 @@ describe('cssGradient.utils', () => {
       expect(updated[2].position).toBe(50.5);
     });
 
+    it('guarantees position is strictly inside narrow intervals without duplicating endpoints', () => {
+      const cases = [
+        {
+          stops: [
+            { id: 's1', color: '#111', position: 99.99 },
+            { id: 's2', color: '#222', position: 100 },
+          ],
+          start: 99.99,
+          end: 100,
+        },
+        {
+          stops: [
+            { id: 's1', color: '#111', position: 12.5 },
+            { id: 's2', color: '#222', position: 12.51 },
+          ],
+          start: 12.5,
+          end: 12.51,
+        },
+        {
+          stops: [
+            { id: 's1', color: '#111', position: 0 },
+            { id: 's2', color: '#222', position: 0.001 },
+            { id: 's3', color: '#333', position: 0.002 },
+          ],
+          start: 0,
+          end: 0.001,
+        },
+      ];
+
+      for (const { stops, start, end } of cases) {
+        const updated = addStop(stops);
+        const newPos = updated[updated.length - 1].position;
+        expect(newPos).toBeGreaterThan(start);
+        expect(newPos).toBeLessThan(end);
+        for (const stop of stops) {
+          expect(newPos).not.toBe(stop.position);
+        }
+      }
+    });
+
     it('preserves existing stops and their relative order', () => {
       const initialStops = [
         { id: 's1', color: '#ff0000', position: 100 },
