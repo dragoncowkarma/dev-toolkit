@@ -343,7 +343,7 @@ describe('cssGradient.utils', () => {
       expect(updated[2].position).toBe(50.5);
     });
 
-    it('guarantees position is strictly inside narrow intervals without duplicating endpoints', () => {
+    it('places position strictly inside narrow intervals without endpoint duplication', () => {
       const cases = [
         {
           stops: [
