@@ -398,8 +398,9 @@ export function generateCssGradient(config) {
  * 5. Tie-break rule: If multiple intervals share the maximum width, pick the first interval
  *    (the one starting at the lowest position).
  * 6. Calculate position strictly inside the selected interval:
- *    midpoint = Math.round((start + end) / 2). If midpoint equals start or end,
- *    use Number(((start + end) / 2).toFixed(2)).
+ *    Try rounded integer midpoint Math.round((start + end) / 2); if strictly inside, use it.
+ *    Otherwise try 2-decimal midpoint Number(((start + end) / 2).toFixed(2)); if strictly inside,
+ *    use it. Otherwise fall back to exact midpoint (start + end) / 2.
  * 7. Fallback strategy (when no positive interval exists or all valid positions are equal):
  *    If all valid positions equal X, choose 100 if X < 100 else 50.
  *    If no valid positions exist, choose 50.
@@ -437,11 +438,15 @@ export function addStop(stops, newStopProps = {}) {
     }
 
     if (maxInterval) {
-      const mid = Math.round((maxInterval.start + maxInterval.end) / 2);
-      if (mid > maxInterval.start && mid < maxInterval.end) {
-        defaultPosition = mid;
+      const exactMid = (maxInterval.start + maxInterval.end) / 2;
+      const rounded = Math.round(exactMid);
+      const twoDecimals = Number(exactMid.toFixed(2));
+      if (rounded > maxInterval.start && rounded < maxInterval.end) {
+        defaultPosition = rounded;
+      } else if (twoDecimals > maxInterval.start && twoDecimals < maxInterval.end) {
+        defaultPosition = twoDecimals;
       } else {
-        defaultPosition = Number(((maxInterval.start + maxInterval.end) / 2).toFixed(2));
+        defaultPosition = exactMid;
       }
     } else {
       const x = uniqueSorted[0];
