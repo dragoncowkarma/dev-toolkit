@@ -1363,6 +1363,36 @@ class CreateWorktreeTests(unittest.TestCase):
                 args = call[0][0]
                 self.assertNotIn("add", args)
 
+    def test_create_worktree_already_checked_out_branch_porcelain_no_git_add(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        existing_path = tmp_dir / "existing_worktree"
+        existing_path.mkdir(parents=True)
+        (existing_path / ".git").write_text("gitdir: ...")
+
+        porcelain_output = (
+            f"worktree {existing_path}\n"
+            "HEAD def5678\n"
+            "branch refs/heads/worker/239-branch\n\n"
+        )
+
+        def fake_run(cmd, **kwargs):
+            if cmd[:3] == ["git", "worktree", "list"]:
+                return subprocess.CompletedProcess(
+                    args=cmd, returncode=0, stdout=porcelain_output, stderr=""
+                )
+            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+        with (
+            patch.object(swarm, "WORKTREE_DIR", tmp_dir),
+            patch.object(swarm.subprocess, "run", side_effect=fake_run) as mock_run,
+        ):
+            wt = swarm.create_worktree(239, "worker/239-branch")
+            self.assertEqual(wt, existing_path)
+            for call in mock_run.call_args_list:
+                args = call[0][0]
+                self.assertNotIn("branch", args)
+                self.assertNotIn("add", args)
+
     def test_create_worktree_returns_existing_valid_worktree(self):
         tmp_dir = Path(tempfile.mkdtemp())
         target_path = tmp_dir / "156"
