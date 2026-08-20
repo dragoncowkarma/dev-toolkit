@@ -10,7 +10,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import Base58Tool from './Base58Tool.jsx';
 import * as base58Utils from './base58.utils.js';
 
-const { MAX_BASE58_CHARS, MAX_INPUT_BYTES } = base58Utils;
+const { CHECKSUM_BYTES, MAX_BASE58_CHARS, MAX_BASE58_CHECK_CHARS, MAX_INPUT_BYTES } =
+  base58Utils;
 
 vi.mock('./base58.utils.js', async (importOriginal) => {
   const actual = await importOriginal();
@@ -391,13 +392,16 @@ describe('Base58Tool Textarea Size Limit', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Decode' }));
     fireEvent.click(screen.getByRole('button', { name: 'Base58Check' }));
 
-    const oversizedBase58 = 'z'.repeat(MAX_BASE58_CHARS + 2);
+    // Base58Check's raw-decode budget is MAX_INPUT_BYTES + CHECKSUM_BYTES
+    // (see decodeBase58CheckDetails), so its char limit is
+    // MAX_BASE58_CHECK_CHARS, not the plain-Base58 MAX_BASE58_CHARS.
+    const oversizedBase58 = 'z'.repeat(MAX_BASE58_CHECK_CHARS + 2);
     fireEvent.change(screen.getByLabelText('Base58Check'), {
       target: { value: oversizedBase58 },
     });
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      `exceeds the ${MAX_BASE58_CHARS}-character Base58 limit`
+      `exceeds the ${MAX_BASE58_CHECK_CHARS}-character Base58 limit`
     );
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
@@ -436,20 +440,51 @@ describe('Base58Tool Textarea Size Limit', () => {
     );
   });
 
-  it('rejects a Base58Check decode input with more than MAX_INPUT_BYTES leading 1s', async () => {
-    render(<Base58Tool />);
-    fireEvent.click(screen.getByRole('button', { name: 'Decode' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Base58Check' }));
+  it(
+    'rejects a Base58Check decode input with more than ' +
+      'MAX_INPUT_BYTES + CHECKSUM_BYTES leading 1s',
+    async () => {
+      render(<Base58Tool />);
+      fireEvent.click(screen.getByRole('button', { name: 'Decode' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Base58Check' }));
 
-    const oversizedLeadingZeros = '1'.repeat(MAX_INPUT_BYTES + 1);
-    fireEvent.change(screen.getByLabelText('Base58Check'), {
-      target: { value: oversizedLeadingZeros },
-    });
+      // Base58Check's raw-decode budget is MAX_INPUT_BYTES + CHECKSUM_BYTES
+      // (see decodeBase58CheckDetails), so MAX_INPUT_BYTES + 1 leading 1s
+      // alone -- which exceeds plain Base58's budget -- is still accepted
+      // here; only past the wider raw budget does it reject.
+      const oversizedLeadingZeros = '1'.repeat(
+        MAX_INPUT_BYTES + CHECKSUM_BYTES + 1
+      );
+      fireEvent.change(screen.getByLabelText('Base58Check'), {
+        target: { value: oversizedLeadingZeros },
+      });
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      `exceeds the 2.0 KB Base58 limit`
-    );
-  });
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        `exceeds the ${base58Utils.formatFileSize(
+          MAX_INPUT_BYTES + CHECKSUM_BYTES
+        )} Base58 limit`
+      );
+    }
+  );
+
+  it(
+    'accepts a Base58Check decode input with exactly ' +
+      'MAX_INPUT_BYTES + CHECKSUM_BYTES leading 1s',
+    async () => {
+      render(<Base58Tool />);
+      fireEvent.click(screen.getByRole('button', { name: 'Decode' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Base58Check' }));
+
+      const boundaryLeadingZeros = '1'.repeat(MAX_INPUT_BYTES + CHECKSUM_BYTES);
+      fireEvent.change(screen.getByLabelText('Base58Check'), {
+        target: { value: boundaryLeadingZeros },
+      });
+
+      await waitFor(() => {
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      });
+    }
+  );
 
   it('accepts a Base58 decode input with exactly MAX_INPUT_BYTES leading 1s', async () => {
     render(<Base58Tool />);
@@ -464,6 +499,54 @@ describe('Base58Tool Textarea Size Limit', () => {
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
   });
+
+  it(
+    'round-trips a MAX_INPUT_BYTES (2,048-byte) Base58Check payload through ' +
+      'encode, decode, and Swap',
+    async () => {
+      render(<Base58Tool />);
+      fireEvent.click(screen.getByRole('button', { name: 'Base58Check' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Hex' }));
+
+      const hexPayload = 'ff'.repeat(MAX_INPUT_BYTES);
+      // The decoded Hex Bytes panel renders space-separated hex (see
+      // bytesToHex), unlike the compact hex the encode-side input accepts.
+      const spacedHexPayload = base58Utils.bytesToHex(
+        new Uint8Array(MAX_INPUT_BYTES).fill(0xff)
+      );
+      fireEvent.change(screen.getByLabelText('Hex Bytes'), {
+        target: { value: hexPayload },
+      });
+
+      let encoded;
+      await waitFor(() => {
+        encoded = screen.getByLabelText('Base58Check').value;
+        expect(encoded.length).toBeGreaterThan(0);
+      });
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+      // Decoding the maximum-size encode output back must succeed, not hit
+      // the size guard -- this is the reviewer-reported regression: the raw
+      // decode (payload + checksum) previously reused the payload-only cap.
+      fireEvent.click(screen.getByRole('button', { name: 'Decode' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Hex' }));
+      fireEvent.change(screen.getByLabelText('Base58Check'), {
+        target: { value: encoded },
+      });
+
+      await waitFor(() => {
+        expect(screen.getByRole('status')).toHaveTextContent('✓ Checksum valid.');
+      });
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(screen.getByLabelText('Hex Bytes')).toHaveValue(spacedHexPayload);
+
+      fireEvent.click(screen.getByRole('button', { name: '⇅ Swap' }));
+      await waitFor(() => {
+        expect(screen.getByLabelText('Base58Check')).toHaveValue(encoded);
+      });
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    }
+  );
 
   it('recovers and encodes after oversized input is replaced with valid text', async () => {
     render(<Base58Tool />);

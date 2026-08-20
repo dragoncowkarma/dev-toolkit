@@ -178,6 +178,16 @@ export function decodeBase58ToBytes(base58) {
 export const MAX_INPUT_BYTES = 2 * 1024; // 2 KB
 
 /**
+ * Byte length of a Base58Check checksum (a 4-byte prefix of double SHA-256).
+ * Base58Check decode guards accept this many bytes *on top of*
+ * MAX_INPUT_BYTES for the raw (payload + checksum) decode, so that an
+ * encoded MAX_INPUT_BYTES payload -- which is exactly what
+ * `encodeToBase58Check` accepts -- always decodes back successfully. See
+ * `decodeBase58CheckDetails`.
+ */
+export const CHECKSUM_BYTES = 4;
+
+/**
  * Exact per-byte-budget table of the longest run of non-leading-zero Base58
  * digits that is *guaranteed* to decode to at most that many bytes.
  *
@@ -194,21 +204,24 @@ export const MAX_INPUT_BYTES = 2 * 1024; // 2 KB
  * 2,071 bytes -- over MAX_INPUT_BYTES.
  *
  * table[budget] is computed once at module load by walking budget from 0 to
- * MAX_INPUT_BYTES and, for each step, extending the longest-safe-length so
- * far only while the next digit still fits (58^(length+1) <= 256^budget).
- * Because the length is monotonic in budget, the total work across the
- * whole table is bounded by the final length (a few thousand BigInt
- * multiplications, ~10ms), not by budget^2 -- and every subsequent lookup
- * during decode is an O(1) array read instead of a per-call computation.
+ * MAX_INPUT_BYTES + CHECKSUM_BYTES (the largest budget any guard needs --
+ * see `decodeBase58CheckDetails`) and, for each step, extending the
+ * longest-safe-length so far only while the next digit still fits
+ * (58^(length+1) <= 256^budget). Because the length is monotonic in budget,
+ * the total work across the whole table is bounded by the final length (a
+ * few thousand BigInt multiplications, ~10ms), not by budget^2 -- and every
+ * subsequent lookup during decode is an O(1) array read instead of a
+ * per-call computation.
  * @type {number[]}
  */
 const NUMERIC_CHAR_LIMIT_TABLE = (() => {
-  const table = new Array(MAX_INPUT_BYTES + 1);
+  const maxBudget = MAX_INPUT_BYTES + CHECKSUM_BYTES;
+  const table = new Array(maxBudget + 1);
   table[0] = 0;
   let length = 0;
   let value = 1n; // 58^length
   let capacity = 1n; // 256^budget
-  for (let budget = 1; budget <= MAX_INPUT_BYTES; budget += 1) {
+  for (let budget = 1; budget <= maxBudget; budget += 1) {
     capacity *= 256n;
     while (value * 58n <= capacity) {
       value *= 58n;
@@ -221,12 +234,22 @@ const NUMERIC_CHAR_LIMIT_TABLE = (() => {
 
 /**
  * Exact upper bound, in Base58 characters, for a decoded payload of
- * MAX_INPUT_BYTES bytes (see NUMERIC_CHAR_LIMIT_TABLE). Any decode-mode
- * input longer than this cannot decode to MAX_INPUT_BYTES bytes or fewer,
- * so it can be rejected by a cheap O(1) table lookup before running the
- * O(n^2) BigInt decode loop.
+ * MAX_INPUT_BYTES bytes (see NUMERIC_CHAR_LIMIT_TABLE). Any plain-Base58
+ * decode-mode input longer than this cannot decode to MAX_INPUT_BYTES bytes
+ * or fewer, so it can be rejected by a cheap O(1) table lookup before
+ * running the O(n^2) BigInt decode loop.
  */
 export const MAX_BASE58_CHARS = NUMERIC_CHAR_LIMIT_TABLE[MAX_INPUT_BYTES];
+
+/**
+ * Exact upper bound, in Base58 characters, for a Base58Check *raw* decode
+ * (payload + CHECKSUM_BYTES checksum bytes) of at most MAX_INPUT_BYTES
+ * payload bytes. Wider than MAX_BASE58_CHARS by the checksum's contribution,
+ * so a maximum-size `encodeToBase58Check` output is always accepted for
+ * decode -- see `decodeBase58CheckDetails`.
+ */
+export const MAX_BASE58_CHECK_CHARS =
+  NUMERIC_CHAR_LIMIT_TABLE[MAX_INPUT_BYTES + CHECKSUM_BYTES];
 
 const BASE58_LIMIT_HINT =
   'Base58 is intended for short identifiers and keys (e.g. addresses, ' +
@@ -284,10 +307,15 @@ export function assertEncodeInputWithinLimit(value, { inputType = 'text' } = {})
  * guarantee for accepted input is enforced afterward, on the real decoded
  * value, by `assertDecodedBytesWithinLimit`.
  * @param {string} value
+ * @param {{ maxBytes?: number }} [options] - Byte budget for this decode.
+ *   Defaults to MAX_INPUT_BYTES (plain Base58). `decodeBase58CheckDetails`
+ *   passes MAX_INPUT_BYTES + CHECKSUM_BYTES here for the *raw* decode, since
+ *   a Base58Check string carries CHECKSUM_BYTES more bytes than its payload;
+ *   the payload itself is still capped at MAX_INPUT_BYTES afterward.
  * @returns {number} The whitespace-stripped character length.
- * @throws {Error} When the input cannot possibly decode within MAX_INPUT_BYTES.
+ * @throws {Error} When the input cannot possibly decode within maxBytes.
  */
-export function assertDecodeInputWithinLimit(value) {
+export function assertDecodeInputWithinLimit(value, { maxBytes = MAX_INPUT_BYTES } = {}) {
   const cleaned = typeof value === 'string' ? stripWhitespace(value) : '';
 
   let zeroCount = 0;
@@ -295,23 +323,24 @@ export function assertDecodeInputWithinLimit(value) {
     zeroCount += 1;
   }
 
-  if (zeroCount > MAX_INPUT_BYTES) {
+  if (zeroCount > maxBytes) {
     throw new Error(
       `Input has ${zeroCount} leading '1' characters, which decode to ` +
         `${formatFileSize(zeroCount)} of leading zero bytes alone -- this ` +
-        `exceeds the ${formatFileSize(MAX_INPUT_BYTES)} Base58 limit. ${BASE58_LIMIT_HINT}`
+        `exceeds the ${formatFileSize(maxBytes)} Base58 limit. ${BASE58_LIMIT_HINT}`
     );
   }
 
   const numericLength = cleaned.length - zeroCount;
-  const remainingBudgetBytes = MAX_INPUT_BYTES - zeroCount;
+  const remainingBudgetBytes = maxBytes - zeroCount;
   // +1: see the "one character of slack" note above.
   const maxNumericChars = NUMERIC_CHAR_LIMIT_TABLE[remainingBudgetBytes] + 1;
 
   if (numericLength > maxNumericChars) {
+    const limitChars = NUMERIC_CHAR_LIMIT_TABLE[maxBytes];
     throw new Error(
       `Input is ${cleaned.length} characters, which exceeds the ` +
-        `${MAX_BASE58_CHARS}-character Base58 limit (~${formatFileSize(MAX_INPUT_BYTES)} ` +
+        `${limitChars}-character Base58 limit (~${formatFileSize(maxBytes)} ` +
         `decoded). ${BASE58_LIMIT_HINT}`
     );
   }
@@ -329,13 +358,14 @@ export function assertDecodeInputWithinLimit(value) {
  * comparing the actual decoded length rather than an estimate, so it is
  * exact for every accepted input, not merely long inputs.
  * @param {Uint8Array} bytes
- * @throws {Error} When bytes.length exceeds MAX_INPUT_BYTES.
+ * @param {{ maxBytes?: number }} [options] - See `assertDecodeInputWithinLimit`.
+ * @throws {Error} When bytes.length exceeds maxBytes.
  */
-function assertDecodedBytesWithinLimit(bytes) {
-  if (bytes.length > MAX_INPUT_BYTES) {
+function assertDecodedBytesWithinLimit(bytes, { maxBytes = MAX_INPUT_BYTES } = {}) {
+  if (bytes.length > maxBytes) {
     throw new Error(
       `Input decodes to ${formatFileSize(bytes.length)}, which exceeds the ` +
-        `${formatFileSize(MAX_INPUT_BYTES)} Base58 limit. ${BASE58_LIMIT_HINT}`
+        `${formatFileSize(maxBytes)} Base58 limit. ${BASE58_LIMIT_HINT}`
     );
   }
 }
@@ -439,9 +469,9 @@ export async function encodeBytesToBase58Check(bytes) {
     throw new TypeError('Input must be a Uint8Array.');
   }
   const hash = await doubleSha256(bytes);
-  const checksum = hash.slice(0, 4);
+  const checksum = hash.slice(0, CHECKSUM_BYTES);
 
-  const combined = new Uint8Array(bytes.length + 4);
+  const combined = new Uint8Array(bytes.length + CHECKSUM_BYTES);
   combined.set(bytes, 0);
   combined.set(checksum, bytes.length);
 
@@ -467,6 +497,19 @@ export async function encodeToBase58Check(input, { inputType = 'text' } = {}) {
 
 /**
  * Decodes a Base58Check string into details including checksum validation.
+ *
+ * The raw decode (payload + CHECKSUM_BYTES-byte checksum) is guarded against
+ * MAX_INPUT_BYTES + CHECKSUM_BYTES, not MAX_INPUT_BYTES: `encodeToBase58Check`
+ * accepts up to MAX_INPUT_BYTES payload bytes and then appends the checksum,
+ * so a maximum-size encode's raw decoded length is
+ * MAX_INPUT_BYTES + CHECKSUM_BYTES bytes, not MAX_INPUT_BYTES. Capping the
+ * raw decode at MAX_INPUT_BYTES (as if it had no checksum) would reject that
+ * string on decode -- a same-policy violation between the two directions.
+ * The returned `bytes` payload is still capped at MAX_INPUT_BYTES: since
+ * CHECKSUM_BYTES is fixed, payload.length = rawBytes.length - CHECKSUM_BYTES
+ * is at most MAX_INPUT_BYTES whenever the raw guard above passes, and the
+ * explicit check below keeps that guarantee self-evident rather than
+ * implicit in the arithmetic.
  * @param {string} base58
  * @returns {Promise<{
  *   bytes: Uint8Array,
@@ -479,11 +522,12 @@ export async function encodeToBase58Check(input, { inputType = 'text' } = {}) {
  * }>}
  */
 export async function decodeBase58CheckDetails(base58) {
-  assertDecodeInputWithinLimit(base58);
+  const maxRawBytes = MAX_INPUT_BYTES + CHECKSUM_BYTES;
+  assertDecodeInputWithinLimit(base58, { maxBytes: maxRawBytes });
   const rawBytes = decodeBase58ToBytes(base58);
-  assertDecodedBytesWithinLimit(rawBytes);
+  assertDecodedBytesWithinLimit(rawBytes, { maxBytes: maxRawBytes });
 
-  if (rawBytes.length < 4) {
+  if (rawBytes.length < CHECKSUM_BYTES) {
     const hex = bytesToHex(rawBytes);
     let text = null;
     let isUtf8 = false;
@@ -505,13 +549,15 @@ export async function decodeBase58CheckDetails(base58) {
     };
   }
 
-  const payload = rawBytes.slice(0, rawBytes.length - 4);
-  const expectedChecksum = rawBytes.slice(rawBytes.length - 4);
+  const payload = rawBytes.slice(0, rawBytes.length - CHECKSUM_BYTES);
+  // Self-evident cap: see the function doc comment above.
+  assertDecodedBytesWithinLimit(payload);
+  const expectedChecksum = rawBytes.slice(rawBytes.length - CHECKSUM_BYTES);
   const hash = await doubleSha256(payload);
-  const actualChecksum = hash.slice(0, 4);
+  const actualChecksum = hash.slice(0, CHECKSUM_BYTES);
 
   let checksumValid = true;
-  for (let i = 0; i < 4; i += 1) {
+  for (let i = 0; i < CHECKSUM_BYTES; i += 1) {
     if (expectedChecksum[i] !== actualChecksum[i]) {
       checksumValid = false;
       break;
