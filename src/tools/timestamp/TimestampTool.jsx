@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { convertTimestamp } from './timestamp.utils.js';
 import './timestamp.css';
 
@@ -20,10 +20,18 @@ export default function TimestampTool() {
   const [copiedField, setCopiedField] = useState(null);
   const [copyError, setCopyError] = useState('');
   const [nowDate, setNowDate] = useState(() => new Date());
+  const copiedFieldTimeoutRef = useRef(null);
 
   useEffect(() => {
     const timer = setInterval(() => setNowDate(new Date()), 10000);
     return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      clearTimeout(copiedFieldTimeoutRef.current);
+      copiedFieldTimeoutRef.current = null;
+    };
   }, []);
 
   const result = convertTimestamp(input, unitMode, nowDate);
@@ -50,7 +58,9 @@ export default function TimestampTool() {
       await navigator.clipboard.writeText(value);
       setCopiedField(fieldKey);
       setCopyError('');
-      setTimeout(() => {
+      clearTimeout(copiedFieldTimeoutRef.current);
+      copiedFieldTimeoutRef.current = setTimeout(() => {
+        copiedFieldTimeoutRef.current = null;
         setCopiedField((prev) => (prev === fieldKey ? null : prev));
       }, 1500);
     } catch {
