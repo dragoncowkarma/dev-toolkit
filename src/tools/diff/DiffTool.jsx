@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { computeTextDiff, readFileAsText } from './diff.utils.js';
 import './diff.css';
 
@@ -160,6 +160,14 @@ export default function DiffTool({ onBack }) {
   const [fileError, setFileError] = useState('');
   const leftFileInputRef = useRef(null);
   const rightFileInputRef = useRef(null);
+  const copyTimeoutRef = useRef(null);
+
+  useEffect(() => () => {
+    if (copyTimeoutRef.current !== null) {
+      clearTimeout(copyTimeoutRef.current);
+      copyTimeoutRef.current = null;
+    }
+  }, []);
 
   const { rows, stats, unifiedDiff: unifiedDiffText } = useMemo(
     () => computeTextDiff(leftText, rightText, { oldLabel: 'original', newLabel: 'modified' }),
@@ -200,7 +208,13 @@ export default function DiffTool({ onBack }) {
     try {
       await navigator.clipboard.writeText(unifiedDiffText);
       setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      if (copyTimeoutRef.current !== null) {
+        clearTimeout(copyTimeoutRef.current);
+      }
+      copyTimeoutRef.current = setTimeout(() => {
+        copyTimeoutRef.current = null;
+        setCopied(false);
+      }, 1500);
     } catch {
       setFileError('Failed to copy the diff to clipboard.');
     }

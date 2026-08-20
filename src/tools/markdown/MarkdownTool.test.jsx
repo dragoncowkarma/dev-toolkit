@@ -4,6 +4,7 @@ import MarkdownTool from './MarkdownTool.jsx';
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -95,6 +96,83 @@ describe('MarkdownTool actions', () => {
 
     expect(writeText).toHaveBeenCalledWith('<h1>Title</h1>');
     expect(await screen.findByRole('status')).toHaveTextContent('HTML copied to clipboard!');
+  });
+
+  it('dismisses copy feedback after 2500 ms while mounted', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    render(<MarkdownTool />);
+    fireEvent.change(screen.getByLabelText('Markdown input'), {
+      target: { value: '# Title' },
+    });
+    vi.useFakeTimers();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy generated HTML to clipboard' }));
+    });
+    expect(screen.getByRole('status')).toHaveTextContent('HTML copied to clipboard!');
+
+    act(() => {
+      vi.advanceTimersByTime(2500);
+    });
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it('resets the copy feedback dismissal timer for consecutive copies', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    render(<MarkdownTool />);
+    fireEvent.change(screen.getByLabelText('Markdown input'), {
+      target: { value: '# Title' },
+    });
+    vi.useFakeTimers();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy generated HTML to clipboard' }));
+    });
+    expect(vi.getTimerCount()).toBe(1);
+
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy generated HTML to clipboard' }));
+    });
+    expect(vi.getTimerCount()).toBe(1);
+
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+    expect(screen.getByRole('status')).toHaveTextContent('HTML copied to clipboard!');
+
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it('clears the pending copy feedback timeout on unmount', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { unmount } = render(<MarkdownTool />);
+    fireEvent.change(screen.getByLabelText('Markdown input'), {
+      target: { value: '# Title' },
+    });
+    vi.useFakeTimers();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy generated HTML to clipboard' }));
+    });
+    expect(vi.getTimerCount()).toBe(1);
+
+    unmount();
+    expect(vi.getTimerCount()).toBe(0);
+
+    act(() => {
+      vi.advanceTimersByTime(2500);
+    });
+    expect(consoleError).not.toHaveBeenCalled();
   });
 
   it('reports a copy failure without crashing', async () => {
