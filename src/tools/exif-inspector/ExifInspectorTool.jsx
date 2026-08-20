@@ -21,18 +21,26 @@ export default function ExifInspectorTool() {
 
   useEffect(() => {
     if (!input.trim()) {
-      setResult(null); setError(''); setResolvedFormat(''); return;
+      setResult(null);
+      setError('');
+      setResolvedFormat('');
+      return;
     }
     const decoded = decodeExifInput(input, selectedFormat);
     setResolvedFormat(decoded.format || '');
     if (decoded.error) {
-      setResult(null); setError(decoded.error); return;
+      setResult(null);
+      setError(decoded.error);
+      return;
     }
     const parsed = parseExif(decoded.bytes);
     if (parsed.error) {
-      setResult(null); setError(parsed.error); return;
+      setResult(null);
+      setError(parsed.error);
+      return;
     }
-    setResult(parsed); setError('');
+    setResult(parsed);
+    setError('');
   }, [input, selectedFormat]);
 
   useEffect(() => {
@@ -52,27 +60,107 @@ export default function ExifInspectorTool() {
 
   return (
     <section className="exif-inspector" aria-label="EXIF Metadata Viewer">
-      <p className="exif-inspector__privacy">All parsing happens locally. Your image is never uploaded.</p>
+      <p className="exif-inspector__privacy">
+        All parsing happens locally. Your image is never uploaded.
+      </p>
       <div className="exif-inspector__controls">
         <label htmlFor="exif-format">Input format</label>
-        <select id="exif-format" value={selectedFormat} onChange={(event) => setSelectedFormat(event.target.value)}>
-          <option value="auto">Auto</option><option value="hex">Hex</option><option value="base64">Base64</option>
+        <select
+          id="exif-format"
+          value={selectedFormat}
+          onChange={(event) => setSelectedFormat(event.target.value)}
+        >
+          <option value="auto">Auto</option>
+          <option value="hex">Hex</option>
+          <option value="base64">Base64</option>
         </select>
-        {resolvedFormat && <p className="exif-inspector__resolved">Resolved format: <strong>{resolvedFormat}</strong></p>}
+        {resolvedFormat && (
+          <p className="exif-inspector__resolved">
+            Resolved format: <strong>{resolvedFormat}</strong>
+          </p>
+        )}
         <button type="button" onClick={() => setInput(SAMPLE)}>Load sample</button>
-        <button type="button" onClick={() => { setInput(''); setCopyStatus(''); }}>Clear</button>
+        <button
+          type="button"
+          onClick={() => {
+            setInput('');
+            setCopyStatus('');
+          }}
+        >
+          Clear
+        </button>
       </div>
       <label htmlFor="exif-payload">JPEG or TIFF payload</label>
-      <textarea id="exif-payload" value={input} onChange={(event) => setInput(event.target.value)} spellCheck={false}
-        placeholder="Paste a hex or base64 JPEG/TIFF payload…" />
+      <textarea
+        id="exif-payload"
+        value={input}
+        onChange={(event) => setInput(event.target.value)}
+        spellCheck={false}
+        placeholder="Paste a hex or base64 JPEG/TIFF payload…"
+      />
       <p className="exif-inspector__limit">Maximum payload size: 1 MiB.</p>
       <div className="sr-only" role="status">{copyStatus}</div>
-      {(error || copyStatus.startsWith('Failed')) && <div className="exif-inspector__error" role="alert">{error || copyStatus}</div>}
-      {result && <section className="exif-inspector__results" aria-label="Parsed EXIF metadata">
-        <div className="exif-inspector__result-header"><h3>Parsed metadata</h3><button type="button" onClick={() => copy(formatExifResult(result))}>Copy all</button></div>
-        {result.gpsCoordinates && <div className="exif-inspector__gps"><strong>GPS coordinates</strong><code>{result.gpsCoordinates.text}</code><button type="button" onClick={() => copy(result.gpsCoordinates.text)}>Copy coordinates</button></div>}
-        {result.groups.map((group) => <section className="exif-inspector__group" key={group.name}><h4>{group.name}</h4><div className="exif-inspector__table-wrap"><table><thead><tr><th>Tag</th><th>Offset</th><th>Type</th><th>Value</th><th>Copy</th></tr></thead><tbody>{group.fields.map((field) => <tr key={`${group.name}-${field.offset}`}><td>{field.name}</td><td>{field.offset}</td><td>{field.type}</td><td><code>{field.value}</code></td><td><button type="button" aria-label={`Copy ${field.name}`} onClick={() => copy(field.value)}>Copy</button></td></tr>)}</tbody></table></div></section>)}
-      </section>}
+      {(error || copyStatus.startsWith('Failed')) && (
+        <div className="exif-inspector__error" role="alert">
+          {error || copyStatus}
+        </div>
+      )}
+      {result && (
+        <section className="exif-inspector__results" aria-label="Parsed EXIF metadata">
+          <div className="exif-inspector__result-header">
+            <h3>Parsed metadata</h3>
+            <button type="button" onClick={() => copy(formatExifResult(result))}>
+              Copy all
+            </button>
+          </div>
+          {result.gpsCoordinates && (
+            <div className="exif-inspector__gps">
+              <strong>GPS coordinates</strong>
+              <code>{result.gpsCoordinates.text}</code>
+              <button type="button" onClick={() => copy(result.gpsCoordinates.text)}>
+                Copy coordinates
+              </button>
+            </div>
+          )}
+          {result.groups.map((group) => (
+            <section className="exif-inspector__group" key={group.name}>
+              <h4>{group.name}</h4>
+              <div className="exif-inspector__table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Tag</th>
+                      <th>Offset</th>
+                      <th>Type</th>
+                      <th>Value</th>
+                      <th>Copy</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {group.fields.map((field) => (
+                      <tr key={`${group.name}-${field.offset}`}>
+                        <td>{field.name}</td>
+                        <td>{field.offset}</td>
+                        <td>{field.type}</td>
+                        <td><code>{field.value}</code></td>
+                        <td>
+                          <button
+                            type="button"
+                            aria-label={`Copy ${field.name}`}
+                            onClick={() => copy(field.value)}
+                          >
+                            Copy
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          ))}
+        </section>
+      )}
     </section>
   );
 }
