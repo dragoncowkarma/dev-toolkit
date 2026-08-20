@@ -1100,27 +1100,65 @@ def local_branch_exists(branch_name: str) -> bool:
     return bool(result.stdout.strip())
 
 
-def find_worktree_for_branch(branch_name: str) -> Optional[Path]:
-    """Return the worktree path where the given branch is currently checked out, if any."""
+def _list_worktrees() -> list[dict]:
+    """Parse `git worktree list --porcelain` into structured entries.
+
+    This is the single shared parser for worktree registration lookups —
+    both canonical-path validation and reused-path resolution consult it
+    rather than each re-parsing porcelain output or trusting a filesystem
+    path on its own. Each entry has a 'path' key and a 'branch' key (the
+    full 'refs/heads/<name>' ref, or None for bare/detached worktrees).
+    """
     result = subprocess.run(
         ["git", "worktree", "list", "--porcelain"],
         capture_output=True, text=True, cwd=REPO_ROOT, check=False,
     )
     if result.returncode != 0:
-        return None
+        return []
 
-    current_wt: Optional[str] = None
-    target_ref = f"refs/heads/{branch_name}"
+    entries: list[dict] = []
+    current: Optional[dict] = None
     for line in result.stdout.splitlines():
         line = line.strip()
         if line.startswith("worktree "):
-            current_wt = line.split(" ", 1)[1].strip()
-        elif line.startswith("branch "):
-            ref = line.split(" ", 1)[1].strip()
-            if ref == target_ref or ref == branch_name:
-                return Path(current_wt) if current_wt else None
+            current = {"path": line.split(" ", 1)[1].strip(), "branch": None}
+            entries.append(current)
+        elif line.startswith("branch ") and current is not None:
+            current["branch"] = line.split(" ", 1)[1].strip()
         elif not line:
-            current_wt = None
+            current = None
+    return entries
+
+
+def find_worktree_for_branch(branch_name: str) -> Optional[Path]:
+    """Return the worktree path where the given branch is currently checked out, if any."""
+    target_ref = f"refs/heads/{branch_name}"
+    for entry in _list_worktrees():
+        branch = entry.get("branch")
+        if branch == target_ref or branch == branch_name:
+            return Path(entry["path"])
+    return None
+
+
+def _worktree_branch_for_path(path: Path) -> Optional[str]:
+    """Return the branch ref git has registered for `path`, if any.
+
+    Used to confirm — never merely assume — that a filesystem path is
+    actually the registered worktree for a given branch before it is
+    treated as a cleanup target.
+    """
+    try:
+        resolved = path.resolve()
+    except OSError:
+        resolved = path
+    for entry in _list_worktrees():
+        entry_path = Path(entry["path"])
+        try:
+            matches = entry_path.resolve() == resolved
+        except OSError:
+            matches = entry_path == path
+        if matches:
+            return entry.get("branch")
     return None
 
 
@@ -1194,8 +1232,164 @@ def create_worktree(issue_number: int, branch_name: str) -> Optional[Path]:
     return worktree_path
 
 
+def _cleanup_canonical_worktree(issue_number: int, worktree_path: Path) -> bool:
+    """Remove the worktree at the canonical `.worktrees/<issue_number>` path.
+
+    Returns True when the directory was removed (or was already prunable
+    and cleared) and it is safe to proceed to branch deletion; False when
+    cleanup was blocked and the caller must leave the branch in place.
+    """
+    git_link = worktree_path / ".git"
+    if not git_link.exists():
+        # Prunable worktree: .git file is missing so `git worktree remove`
+        # will fail with "validation failed". Prune git's internal refs and
+        # remove the orphaned directory manually.
+        log.warning(
+            "Worktree %s is prunable (missing .git file); "
+            "pruning refs and removing directory.",
+            worktree_path,
+        )
+        subprocess.run(
+            ["git", "worktree", "prune"],
+            cwd=REPO_ROOT, check=False,
+        )
+        shutil.rmtree(worktree_path, ignore_errors=True)
+        log.info("Removed prunable worktree: %s", worktree_path)
+        return True
+
+    status = subprocess.run(
+        ["git", "status", "--porcelain"],
+        cwd=worktree_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if status.returncode != 0 or status.stdout.strip():
+        log_blocker(
+            f"dirty-worktree:{issue_number}",
+            "Refusing to remove non-clean worktree for Issue #%d: %s",
+            issue_number,
+            worktree_path,
+            level=logging.WARNING,
+        )
+        return False
+
+    removed = subprocess.run(
+        ["git", "worktree", "remove", str(worktree_path)],
+        cwd=REPO_ROOT,
+        check=False,
+    )
+    if removed.returncode != 0:
+        log.warning("Failed to remove worktree: %s", worktree_path)
+        return False
+    log.info("Removed worktree: %s", worktree_path)
+    return True
+
+
+def _remove_fallback_worktree(issue_number: int, branch_name: str, path: Path) -> bool:
+    """Remove a worktree resolved for `branch_name` outside the canonical path.
+
+    `path` is expected to already have come from `find_worktree_for_branch`,
+    but a filesystem path is never trusted on its own: registration is
+    re-confirmed here via `git worktree list --porcelain` immediately before
+    any removal, and the same data-safety rules as canonical cleanup apply
+    (clean working tree, valid `.git` metadata), plus guards specific to an
+    externally reused path (never the repository root).
+
+    Returns True when it is safe to proceed to branch deletion (removed, or
+    already confirmed absent); False when a blocker was logged and the
+    branch must be left in place.
+    """
+    target_ref = f"refs/heads/{branch_name}"
+    registered = _worktree_branch_for_path(path)
+    if registered not in (target_ref, branch_name):
+        log_blocker(
+            f"cleanup-fallback-unregistered:{issue_number}",
+            "Refusing to remove %s for branch '%s': git does not report it as "
+            "that branch's registered worktree.",
+            path,
+            branch_name,
+        )
+        return False
+
+    if path == REPO_ROOT:
+        log_blocker(
+            f"cleanup-fallback-root:{issue_number}",
+            "Refusing to treat the repository root as a reused worktree for "
+            "branch '%s'.",
+            branch_name,
+        )
+        return False
+
+    if not path.exists():
+        # Registered in git's admin data but the directory itself is already
+        # gone; nothing to remove, just prune the stale metadata.
+        subprocess.run(["git", "worktree", "prune"], cwd=REPO_ROOT, check=False)
+        return True
+
+    if not (path / ".git").exists():
+        log_blocker(
+            f"cleanup-fallback-nogit:{issue_number}",
+            "Refusing to remove reused worktree candidate %s for branch '%s': "
+            "missing .git metadata but directory has content.",
+            path,
+            branch_name,
+        )
+        return False
+
+    status = subprocess.run(
+        ["git", "status", "--porcelain"],
+        cwd=path, capture_output=True, text=True, check=False,
+    )
+    if status.returncode != 0 or status.stdout.strip():
+        log_blocker(
+            f"dirty-worktree-fallback:{issue_number}",
+            "Refusing to remove non-clean reused worktree for Issue #%d: %s",
+            issue_number,
+            path,
+            level=logging.WARNING,
+        )
+        return False
+
+    removed = subprocess.run(
+        ["git", "worktree", "remove", str(path)],
+        cwd=REPO_ROOT, check=False,
+    )
+    if removed.returncode != 0:
+        log.warning("Failed to remove reused worktree: %s", path)
+        return False
+    log.info("Removed reused worktree for Issue #%d: %s", issue_number, path)
+    return True
+
+
+def _delete_local_branch(branch_name: str):
+    """Force-delete a local branch once its worktree is cleared.
+
+    Uses `-D` rather than the safe `-d`: the caller already confirmed the PR
+    is merged on GitHub, so the local merge check is unreliable when the PR
+    was squash- or rebase-merged (the original commits never land on HEAD).
+    """
+    result = subprocess.run(
+        ["git", "branch", "-D", branch_name],
+        cwd=REPO_ROOT, capture_output=True, text=True, check=False,
+    )
+    if result.returncode != 0:
+        stderr = result.stderr.strip()
+        if stderr:
+            log.warning("Failed to delete branch '%s': %s", branch_name, stderr)
+
+
 def cleanup_worktree(issue_number: int, branch_name: str):
-    """Safely remove a clean, merged task worktree and its local branch."""
+    """Safely remove a clean, merged task worktree and its local branch.
+
+    `create_worktree()` may have reused an existing worktree for
+    `branch_name` from a path outside the canonical `.worktrees/<issue_number>`
+    directory. When the canonical path is absent, or exists but is
+    registered to a different branch, this resolves the branch's actual
+    registered worktree via `git worktree list --porcelain` and cleans that
+    instead — a path is never treated as a deletion target merely because
+    it matches an expected filesystem layout.
+    """
     worktree_path = WORKTREE_DIR / str(issue_number)
 
     # Merged PRs are re-listed every polling cycle, so exit before spending any
@@ -1213,62 +1407,31 @@ def cleanup_worktree(issue_number: int, branch_name: str):
         )
         return
 
-    if worktree_path.exists():
-        git_link = worktree_path / ".git"
-        if not git_link.exists():
-            # Prunable worktree: .git file is missing so `git worktree remove`
-            # will fail with "validation failed". Prune git's internal refs and
-            # remove the orphaned directory manually.
-            log.warning(
-                "Worktree %s is prunable (missing .git file); "
-                "pruning refs and removing directory.",
-                worktree_path,
-            )
-            subprocess.run(
-                ["git", "worktree", "prune"],
-                cwd=REPO_ROOT, check=False,
-            )
-            shutil.rmtree(worktree_path, ignore_errors=True)
-            log.info("Removed prunable worktree: %s", worktree_path)
+    # The canonical path retains its existing (registration-agnostic)
+    # handling unless it demonstrably belongs to a different branch, in
+    # which case the worker branch itself must have been reused elsewhere.
+    use_canonical = worktree_path.exists()
+    if use_canonical and (worktree_path / ".git").exists():
+        target_ref = f"refs/heads/{branch_name}"
+        registered = _worktree_branch_for_path(worktree_path)
+        if registered is not None and registered not in (target_ref, branch_name):
+            use_canonical = False
+
+    if use_canonical:
+        if not _cleanup_canonical_worktree(issue_number, worktree_path):
+            return
+    else:
+        fallback_path = find_worktree_for_branch(branch_name)
+        if fallback_path is not None:
+            if not _remove_fallback_worktree(issue_number, branch_name, fallback_path):
+                return
         else:
-            status = subprocess.run(
-                ["git", "status", "--porcelain"],
-                cwd=worktree_path,
-                capture_output=True,
-                text=True,
-                check=False,
+            log.debug(
+                "No registered worktree found for branch '%s'; nothing to remove.",
+                branch_name,
             )
-            if status.returncode != 0 or status.stdout.strip():
-                log_blocker(
-                    f"dirty-worktree:{issue_number}",
-                    "Refusing to remove non-clean worktree for Issue #%d: %s",
-                    issue_number,
-                    worktree_path,
-                    level=logging.WARNING,
-                )
-                return
 
-            removed = subprocess.run(
-                ["git", "worktree", "remove", str(worktree_path)],
-                cwd=REPO_ROOT,
-                check=False,
-            )
-            if removed.returncode != 0:
-                log.warning("Failed to remove worktree: %s", worktree_path)
-                return
-            log.info("Removed worktree: %s", worktree_path)
-
-    # Force-delete the local branch. We already confirmed the PR is merged on
-    # GitHub, so the local merge check (`-d`) is unreliable when the PR was
-    # squash- or rebase-merged (the original commits never appear on HEAD).
-    result = subprocess.run(
-        ["git", "branch", "-D", branch_name],
-        cwd=REPO_ROOT, capture_output=True, text=True, check=False,
-    )
-    if result.returncode != 0:
-        stderr = result.stderr.strip()
-        if stderr:
-            log.warning("Failed to delete branch '%s': %s", branch_name, stderr)
+    _delete_local_branch(branch_name)
 
 
 def sync_main_branch(dry_run: bool = False) -> bool:

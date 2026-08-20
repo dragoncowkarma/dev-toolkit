@@ -1432,6 +1432,56 @@ class CreateWorktreeTests(unittest.TestCase):
             )
 
 
+def _porcelain_output(entries):
+    """Build fake `git worktree list --porcelain` output.
+
+    `entries` is a list of (path, branch_ref_or_None) tuples; branch=None
+    produces a `detached` stanza instead of a `branch` line.
+    """
+    lines = []
+    for path, branch in entries:
+        lines.append(f"worktree {path}")
+        lines.append("HEAD abcdef1234567890abcdef1234567890abcdef12")
+        if branch:
+            lines.append(f"branch {branch}")
+        else:
+            lines.append("detached")
+        lines.append("")
+    return "\n".join(lines) + ("\n" if lines else "")
+
+
+class ListWorktreesTests(unittest.TestCase):
+    def test_parses_multiple_stanzas_including_detached(self):
+        output = _porcelain_output([
+            ("/repo/root", "refs/heads/main"),
+            ("/repo/.worktrees/9", "refs/heads/worker/9-codex-x"),
+            ("/repo/.worktrees/scratch", None),
+        ])
+        fake_res = subprocess.CompletedProcess(
+            args=["git", "worktree", "list", "--porcelain"],
+            returncode=0, stdout=output, stderr="",
+        )
+        with patch.object(swarm.subprocess, "run", return_value=fake_res):
+            entries = swarm._list_worktrees()
+
+        self.assertEqual(
+            entries,
+            [
+                {"path": "/repo/root", "branch": "refs/heads/main"},
+                {"path": "/repo/.worktrees/9", "branch": "refs/heads/worker/9-codex-x"},
+                {"path": "/repo/.worktrees/scratch", "branch": None},
+            ],
+        )
+
+    def test_returns_empty_list_on_git_failure(self):
+        fake_res = subprocess.CompletedProcess(
+            args=["git", "worktree", "list", "--porcelain"],
+            returncode=1, stdout="", stderr="fatal: not a git repository",
+        )
+        with patch.object(swarm.subprocess, "run", return_value=fake_res):
+            self.assertEqual(swarm._list_worktrees(), [])
+
+
 class CleanupTests(unittest.TestCase):
     def test_cleanup_is_a_no_op_when_nothing_remains(self):
         with (
@@ -1459,6 +1509,207 @@ class CleanupTests(unittest.TestCase):
             swarm.cleanup_merged_prs(dry_run=False)
 
         cleanup_worktree.assert_called_once_with(7, "worker/7-codex-json")
+
+    def test_cleanup_removes_reused_non_canonical_registered_worktree(self):
+        """Branch checked out outside `.worktrees/<issue>` (see create_worktree's
+        reuse path) must still be found, removed, and its branch deleted."""
+        tmp_dir = Path(tempfile.mkdtemp())
+        worktree_dir = tmp_dir / ".worktrees"  # canonical `9` dir never created
+        reused_path = tmp_dir / "elsewhere" / "9-reused"
+        reused_path.mkdir(parents=True)
+        (reused_path / ".git").write_text("gitdir: ...")
+        branch = "worker/9-codex-feature"
+
+        porcelain_output = _porcelain_output([
+            (str(tmp_dir), "refs/heads/main"),
+            (str(reused_path), f"refs/heads/{branch}"),
+        ])
+        calls = []
+
+        def fake_run(args, **kwargs):
+            calls.append((args, kwargs.get("cwd")))
+            if args[:4] == ["git", "worktree", "list", "--porcelain"]:
+                return subprocess.CompletedProcess(args, 0, porcelain_output, "")
+            if args[:2] == ["git", "status"]:
+                return subprocess.CompletedProcess(args, 0, "", "")  # clean
+            return subprocess.CompletedProcess(args, 0, "", "")
+
+        with (
+            patch.object(swarm, "WORKTREE_DIR", worktree_dir),
+            patch.object(swarm, "REPO_ROOT", tmp_dir),
+            patch.object(swarm, "local_branch_exists", return_value=True),
+            patch.object(swarm.subprocess, "run", side_effect=fake_run),
+        ):
+            swarm.cleanup_worktree(9, branch)
+
+        self.assertIn((["git", "worktree", "remove", str(reused_path)], tmp_dir), calls)
+        self.assertIn((["git", "branch", "-D", branch], tmp_dir), calls)
+
+    def test_cleanup_prefers_canonical_worktree_when_it_matches_branch(self):
+        """When the canonical path is a valid worktree for the branch, cleanup
+        must use it directly and never consult the fallback resolver."""
+        tmp_dir = Path(tempfile.mkdtemp())
+        worktree_dir = tmp_dir / ".worktrees"
+        canonical_path = worktree_dir / "9"
+        canonical_path.mkdir(parents=True)
+        (canonical_path / ".git").write_text("gitdir: ...")
+        branch = "worker/9-codex-feature"
+
+        porcelain_output = _porcelain_output([(str(canonical_path), f"refs/heads/{branch}")])
+        calls = []
+
+        def fake_run(args, **kwargs):
+            calls.append((args, kwargs.get("cwd")))
+            if args[:4] == ["git", "worktree", "list", "--porcelain"]:
+                return subprocess.CompletedProcess(args, 0, porcelain_output, "")
+            if args[:2] == ["git", "status"]:
+                return subprocess.CompletedProcess(args, 0, "", "")  # clean
+            return subprocess.CompletedProcess(args, 0, "", "")
+
+        def fail_if_called(*_args, **_kwargs):
+            raise AssertionError("fallback resolver must not run when canonical matches")
+
+        with (
+            patch.object(swarm, "WORKTREE_DIR", worktree_dir),
+            patch.object(swarm, "REPO_ROOT", tmp_dir),
+            patch.object(swarm, "find_worktree_for_branch", side_effect=fail_if_called),
+            patch.object(swarm.subprocess, "run", side_effect=fake_run),
+        ):
+            swarm.cleanup_worktree(9, branch)
+
+        self.assertIn((["git", "worktree", "remove", str(canonical_path)], tmp_dir), calls)
+        self.assertIn((["git", "branch", "-D", branch], tmp_dir), calls)
+
+    def test_cleanup_preserves_dirty_non_canonical_worktree(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        worktree_dir = tmp_dir / ".worktrees"
+        reused_path = tmp_dir / "elsewhere" / "9-reused"
+        reused_path.mkdir(parents=True)
+        (reused_path / ".git").write_text("gitdir: ...")
+        (reused_path / "wip.py").write_text("value = 1")
+        branch = "worker/9-codex-feature"
+
+        porcelain_output = _porcelain_output([(str(reused_path), f"refs/heads/{branch}")])
+        calls = []
+
+        def fake_run(args, **kwargs):
+            calls.append((args, kwargs.get("cwd")))
+            if args[:4] == ["git", "worktree", "list", "--porcelain"]:
+                return subprocess.CompletedProcess(args, 0, porcelain_output, "")
+            if args[:2] == ["git", "status"]:
+                return subprocess.CompletedProcess(args, 0, " M wip.py\n", "")  # dirty
+            return subprocess.CompletedProcess(args, 0, "", "")
+
+        with (
+            patch.object(swarm, "WORKTREE_DIR", worktree_dir),
+            patch.object(swarm, "REPO_ROOT", tmp_dir),
+            patch.object(swarm, "local_branch_exists", return_value=True),
+            patch.object(swarm, "log_blocker") as log_blocker,
+            patch.object(swarm.subprocess, "run", side_effect=fake_run),
+        ):
+            swarm.cleanup_worktree(9, branch)
+
+        self.assertTrue((reused_path / "wip.py").exists())
+        for args, _cwd in calls:
+            self.assertNotEqual(args[:3], ["git", "worktree", "remove"])
+            self.assertNotEqual(args[:3], ["git", "branch", "-D"])
+        log_blocker.assert_called_once()
+        self.assertTrue(log_blocker.call_args[0][0].startswith("dirty-worktree-fallback:"))
+
+    def test_cleanup_does_not_delete_branch_when_canonical_removal_blocked(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        worktree_dir = tmp_dir / ".worktrees"
+        canonical_path = worktree_dir / "9"
+        canonical_path.mkdir(parents=True)
+        (canonical_path / ".git").write_text("gitdir: ...")
+        branch = "worker/9-codex-feature"
+        calls = []
+
+        def fake_run(args, **kwargs):
+            calls.append(args)
+            if args[:2] == ["git", "status"]:
+                return subprocess.CompletedProcess(args, 0, " M dirty.py\n", "")
+            return subprocess.CompletedProcess(args, 0, "", "")
+
+        with (
+            patch.object(swarm, "WORKTREE_DIR", worktree_dir),
+            patch.object(swarm, "REPO_ROOT", tmp_dir),
+            patch.object(swarm, "log_blocker") as log_blocker,
+            patch.object(swarm.subprocess, "run", side_effect=fake_run),
+        ):
+            swarm.cleanup_worktree(9, branch)
+
+        for args in calls:
+            self.assertNotEqual(args[:3], ["git", "branch", "-D"])
+        log_blocker.assert_called_once_with(
+            "dirty-worktree:9",
+            "Refusing to remove non-clean worktree for Issue #%d: %s",
+            9,
+            canonical_path,
+            level=swarm.logging.WARNING,
+        )
+
+
+class RemoveFallbackWorktreeTests(unittest.TestCase):
+    """Direct unit coverage for the non-canonical removal guardrails."""
+
+    def test_never_removes_repository_root(self):
+        with (
+            patch.object(swarm, "_worktree_branch_for_path", return_value="refs/heads/worker/9-x"),
+            patch.object(swarm, "log_blocker") as log_blocker,
+            patch.object(swarm.subprocess, "run") as run,
+        ):
+            result = swarm._remove_fallback_worktree(9, "worker/9-x", swarm.REPO_ROOT)
+
+        self.assertFalse(result)
+        log_blocker.assert_called_once()
+        self.assertTrue(log_blocker.call_args[0][0].startswith("cleanup-fallback-root:"))
+        run.assert_not_called()
+
+    def test_never_removes_a_path_git_does_not_report_as_registered(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        with (
+            patch.object(swarm, "_worktree_branch_for_path", return_value=None),
+            patch.object(swarm, "log_blocker") as log_blocker,
+            patch.object(swarm.subprocess, "run") as run,
+        ):
+            result = swarm._remove_fallback_worktree(9, "worker/9-x", tmp_dir)
+
+        self.assertFalse(result)
+        log_blocker.assert_called_once()
+        self.assertTrue(log_blocker.call_args[0][0].startswith("cleanup-fallback-unregistered:"))
+        run.assert_not_called()
+
+    def test_never_removes_missing_git_directory_with_files(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        target = tmp_dir / "reused"
+        target.mkdir()
+        (target / "work.py").write_text("value = 1")
+
+        with (
+            patch.object(swarm, "_worktree_branch_for_path", return_value="refs/heads/worker/9-x"),
+            patch.object(swarm, "log_blocker") as log_blocker,
+            patch.object(swarm.subprocess, "run") as run,
+        ):
+            result = swarm._remove_fallback_worktree(9, "worker/9-x", target)
+
+        self.assertFalse(result)
+        self.assertTrue((target / "work.py").exists())
+        log_blocker.assert_called_once()
+        self.assertTrue(log_blocker.call_args[0][0].startswith("cleanup-fallback-nogit:"))
+        run.assert_not_called()
+
+    def test_treats_a_registered_but_missing_directory_as_already_removed(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        missing = tmp_dir / "gone"
+        with (
+            patch.object(swarm, "_worktree_branch_for_path", return_value="refs/heads/worker/9-x"),
+            patch.object(swarm.subprocess, "run") as run,
+        ):
+            result = swarm._remove_fallback_worktree(9, "worker/9-x", missing)
+
+        self.assertTrue(result)
+        run.assert_called_once_with(["git", "worktree", "prune"], cwd=swarm.REPO_ROOT, check=False)
 
 
 class MainSyncRestartTests(unittest.TestCase):
