@@ -1,0 +1,201 @@
+.ini-tool {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding: 1.5rem 2rem 4rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.ini-tool__intro {
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 1rem;
+}
+
+.ini-tool__eyebrow {
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-primary-light);
+  margin-bottom: 0.25rem;
+}
+
+.ini-tool__intro h2 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--color-text);
+  margin-bottom: 0.5rem;
+}
+
+.ini-tool__intro p {
+  color: var(--color-text-muted);
+  font-size: 0.95rem;
+}
+
+.ini-tool__controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.ini-tool__view-toggle {
+  display: flex;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 3px;
+  gap: 2px;
+}
+
+.ini-tool__toggle-btn {
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  padding: 0.4rem 0.85rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.ini-tool__toggle-btn:hover {
+  color: var(--color-text);
+}
+
+.ini-tool__toggle-btn.active {
+  background: var(--color-surface-hover);
+  color: var(--color-primary-light);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+
+.ini-tool__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.ini-tool__btn {
+  background: var(--color-surface-hover);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  border-radius: 6px;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.ini-tool__btn:hover {
+  background: var(--color-border);
+  color: var(--color-primary-light);
+  border-color: var(--color-primary-light);
+}
+
+.ini-tool__btn--primary {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #ffffff;
+}
+
+.ini-tool__btn--primary:hover {
+  background: var(--color-primary-light);
+  border-color: var(--color-primary-light);
+}
+
+.ini-tool__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  border-color: var(--color-border) !important;
+  background: var(--color-surface) !important;
+  color: var(--color-text-muted) !important;
+}
+
+.ini-tool__panes {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+  min-height: 400px;
+}
+
+@media (min-width: 768px) {
+  .ini-tool__panes {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.ini-tool__pane {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  overflow: hidden;
+}
+
+.ini-tool__pane label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.ini-tool__textarea {
+  flex: 1;
+  min-height: 320px;
+  background: var(--color-code-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--color-text);
+  font-family: 'Fira Code', monospace, sans-serif;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  padding: 0.85rem;
+  resize: vertical;
+  outline: none;
+  transition: border-color var(--transition);
+}
+
+.ini-tool__textarea:focus {
+  border-color: var(--color-primary);
+}
+
+.ini-tool__textarea[readonly] {
+  background: rgba(6, 6, 10, 0.7);
+}
+
+.ini-tool__status {
+  font-size: 0.875rem;
+  color: var(--color-success);
+  font-weight: 500;
+}
+
+.ini-tool__errors {
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  color: var(--color-error-light);
+}
+
+.ini-tool__errors-title {
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.ini-tool__errors ul {
+  padding-left: 1.25rem;
+  margin: 0;
+}
+
+.ini-tool__errors li {
+  font-family: 'Fira Code', monospace, sans-serif;
+  font-size: 0.85rem;
+  margin-bottom: 0.25rem;
+}
