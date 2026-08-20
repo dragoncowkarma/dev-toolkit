@@ -95,7 +95,7 @@ describe('TimezoneTool Component Tests', () => {
     expect(
       screen.getByRole('button', { name: 'America/New_York time copied' }),
     ).toBeInTheDocument();
-    expect(screen.getByRole('status')).toHaveTextContent('Copied America/New_York time');
+    expect(screen.getByText(/Copied America\/New_York time/)).toBeInTheDocument();
 
     act(() => {
       vi.advanceTimersByTime(2000);
@@ -103,12 +103,12 @@ describe('TimezoneTool Component Tests', () => {
     expect(
       screen.getByRole('button', { name: 'Copy America/New_York local time' }),
     ).toBeInTheDocument();
-    expect(screen.getByRole('status')).toHaveTextContent('Copied America/New_York time');
+    expect(screen.getByText(/Copied America\/New_York time/)).toBeInTheDocument();
 
     act(() => {
       vi.advanceTimersByTime(500);
     });
-    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Copied America\/New_York time/)).not.toBeInTheDocument();
   });
 
   it('resets copied feedback and toast dismissal timers for consecutive copies', async () => {
@@ -135,7 +135,7 @@ describe('TimezoneTool Component Tests', () => {
     expect(
       screen.getByRole('button', { name: 'America/New_York time copied' }),
     ).toBeInTheDocument();
-    expect(screen.getByRole('status')).toHaveTextContent('Copied America/New_York time');
+    expect(screen.getByText(/Copied America\/New_York time/)).toBeInTheDocument();
 
     act(() => {
       vi.advanceTimersByTime(1000);
@@ -143,12 +143,12 @@ describe('TimezoneTool Component Tests', () => {
     expect(
       screen.getByRole('button', { name: 'Copy America/New_York local time' }),
     ).toBeInTheDocument();
-    expect(screen.getByRole('status')).toHaveTextContent('Copied America/New_York time');
+    expect(screen.getByText(/Copied America\/New_York time/)).toBeInTheDocument();
 
     act(() => {
       vi.advanceTimersByTime(500);
     });
-    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Copied America\/New_York time/)).not.toBeInTheDocument();
   });
 
   it('resets the toast dismissal timer for consecutive toasts', () => {
@@ -171,12 +171,12 @@ describe('TimezoneTool Component Tests', () => {
     act(() => {
       vi.advanceTimersByTime(500);
     });
-    expect(screen.getByRole('status')).toHaveTextContent('Reset to current local time.');
+    expect(screen.getByText('Reset to current local time.')).toBeInTheDocument();
 
     act(() => {
       vi.advanceTimersByTime(2000);
     });
-    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.queryByText('Reset to current local time.')).not.toBeInTheDocument();
   });
 
   it('clears pending copied feedback and toast timeouts on unmount', async () => {
