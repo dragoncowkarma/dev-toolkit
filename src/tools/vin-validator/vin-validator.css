@@ -1,0 +1,193 @@
+.vin-validator {
+  display: flex;
+  width: 100%;
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.vin-validator__intro,
+.vin-validator__panel,
+.vin-validator__result {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  padding: 1rem;
+}
+
+.vin-validator__intro h2,
+.vin-validator__heading h3 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.vin-validator__intro > p:last-child,
+.vin-validator__heading p,
+.vin-validator__result-label,
+.vin-validator__field {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.vin-validator__eyebrow {
+  color: var(--color-primary-light);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.vin-validator__panel,
+.vin-validator__heading,
+.vin-validator__field,
+.vin-validator__actions,
+.vin-validator__samples,
+.vin-validator__result {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.vin-validator__field {
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.vin-validator__field input {
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: calc(var(--radius) - 5px);
+  background: var(--color-code-bg);
+  color: var(--color-text);
+  font: inherit;
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 1.1rem;
+  letter-spacing: 0.1em;
+  padding: 0.65rem 0.7rem;
+}
+
+.vin-validator__field input:focus {
+  outline: 0;
+  border-color: var(--color-primary);
+}
+
+.vin-validator button {
+  align-self: flex-start;
+  border: 1px solid var(--color-border);
+  border-radius: calc(var(--radius) - 5px);
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 0.45rem 0.65rem;
+}
+
+.vin-validator button:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.vin-validator__actions,
+.vin-validator__samples {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+
+.vin-validator__result {
+  background: var(--color-code-bg);
+}
+
+.vin-validator__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.65rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  width: fit-content;
+}
+
+.vin-validator__badge--valid {
+  background: color-mix(in srgb, var(--color-success) 15%, transparent);
+  color: var(--color-success);
+  border: 1px solid color-mix(in srgb, var(--color-success) 40%, transparent);
+}
+
+.vin-validator__badge--info {
+  background: color-mix(in srgb, var(--color-info) 15%, transparent);
+  color: var(--color-info);
+  border: 1px solid color-mix(in srgb, var(--color-info) 40%, transparent);
+}
+
+.vin-validator__badge--invalid {
+  background: var(--color-error-bg);
+  color: var(--color-error);
+  border: 1px solid var(--color-error-border);
+}
+
+.vin-validator__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.vin-validator__grid-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: calc(var(--radius) - 4px);
+  padding: 0.65rem 0.75rem;
+}
+
+.vin-validator__grid-label {
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.vin-validator__grid-value {
+  color: var(--color-text);
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 0.9rem;
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.vin-validator__note {
+  margin: 0;
+  font-size: 0.825rem;
+  color: var(--color-text-muted);
+  line-height: 1.4;
+}
+
+.vin-validator__error {
+  margin: 0;
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+  font-size: 0.85rem;
+  padding: 0.75rem 1rem;
+}
+
+@media (min-width: 650px) {
+  .vin-validator__heading {
+    align-items: flex-start;
+    flex-direction: row;
+    justify-content: space-between;
+  }
+}
+
+.vin-validator__privacy {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+

@@ -1,0 +1,178 @@
+import { describe, expect, it } from 'vitest';
+import {
+  calculateCheckDigit,
+  decodeModelYear,
+  decodeWmi,
+  normalizeVin,
+  transliterateChar,
+  validateVin,
+} from './vin-validator.utils.js';
+
+describe('vin-validator utils', () => {
+  describe('normalizeVin', () => {
+    it('strips spaces and hyphens and converts to uppercase', () => {
+      expect(normalizeVin('1hg-cr2f8-5-ha000000')).toBe('1HGCR2F85HA000000');
+      expect(normalizeVin(' 1FA6P8CFXH5123457 ')).toBe('1FA6P8CFXH5123457');
+      expect(normalizeVin('wvw-zzz-3czwe-000000')).toBe('WVWZZZ3CZWE000000');
+    });
+
+    it('handles non-string input safely', () => {
+      expect(normalizeVin(null)).toBe('');
+      expect(normalizeVin(undefined)).toBe('');
+    });
+  });
+
+  describe('transliterateChar', () => {
+    it('correctly maps digits to their numeric values', () => {
+      expect(transliterateChar('0')).toBe(0);
+      expect(transliterateChar('5')).toBe(5);
+      expect(transliterateChar('9')).toBe(9);
+    });
+
+    it('correctly maps standard letters per NHTSA table', () => {
+      expect(transliterateChar('A')).toBe(1);
+      expect(transliterateChar('H')).toBe(8);
+      expect(transliterateChar('J')).toBe(1);
+      expect(transliterateChar('N')).toBe(5);
+      expect(transliterateChar('P')).toBe(7);
+      expect(transliterateChar('R')).toBe(9);
+      expect(transliterateChar('S')).toBe(2);
+      expect(transliterateChar('Z')).toBe(9);
+    });
+
+    it('returns null for disallowed letters I, O, Q and non-alphanumeric chars', () => {
+      expect(transliterateChar('I')).toBeNull();
+      expect(transliterateChar('O')).toBeNull();
+      expect(transliterateChar('Q')).toBeNull();
+      expect(transliterateChar('@')).toBeNull();
+    });
+  });
+
+  describe('calculateCheckDigit', () => {
+    it('validates a numeric check digit correctly', () => {
+      const result = calculateCheckDigit('1HGCR2F85HA000000');
+      expect(result.expected).toBe('5');
+      expect(result.actual).toBe('5');
+      expect(result.matches).toBe(true);
+    });
+
+    it('validates an X check digit correctly', () => {
+      const result = calculateCheckDigit('1FA6P8CFXH5123457');
+      expect(result.expected).toBe('X');
+      expect(result.actual).toBe('X');
+      expect(result.matches).toBe(true);
+    });
+
+    it('detects check digit mismatch', () => {
+      const result = calculateCheckDigit('1HGCR2F83HA000000');
+      expect(result.expected).toBe('5');
+      expect(result.actual).toBe('3');
+      expect(result.matches).toBe(false);
+    });
+  });
+
+  describe('decodeWmi', () => {
+    it('decodes North American region (USA)', () => {
+      const wmi = decodeWmi('1HG');
+      expect(wmi.region).toBe('North America');
+      expect(wmi.country).toBe('United States');
+      expect(wmi.isNorthAmerica).toBe(true);
+      expect(wmi.manufacturer).toBe('Honda (USA)');
+    });
+
+    it('decodes European region (Germany)', () => {
+      const wmi = decodeWmi('WVW');
+      expect(wmi.region).toBe('Europe');
+      expect(wmi.country).toBe('Germany');
+      expect(wmi.isNorthAmerica).toBe(false);
+      expect(wmi.manufacturer).toBe('Volkswagen (Germany)');
+    });
+
+    it('decodes Asian region (Japan)', () => {
+      const wmi = decodeWmi('JHM');
+      expect(wmi.region).toBe('Asia');
+      expect(wmi.country).toBe('Japan');
+      expect(wmi.isNorthAmerica).toBe(false);
+    });
+  });
+
+  describe('decodeModelYear', () => {
+    it('decodes candidate years for code H (1987 or 2017)', () => {
+      expect(decodeModelYear('H')).toEqual([1987, 2017]);
+    });
+
+    it('decodes candidate years for code 5 (2005 or 2035)', () => {
+      expect(decodeModelYear('5')).toEqual([2005, 2035]);
+    });
+
+    it('decodes candidate years for code X (1999 or 2029)', () => {
+      expect(decodeModelYear('X')).toEqual([1999, 2029]);
+    });
+
+    it('returns null for invalid model year codes (0, U, Z, invalid chars)', () => {
+      expect(decodeModelYear('0')).toBeNull();
+      expect(decodeModelYear('U')).toBeNull();
+      expect(decodeModelYear('Z')).toBeNull();
+      expect(decodeModelYear('I')).toBeNull();
+    });
+  });
+
+  describe('validateVin', () => {
+    it('validates a valid North American VIN with numeric check digit', () => {
+      const res = validateVin('1HG CR2F8 5 HA000000');
+      expect(res.isValid).toBe(true);
+      expect(res.isFormatValid).toBe(true);
+      expect(res.isCheckDigitValid).toBe(true);
+      expect(res.isNorthAmerican).toBe(true);
+      expect(res.error).toBeNull();
+      expect(res.decoded.wmi).toBe('1HG');
+      expect(res.decoded.candidateModelYears).toEqual([1987, 2017]);
+    });
+
+    it('validates a valid North American VIN with X check digit', () => {
+      const res = validateVin('1FA6P8CFXH5123457');
+      expect(res.isValid).toBe(true);
+      expect(res.isCheckDigitValid).toBe(true);
+      expect(res.checkDigitInfo.expected).toBe('X');
+    });
+
+    it('rejects North American VIN with invalid check digit', () => {
+      const res = validateVin('1HGCR2F83HA000000');
+      expect(res.isValid).toBe(false);
+      expect(res.isCheckDigitValid).toBe(false);
+      expect(res.error).toContain("Check digit mismatch: position 9 is '3'");
+    });
+
+    it('rejects VINs containing disallowed letters I, O, Q', () => {
+      const resI = validateVin('1HGCR2F85HI000000');
+      expect(resI.isValid).toBe(false);
+      expect(resI.error).toContain("Disallowed letter 'I' found");
+
+      const resO = validateVin('1HGCR2F85HO000000');
+      expect(resO.isValid).toBe(false);
+      expect(resO.error).toContain("Disallowed letter 'O' found");
+
+      const resQ = validateVin('1HGCR2F85HQ000000');
+      expect(resQ.isValid).toBe(false);
+      expect(resQ.error).toContain("Disallowed letter 'Q' found");
+    });
+
+    it('rejects VINs with length other than 17 characters', () => {
+      const resShort = validateVin('1HGCR2F85HA');
+      expect(resShort.isValid).toBe(false);
+      expect(resShort.error).toContain('Invalid length (11 characters)');
+
+      const resLong = validateVin('1HGCR2F85HA000000000');
+      expect(resLong.isValid).toBe(false);
+      expect(resLong.error).toContain('Invalid length (20 characters)');
+    });
+
+    it('handles non-North American VINs with informative check digit status', () => {
+      const res = validateVin('WVWZZZ3CZWE000000');
+      expect(res.isFormatValid).toBe(true);
+      expect(res.isNorthAmerican).toBe(false);
+      expect(res.isValid).toBe(true);
+      expect(res.checkDigitInfo.note).toContain('informative for non-North American region');
+    });
+  });
+});
