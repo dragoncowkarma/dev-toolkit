@@ -171,12 +171,12 @@ describe('TimezoneTool Component Tests', () => {
     act(() => {
       vi.advanceTimersByTime(500);
     });
-    expect(screen.getByText('Reset to current local time.')).toBeInTheDocument();
+    expect(screen.getByText(/Reset to current local time\./)).toBeInTheDocument();
 
     act(() => {
       vi.advanceTimersByTime(2000);
     });
-    expect(screen.queryByText('Reset to current local time.')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Reset to current local time\./)).not.toBeInTheDocument();
   });
 
   it('clears pending copied feedback and toast timeouts on unmount', async () => {
