@@ -152,7 +152,9 @@ function readNode(bytes, offset, depth) {
       ...base,
       entries,
       json: mapJsonValue(entries),
-      diagnostic: `{${entries.map(({ key, value }) => `${key.diagnostic}: ${value.diagnostic}`).join(', ')}}`,
+      diagnostic: `{${entries
+        .map(({ key, value }) => `${key.diagnostic}: ${value.diagnostic}`)
+        .join(', ')}}`,
     };
   } else if (majorType === 6) {
     const item = readNode(bytes, offset, depth + 1);
@@ -183,7 +185,12 @@ function readNode(bytes, offset, depth) {
       node = { ...base, value: 'undefined', json: 'undefined', diagnostic: 'undefined' };
     } else if (additionalInfo === 24) {
       const value = Number(argument.value);
-      node = { ...base, value: `simple(${value})`, json: `simple(${value})`, diagnostic: `simple(${value})` };
+      node = {
+        ...base,
+        value: `simple(${value})`,
+        json: `simple(${value})`,
+        diagnostic: `simple(${value})`,
+      };
     } else if (additionalInfo === 25 || additionalInfo === 26 || additionalInfo === 27) {
       const width = { 25: 2, 26: 4, 27: 8 }[additionalInfo];
       const floatOffset = offset - width;
@@ -194,7 +201,10 @@ function readNode(bytes, offset, depth) {
       const json = floatJsonValue(value);
       node = { ...base, value: json, json, diagnostic: String(json) };
     } else {
-      return errorAt(startOffset, `Unsupported simple value additional information ${additionalInfo}`);
+      return errorAt(
+        startOffset,
+        `Unsupported simple value additional information ${additionalInfo}`,
+      );
     }
   }
 
@@ -220,7 +230,9 @@ export function parseHexPayload(input) {
   const compact = input.replace(/[\s:-]/g, '');
   const value = compact.replace(/^0x/i, '');
   if (!value) return { error: 'Hex input is empty.' };
-  if (!/^[0-9a-f]+$/i.test(value)) return { error: 'Hex input contains non-hexadecimal characters.' };
+  if (!/^[0-9a-f]+$/i.test(value)) {
+    return { error: 'Hex input contains non-hexadecimal characters.' };
+  }
   if (value.length % 2) return { error: 'Hex input has an odd number of digits.' };
   return { bytes: Uint8Array.from(value.match(/../g), (pair) => Number.parseInt(pair, 16)) };
 }
@@ -234,12 +246,17 @@ export function parseHexPayload(input) {
  */
 export function parseBase64Payload(input, format = 'base64') {
   const compact = input.replace(/\s/g, '');
-  if (!compact) return { error: `${format === 'base64url' ? 'Base64URL' : 'Base64'} input is empty.` };
+  if (!compact) {
+    const emptyLabel = format === 'base64url' ? 'Base64URL' : 'Base64';
+    return { error: `${emptyLabel} input is empty.` };
+  }
   const pattern = format === 'base64url' ? /^[A-Za-z0-9_-]*={0,2}$/ : /^[A-Za-z0-9+/]*={0,2}$/;
   const label = format === 'base64url' ? 'Base64URL' : 'Base64';
   if (!pattern.test(compact)) return { error: `${label} input contains invalid characters.` };
   const paddingIndex = compact.indexOf('=');
-  if (paddingIndex !== -1 && compact.length % 4 !== 0) return { error: `${label} input has invalid padding.` };
+  if (paddingIndex !== -1 && compact.length % 4 !== 0) {
+    return { error: `${label} input has invalid padding.` };
+  }
   const unpadded = compact.replace(/=+$/, '');
   if (unpadded.length % 4 === 1) return { error: `${label} input has an invalid length.` };
   try {
@@ -277,7 +294,8 @@ export function parseCborInput(input, format = 'auto') {
  *
  * @param {Uint8Array} bytes CBOR bytes to decode.
  * @returns {{root: object, json: unknown, diagnostic: string, byteLength: number,
- *   majorTypes: Array<{type: number, name: string, count: number}>}|{error: string, offset: number}}
+ *   majorTypes: Array<{type: number, name: string, count: number}>}
+ *   |{error: string, offset: number}}
  * Decoded representation or an actionable error.
  */
 export function decodeCbor(bytes) {
@@ -289,7 +307,9 @@ export function decodeCbor(bytes) {
     }
     const root = readNode(bytes, 0, 0);
     if ('error' in root) return root;
-    if (root.nextOffset !== bytes.length) return errorAt(root.nextOffset, 'Unexpected trailing CBOR bytes');
+    if (root.nextOffset !== bytes.length) {
+      return errorAt(root.nextOffset, 'Unexpected trailing CBOR bytes');
+    }
     const counts = Array(8).fill(0);
     collectMajorTypes(root, counts);
     return {

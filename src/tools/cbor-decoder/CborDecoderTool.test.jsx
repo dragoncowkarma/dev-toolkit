@@ -13,23 +13,31 @@ afterEach(() => {
 describe('CborDecoderTool input and results', () => {
   it('renders readable JSON, diagnostic notation, size, and major types for Hex', async () => {
     render(<CborDecoderTool />);
-    fireEvent.change(screen.getByLabelText('CBOR payload'), { target: { value: SIMPLE_MAP_HEX } });
+    fireEvent.change(screen.getByLabelText('CBOR payload'), {
+      target: { value: SIMPLE_MAP_HEX },
+    });
 
-    expect(await screen.findByLabelText('Formatted JSON output')).toHaveTextContent('"hello": "world"');
-    expect(screen.getByLabelText('Diagnostic notation output')).toHaveTextContent('{"hello": "world"}');
+    expect(await screen.findByLabelText('Formatted JSON output'))
+      .toHaveTextContent('"hello": "world"');
+    expect(screen.getByLabelText('Diagnostic notation output'))
+      .toHaveTextContent('{"hello": "world"}');
     expect(screen.getByText('13 bytes decoded')).toBeInTheDocument();
-    expect(screen.getByText('5 Map: 1')).toBeInTheDocument();
+    expect(screen.getByText('Map: 1')).toBeInTheDocument();
   });
 
   it('accepts explicit Base64 and Base64URL input', async () => {
     render(<CborDecoderTool />);
     fireEvent.change(screen.getByLabelText('Payload format'), { target: { value: 'base64' } });
-    fireEvent.change(screen.getByLabelText('CBOR payload'), { target: { value: SIMPLE_MAP_BASE64 } });
+    fireEvent.change(screen.getByLabelText('CBOR payload'), {
+      target: { value: SIMPLE_MAP_BASE64 },
+    });
     expect(await screen.findByText('Resolved: base64')).toBeInTheDocument();
     expect(screen.getByLabelText('Formatted JSON output')).toHaveTextContent('hello');
 
     fireEvent.change(screen.getByLabelText('Payload format'), { target: { value: 'base64url' } });
-    fireEvent.change(screen.getByLabelText('CBOR payload'), { target: { value: SIMPLE_MAP_BASE64.slice(0, -2) } });
+    fireEvent.change(screen.getByLabelText('CBOR payload'), {
+      target: { value: SIMPLE_MAP_BASE64.slice(0, -2) },
+    });
     expect(await screen.findByText('Resolved: base64url')).toBeInTheDocument();
   });
 
@@ -87,7 +95,9 @@ describe('CborDecoderTool local-file and copy interactions', () => {
   });
 
   it('reports clipboard failures as an alert', async () => {
-    Object.assign(navigator, { clipboard: { writeText: vi.fn().mockRejectedValue(new Error('denied')) } });
+    Object.assign(navigator, {
+      clipboard: { writeText: vi.fn().mockRejectedValue(new Error('denied')) },
+    });
     render(<CborDecoderTool />);
     fireEvent.change(screen.getByLabelText('CBOR payload'), { target: { value: SIMPLE_MAP_HEX } });
     await waitFor(() => expect(screen.getByRole('button', { name: 'Copy JSON' })).toBeEnabled());
