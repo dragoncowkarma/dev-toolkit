@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { generateSchema, formatSchema, getSchemaStats } from './jsonSchema.utils.js';
 import './jsonSchema.css';
 
@@ -38,6 +38,7 @@ export default function JsonSchemaTool() {
   });
 
   const [copyFeedback, setCopyFeedback] = useState('');
+  const copyFeedbackTimeoutRef = useRef(null);
 
   const jsonInputId = useId();
   const schemaOutputId = useId();
@@ -69,6 +70,13 @@ export default function JsonSchemaTool() {
     }
   }, [inferenceResult.schema]);
 
+  useEffect(() => () => {
+    if (copyFeedbackTimeoutRef.current !== null) {
+      clearTimeout(copyFeedbackTimeoutRef.current);
+      copyFeedbackTimeoutRef.current = null;
+    }
+  }, []);
+
   const currentValidSchema = inferenceResult.schema || lastValidSchema;
 
   const outputSchemaText = useMemo(() => {
@@ -92,7 +100,13 @@ export default function JsonSchemaTool() {
     try {
       await navigator.clipboard.writeText(outputSchemaText);
       setCopyFeedback('Copied schema to clipboard!');
-      setTimeout(() => setCopyFeedback(''), 3000);
+      if (copyFeedbackTimeoutRef.current !== null) {
+        clearTimeout(copyFeedbackTimeoutRef.current);
+      }
+      copyFeedbackTimeoutRef.current = setTimeout(() => {
+        copyFeedbackTimeoutRef.current = null;
+        setCopyFeedback('');
+      }, 3000);
     } catch {
       setCopyFeedback('Failed to copy schema.');
     }

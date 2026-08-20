@@ -1,9 +1,10 @@
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import JsonSchemaTool from './JsonSchemaTool.jsx';
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -158,6 +159,74 @@ describe('JsonSchemaTool Component', () => {
     await waitFor(() => {
       expect(screen.getByText('Copied schema to clipboard!')).toBeDefined();
     });
+  });
+
+  it('dismisses copy feedback after 3000 ms while mounted', async () => {
+    const writeTextMock = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText: writeTextMock } });
+    render(<JsonSchemaTool />);
+    vi.useFakeTimers();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Copy generated JSON schema/i }));
+    });
+    expect(screen.getByText('Copied schema to clipboard!')).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(3000);
+    });
+    expect(screen.queryByText('Copied schema to clipboard!')).not.toBeInTheDocument();
+  });
+
+  it('resets the copy feedback dismissal timer for consecutive copies', async () => {
+    const writeTextMock = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText: writeTextMock } });
+    render(<JsonSchemaTool />);
+    vi.useFakeTimers();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Copy generated JSON schema/i }));
+    });
+    expect(vi.getTimerCount()).toBe(1);
+
+    act(() => {
+      vi.advanceTimersByTime(2500);
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Copy generated JSON schema/i }));
+    });
+    expect(vi.getTimerCount()).toBe(1);
+
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+    expect(screen.getByText('Copied schema to clipboard!')).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(2500);
+    });
+    expect(screen.queryByText('Copied schema to clipboard!')).not.toBeInTheDocument();
+  });
+
+  it('clears the pending copy feedback timeout on unmount', async () => {
+    const writeTextMock = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText: writeTextMock } });
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { unmount } = render(<JsonSchemaTool />);
+    vi.useFakeTimers();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Copy generated JSON schema/i }));
+    });
+    expect(vi.getTimerCount()).toBe(1);
+
+    unmount();
+    expect(vi.getTimerCount()).toBe(0);
+
+    act(() => {
+      vi.advanceTimersByTime(3000);
+    });
+    expect(consoleError).not.toHaveBeenCalled();
   });
 
   it('renders count readout in status region', () => {

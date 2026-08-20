@@ -19,6 +19,7 @@ function readBlobAsText(blob) {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -136,6 +137,77 @@ describe('DiffTool copy and download', () => {
       expect.stringContaining('--- original'),
     );
     expect(await screen.findByRole('button', { name: '✓ Copied' })).toBeInTheDocument();
+  });
+
+  it('dismisses copy feedback after 1500 ms while mounted', async () => {
+    Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });
+    render(<DiffTool />);
+    fireEvent.change(screen.getByLabelText('Original'), { target: { value: 'a' } });
+    fireEvent.change(screen.getByLabelText('Modified'), { target: { value: 'b' } });
+    vi.useFakeTimers();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy Diff' }));
+    });
+    expect(screen.getByRole('button', { name: '✓ Copied' })).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+    expect(screen.getByRole('button', { name: 'Copy Diff' })).toBeInTheDocument();
+  });
+
+  it('resets the copy feedback dismissal timer for consecutive copies', async () => {
+    Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });
+    render(<DiffTool />);
+    fireEvent.change(screen.getByLabelText('Original'), { target: { value: 'a' } });
+    fireEvent.change(screen.getByLabelText('Modified'), { target: { value: 'b' } });
+    vi.useFakeTimers();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy Diff' }));
+    });
+    expect(vi.getTimerCount()).toBe(1);
+
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '✓ Copied' }));
+    });
+    expect(vi.getTimerCount()).toBe(1);
+
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+    expect(screen.getByRole('button', { name: '✓ Copied' })).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(screen.getByRole('button', { name: 'Copy Diff' })).toBeInTheDocument();
+  });
+
+  it('clears the pending copy feedback timeout on unmount', async () => {
+    Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { unmount } = render(<DiffTool />);
+    fireEvent.change(screen.getByLabelText('Original'), { target: { value: 'a' } });
+    fireEvent.change(screen.getByLabelText('Modified'), { target: { value: 'b' } });
+    vi.useFakeTimers();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy Diff' }));
+    });
+    expect(vi.getTimerCount()).toBe(1);
+
+    unmount();
+    expect(vi.getTimerCount()).toBe(0);
+
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+    expect(consoleError).not.toHaveBeenCalled();
   });
 
   it('disables copy and download when there are no changes', () => {

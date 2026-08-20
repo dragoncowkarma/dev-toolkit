@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { parseMarkdown } from './markdown.utils.js';
 import './markdown.css';
 
@@ -38,12 +38,26 @@ export default function MarkdownTool({ onBack }) {
   const [input, setInput] = useState('');
   const [viewMode, setViewMode] = useState('preview');
   const [toast, setToast] = useState('');
+  const toastTimeoutRef = useRef(null);
+
+  useEffect(() => () => {
+    if (toastTimeoutRef.current !== null) {
+      clearTimeout(toastTimeoutRef.current);
+      toastTimeoutRef.current = null;
+    }
+  }, []);
 
   const html = useMemo(() => parseMarkdown(input), [input]);
 
   const showToast = (message) => {
     setToast(message);
-    setTimeout(() => setToast(''), TOAST_DURATION_MS);
+    if (toastTimeoutRef.current !== null) {
+      clearTimeout(toastTimeoutRef.current);
+    }
+    toastTimeoutRef.current = setTimeout(() => {
+      toastTimeoutRef.current = null;
+      setToast('');
+    }, TOAST_DURATION_MS);
   };
 
   const handleInputChange = (event) => setInput(event.target.value);
