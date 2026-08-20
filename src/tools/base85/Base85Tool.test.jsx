@@ -4,6 +4,7 @@ import Base85Tool from './Base85Tool.jsx';
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -20,7 +21,10 @@ describe('Base85Tool', () => {
     expect(screen.getByLabelText('Ascii85')).toHaveValue('BOu!rDZ');
 
     fireEvent.click(screen.getByRole('button', { name: '⇅ Swap' }));
-    await waitFor(() => expect(screen.getByLabelText('Text')).toHaveValue('hello'));
+    expect(screen.getByLabelText('Ascii85')).toHaveValue('BOu!rDZ');
+    await waitFor(() => {
+      expect(screen.getByLabelText('Text', { selector: 'textarea' })).toHaveValue('hello');
+    });
   });
 
   it('shows a non-crashing alert for malformed decode data', async () => {
@@ -45,6 +49,7 @@ describe('Base85Tool', () => {
   });
 
   it('reports successful and failed clipboard writes', async () => {
+    vi.useFakeTimers();
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });
     render(<Base85Tool />);
@@ -55,15 +60,18 @@ describe('Base85Tool', () => {
     });
     expect(screen.getByRole('status')).toHaveTextContent('Copied to clipboard');
 
+    await act(async () => {
+      vi.advanceTimersByTime(1500);
+    });
+    expect(screen.getByRole('button', { name: 'Copy' })).toBeInTheDocument();
+
     Object.assign(navigator, {
       clipboard: { writeText: vi.fn().mockRejectedValue(new Error('denied')) },
     });
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
     });
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Failed to copy to clipboard.'
-    );
+    expect(screen.getByRole('alert')).toHaveTextContent('Failed to copy to clipboard.');
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 });
