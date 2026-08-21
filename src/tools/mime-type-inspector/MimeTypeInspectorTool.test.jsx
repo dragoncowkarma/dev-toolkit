@@ -98,4 +98,41 @@ describe('MimeTypeInspectorTool', () => {
     expect(screen.getByLabelText('Media Type or Content-Type Header Value')).toHaveValue('');
     expect(screen.getByRole('alert')).toBeInTheDocument();
   });
+
+  it('resets copy feedback after 3000ms and cleans up pending timers on unmount', async () => {
+    vi.useFakeTimers();
+    const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    const { unmount } = render(<MimeTypeInspectorTool />);
+
+    const copyBtn = screen.getByRole('button', { name: 'Copy canonical value' });
+    const copyJsonBtn = screen.getByRole('button', { name: 'Copy JSON representation' });
+
+    await act(async () => {
+      fireEvent.click(copyBtn);
+    });
+    expect(screen.getByRole('status')).toHaveTextContent('Copied canonical value to clipboard');
+
+    await act(async () => {
+      fireEvent.click(copyJsonBtn);
+    });
+    expect(screen.getByRole('status')).toHaveTextContent('Copied JSON representation to clipboard');
+    expect(clearTimeoutSpy).toHaveBeenCalled();
+
+    clearTimeoutSpy.mockClear();
+    act(() => {
+      vi.advanceTimersByTime(3000);
+    });
+    expect(screen.getByRole('status')).toHaveTextContent('');
+
+    await act(async () => {
+      fireEvent.click(copyBtn);
+    });
+    clearTimeoutSpy.mockClear();
+
+    unmount();
+    expect(clearTimeoutSpy).toHaveBeenCalled();
+  });
 });
