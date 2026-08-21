@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { parseMimeType, toJSONRepresentation } from './mimeTypeInspector.utils.js';
 import './mimeTypeInspector.css';
 
@@ -21,18 +21,34 @@ const PRESETS = [
 export default function MimeTypeInspectorTool() {
   const [input, setInput] = useState('text/html; charset=utf-8');
   const [copyFeedback, setCopyFeedback] = useState('');
+  const copyTimeoutRef = useRef(null);
 
   const parsed = useMemo(() => parseMimeType(input), [input]);
   const jsonRepresentation = useMemo(() => toJSONRepresentation(parsed), [parsed]);
+
+  useEffect(() => {
+    return () => {
+      clearTimeout(copyTimeoutRef.current);
+      copyTimeoutRef.current = null;
+    };
+  }, []);
+
+  const triggerCopyFeedback = (msg) => {
+    setCopyFeedback(msg);
+    clearTimeout(copyTimeoutRef.current);
+    copyTimeoutRef.current = setTimeout(() => {
+      copyTimeoutRef.current = null;
+      setCopyFeedback((current) => (current === msg ? '' : current));
+    }, 3000);
+  };
 
   const handleCopyCanonical = async () => {
     if (!parsed.isValid || !parsed.canonical) return;
     try {
       await navigator.clipboard.writeText(parsed.canonical);
-      setCopyFeedback('Copied canonical value to clipboard');
-      setTimeout(() => setCopyFeedback(''), 3000);
+      triggerCopyFeedback('Copied canonical value to clipboard');
     } catch {
-      setCopyFeedback('Failed to copy to clipboard');
+      triggerCopyFeedback('Failed to copy to clipboard');
     }
   };
 
@@ -40,10 +56,9 @@ export default function MimeTypeInspectorTool() {
     if (!parsed.isValid) return;
     try {
       await navigator.clipboard.writeText(jsonRepresentation);
-      setCopyFeedback('Copied JSON representation to clipboard');
-      setTimeout(() => setCopyFeedback(''), 3000);
+      triggerCopyFeedback('Copied JSON representation to clipboard');
     } catch {
-      setCopyFeedback('Failed to copy to clipboard');
+      triggerCopyFeedback('Failed to copy to clipboard');
     }
   };
 

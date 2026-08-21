@@ -233,14 +233,29 @@ function splitTopLevelSemicolons(paramStr) {
 
   for (let i = 0; i < paramStr.length; i += 1) {
     const char = paramStr[i];
-    if (char === '"' && (i === 0 || paramStr[i - 1] !== '\\')) {
-      inQuotes = !inQuotes;
-      current += char;
-    } else if (char === ';' && !inQuotes) {
-      segments.push(current);
-      current = '';
+    if (inQuotes) {
+      if (char === '\\') {
+        current += char;
+        if (i + 1 < paramStr.length) {
+          i += 1;
+          current += paramStr[i];
+        }
+      } else if (char === '"') {
+        inQuotes = false;
+        current += char;
+      } else {
+        current += char;
+      }
     } else {
-      current += char;
+      if (char === '"') {
+        inQuotes = true;
+        current += char;
+      } else if (char === ';') {
+        segments.push(current);
+        current = '';
+      } else {
+        current += char;
+      }
     }
   }
 
@@ -387,11 +402,21 @@ export function parseMimeType(input) {
   let inQuotes = false;
   for (let i = 0; i < workingStr.length; i += 1) {
     const char = workingStr[i];
-    if (char === '"' && (i === 0 || workingStr[i - 1] !== '\\')) {
-      inQuotes = !inQuotes;
-    } else if (char === ';' && !inQuotes) {
-      firstSemiIdx = i;
-      break;
+    if (inQuotes) {
+      if (char === '\\') {
+        if (i + 1 < workingStr.length) {
+          i += 1;
+        }
+      } else if (char === '"') {
+        inQuotes = false;
+      }
+    } else {
+      if (char === '"') {
+        inQuotes = true;
+      } else if (char === ';') {
+        firstSemiIdx = i;
+        break;
+      }
     }
   }
 

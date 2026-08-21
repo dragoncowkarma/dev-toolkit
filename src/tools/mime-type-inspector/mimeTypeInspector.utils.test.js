@@ -97,6 +97,24 @@ describe('mimeTypeInspector.utils', () => {
       );
     });
 
+    it('parses quoted parameter values ending in an escaped backslash', () => {
+      const input = 'text/plain; name="a\\\\"; charset=utf-8';
+      const res = parseMimeType(input);
+      expect(res.isValid).toBe(true);
+      expect(res.parameterMap.name).toBe('a\\');
+      expect(res.parameterMap.charset).toBe('utf-8');
+      expect(res.canonical).toBe('text/plain; name="a\\\\"; charset=utf-8');
+    });
+
+    it('preserves round-trip parsing for values ending in a backslash', () => {
+      const originalValue = 'C:\\';
+      const formatted = formatParamValue(originalValue);
+      expect(formatted).toBe('"C:\\\\"');
+      const res = parseMimeType(`text/plain; path=${formatted}`);
+      expect(res.isValid).toBe(true);
+      expect(res.parameterMap.path).toBe(originalValue);
+    });
+
     it('normalizes type, subtype, and parameter names preserving parameter value casing', () => {
       const input = 'TEXT/PLAIN; CHARSET=UTF-8; Boundary=MyCustomBoundary_123';
       const res = parseMimeType(input);
