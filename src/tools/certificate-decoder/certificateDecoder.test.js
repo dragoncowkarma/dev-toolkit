@@ -49,13 +49,23 @@ function decodeOne(pem) {
   return entry;
 }
 
+/** Wraps content bytes in a DER header for `identifier`, so tests can re-encode input. */
+function encodeTlv(identifier, content) {
+  let header;
+  if (content.length < 0x80) header = [identifier, content.length];
+  else if (content.length < 0x100) header = [identifier, 0x81, content.length];
+  else header = [identifier, 0x82, content.length >> 8, content.length & 0xff];
+  return Uint8Array.from([...header, ...content]);
+}
+
 /** Wraps content bytes in a DER SEQUENCE header, so tests can re-encode input. */
 function encodeSequence(content) {
-  let header;
-  if (content.length < 0x80) header = [0x30, content.length];
-  else if (content.length < 0x100) header = [0x30, 0x81, content.length];
-  else header = [0x30, 0x82, content.length >> 8, content.length & 0xff];
-  return Uint8Array.from([...header, ...content]);
+  return encodeTlv(0x30, content);
+}
+
+/** Wraps content bytes in a constructed context-specific `[tagNumber]` header. */
+function encodeContext(tagNumber, content) {
+  return encodeTlv(0xa0 | tagNumber, content);
 }
 
 /** Counts the optional context-specific version wrapper in front of `tbsCertificate`. */
@@ -124,6 +134,41 @@ function withSurplusSignatureFields(der, { body = false, outer = false } = {}) {
       certificate.children[2].raw,
     ]),
   );
+}
+
+/** Locates the `[3]` extensions wrapper, the last `tbsCertificate` field. */
+function tbsExtensionsField(der) {
+  const tbs = parseAsn1(der).children[0];
+  return tbs.children[tbs.children.length - 1];
+}
+
+/**
+ * Rebuilds the certificate with `tail` replacing every `tbsCertificate` field
+ * after `subjectPublicKeyInfo`, re-encoding both enclosing SEQUENCE lengths so
+ * the mutation stays well-formed DER and only the optional tail differs.
+ */
+function withTbsTail(der, tail) {
+  const certificate = parseAsn1(der);
+  const tbs = certificate.children[0];
+  const publicKeyIndex = tbsVersionFields(der) + 5;
+  const head = tbs.children.slice(0, publicKeyIndex + 1).map((field) => field.raw);
+  return encodeSequence(
+    concatBytes([
+      encodeSequence(concatBytes([...head, ...tail])),
+      certificate.children[1].raw,
+      certificate.children[2].raw,
+    ]),
+  );
+}
+
+/** Re-encodes a PEM block around mutated DER bytes. */
+function toPemFromDer(der) {
+  return toPem(btoa(String.fromCharCode(...der)));
+}
+
+/** An IMPLICIT `UniqueIdentifier` BIT STRING under the given context tag. */
+function uniqueIdField(tagNumber) {
+  return Uint8Array.from([0x80 | tagNumber, 0x02, 0x00, 0xff]);
 }
 
 /** Parses a standalone UTCTime or GeneralizedTime element from its text. */
@@ -486,6 +531,70 @@ describe('parseCertificate error handling', () => {
     );
   });
 
+  it('rejects a signatureValue whose declared unused bits are not zero', () => {
+    const mutated = Uint8Array.from(sampleDer);
+    const signature = parseAsn1(sampleDer).children[2];
+    const unusedBitCountOffset = signature.end - signature.content.length;
+    // The final signature octet is 0x4F, so its low-order bit is set: declaring
+    // one unused bit contradicts the content DER requires it to describe.
+    expect(mutated[unusedBitCountOffset]).toBe(0x00);
+    expect(mutated[signature.end - 1] & 0x01).toBe(0x01);
+    mutated[unusedBitCountOffset] = 0x01;
+    expect(() => parseCertificate(mutated)).toThrow(
+      'The certificate signature value declares unused bits that are not zero',
+    );
+  });
+
+  it('reports non-zero unused signature bits as a per-block decode error', () => {
+    const mutated = Uint8Array.from(sampleDer);
+    const signature = parseAsn1(sampleDer).children[2];
+    mutated[signature.end - signature.content.length] = 0x01;
+    const entry = decodeOne(toPemFromDer(mutated));
+    expect(entry.certificate).toBeUndefined();
+    expect(entry.error).toMatch(
+      'The certificate signature value declares unused bits that are not zero',
+    );
+  });
+
+  it('rejects a content-free signatureValue that still declares unused bits', () => {
+    const certificate = parseAsn1(sampleDer);
+    const mutated = encodeSequence(
+      concatBytes([
+        certificate.children[0].raw,
+        certificate.children[1].raw,
+        // BIT STRING with one unused bit but no content octet to take it from.
+        Uint8Array.from([ASN1_TAG.BIT_STRING, 0x01, 0x01]),
+      ]),
+    );
+    expect(() => parseCertificate(mutated)).toThrow(
+      'The certificate signature value declares unused bits but carries no content octets',
+    );
+  });
+
+  it('accepts a content-free signatureValue that declares zero unused bits', () => {
+    const certificate = parseAsn1(sampleDer);
+    const mutated = encodeSequence(
+      concatBytes([
+        certificate.children[0].raw,
+        certificate.children[1].raw,
+        Uint8Array.from([ASN1_TAG.BIT_STRING, 0x01, 0x00]),
+      ]),
+    );
+    expect(parseCertificate(mutated).subject.commonName).toBe('devtoolkit.example');
+  });
+
+  it('rejects a subject public key whose declared unused bits are not zero', () => {
+    const mutated = Uint8Array.from(sampleDer);
+    const tbs = parseAsn1(sampleDer).children[0];
+    const keyBits = tbs.children[tbsVersionFields(sampleDer) + 5].children[1];
+    const unusedBitCountOffset = keyBits.end - keyBits.content.length;
+    expect(mutated[keyBits.end - 1] & 0x01).toBe(0x01);
+    mutated[unusedBitCountOffset] = 0x01;
+    expect(() => parseCertificate(mutated)).toThrow(
+      'The subject public key declares unused bits that are not zero',
+    );
+  });
+
   it('rejects superfluous fields after the signature value', () => {
     const outer = parseAsn1(sampleDer);
     const extended = encodeSequence(
@@ -602,6 +711,179 @@ describe('parseCertificate error handling', () => {
     );
     expect(() => parseCertificate(mutated)).toThrow(
       'The public key algorithm has unexpected fields after its parameters',
+    );
+  });
+
+  it('re-encodes the sample certificate unchanged when its tail is rebuilt as-is', () => {
+    const rebuilt = withTbsTail(sampleDer, [tbsExtensionsField(sampleDer).raw]);
+    expect(Array.from(rebuilt)).toEqual(Array.from(sampleDer));
+  });
+
+  it('accepts the issuer and subject unique identifiers ahead of the extensions', () => {
+    const mutated = withTbsTail(sampleDer, [
+      uniqueIdField(1),
+      uniqueIdField(2),
+      tbsExtensionsField(sampleDer).raw,
+    ]);
+    const certificate = parseCertificate(mutated);
+    expect(certificate.subject.commonName).toBe('devtoolkit.example');
+    expect(certificate.extensions.subjectAltNames).toHaveLength(4);
+  });
+
+  it('accepts a certificate body that omits the optional tail entirely', () => {
+    const certificate = parseCertificate(withTbsTail(sampleDer, []));
+    expect(certificate.subject.commonName).toBe('devtoolkit.example');
+    expect(certificate.extensions.all).toEqual([]);
+  });
+
+  it('rejects a field trailing the extensions instead of silently ignoring it', () => {
+    // A nine-field tbsCertificate whose first eight fields are untouched: only
+    // a scan for the `[3]` wrapper would still read back the right subject.
+    const mutated = withTbsTail(sampleDer, [
+      tbsExtensionsField(sampleDer).raw,
+      Uint8Array.from([ASN1_TAG.NULL, 0x00]),
+    ]);
+    expect(parseAsn1(mutated).children[0].children).toHaveLength(9);
+    expect(() => parseCertificate(mutated)).toThrow(
+      'The certificate body has an unexpected field after its public key',
+    );
+  });
+
+  it('reports a field trailing the extensions as a per-block decode error', () => {
+    const mutated = withTbsTail(sampleDer, [
+      tbsExtensionsField(sampleDer).raw,
+      Uint8Array.from([ASN1_TAG.NULL, 0x00]),
+    ]);
+    const entry = decodeOne(toPemFromDer(mutated));
+    expect(entry.certificate).toBeUndefined();
+    expect(entry.error).toMatch(
+      'The certificate body has an unexpected field after its public key',
+    );
+  });
+
+  it('rejects a duplicated extensions wrapper', () => {
+    const extensions = tbsExtensionsField(sampleDer).raw;
+    expect(() => parseCertificate(withTbsTail(sampleDer, [extensions, extensions]))).toThrow(
+      'The certificate body has an unexpected field after its public key',
+    );
+  });
+
+  it('rejects duplicated unique identifiers', () => {
+    expect(() => parseCertificate(withTbsTail(sampleDer, [uniqueIdField(1), uniqueIdField(1)])))
+      .toThrow('The certificate body has an unexpected field after its public key');
+  });
+
+  it('rejects optional tail fields that appear out of order', () => {
+    const mutated = withTbsTail(sampleDer, [
+      tbsExtensionsField(sampleDer).raw,
+      uniqueIdField(1),
+    ]);
+    expect(() => parseCertificate(mutated)).toThrow(
+      'The certificate body has an unexpected field after its public key',
+    );
+    expect(() => parseCertificate(withTbsTail(sampleDer, [uniqueIdField(2), uniqueIdField(1)])))
+      .toThrow('The certificate body has an unexpected field after its public key');
+  });
+
+  it('rejects an unknown context-specific tag in the optional tail', () => {
+    const mutated = withTbsTail(sampleDer, [encodeContext(4, new Uint8Array(0))]);
+    expect(() => parseCertificate(mutated)).toThrow(
+      'The certificate body has an unexpected field after its public key',
+    );
+  });
+
+  it('rejects optional tail fields encoded in the wrong constructed form', () => {
+    // `[1]` and `[2]` are IMPLICIT BIT STRINGs, so DER encodes them as
+    // primitive; `[3]` is EXPLICIT, so it is always constructed.
+    // A BER-style constructed BIT STRING: well-formed enough to parse, but not
+    // the primitive form DER pins IMPLICIT tagging to.
+    const constructedUniqueId = encodeContext(
+      1,
+      encodeTlv(ASN1_TAG.BIT_STRING, Uint8Array.from([0x00, 0xff])),
+    );
+    expect(() => parseCertificate(withTbsTail(sampleDer, [constructedUniqueId]))).toThrow(
+      'The certificate body has an unexpected field after its public key',
+    );
+    const primitiveExtensions = Uint8Array.from(tbsExtensionsField(sampleDer).raw);
+    primitiveExtensions[0] &= ~0x20;
+    expect(() => parseCertificate(withTbsTail(sampleDer, [primitiveExtensions]))).toThrow(
+      'The certificate body has an unexpected field after its public key',
+    );
+  });
+
+  it('rejects an extensions wrapper holding more than its extensions SEQUENCE', () => {
+    const extensions = tbsExtensionsField(sampleDer);
+    const mutated = withTbsTail(sampleDer, [
+      encodeContext(3, concatBytes([extensions.content, Uint8Array.from([ASN1_TAG.NULL, 0x00])])),
+    ]);
+    expect(() => parseCertificate(mutated)).toThrow(
+      'The certificate extensions wrapper does not hold exactly one element',
+    );
+  });
+
+  it('rejects an empty extensions wrapper', () => {
+    const mutated = withTbsTail(sampleDer, [encodeContext(3, new Uint8Array(0))]);
+    expect(() => parseCertificate(mutated)).toThrow(
+      'The certificate extensions wrapper does not hold exactly one element',
+    );
+  });
+
+  it('rejects a version wrapper holding more than its version INTEGER', () => {
+    const certificate = parseAsn1(sampleDer);
+    const tbs = certificate.children[0];
+    const version = tbs.children[0];
+    const tbsContent = tbs.children.map((field, index) =>
+      index === 0
+        ? encodeContext(0, concatBytes([version.content, Uint8Array.from([ASN1_TAG.NULL, 0x00])]))
+        : field.raw,
+    );
+    const mutated = encodeSequence(
+      concatBytes([
+        encodeSequence(concatBytes(tbsContent)),
+        certificate.children[1].raw,
+        certificate.children[2].raw,
+      ]),
+    );
+    expect(() => parseCertificate(mutated)).toThrow(
+      'The certificate version wrapper does not hold exactly one element',
+    );
+  });
+
+  it('rejects a subject public key info with a surplus field', () => {
+    const certificate = parseAsn1(sampleDer);
+    const tbs = certificate.children[0];
+    const keyIndex = tbsVersionFields(sampleDer) + 5;
+    const tbsContent = tbs.children.map((field, index) =>
+      index === keyIndex ? withSurplusField(field) : field.raw,
+    );
+    const mutated = encodeSequence(
+      concatBytes([
+        encodeSequence(concatBytes(tbsContent)),
+        certificate.children[1].raw,
+        certificate.children[2].raw,
+      ]),
+    );
+    expect(() => parseCertificate(mutated)).toThrow(
+      'The subject public key info does not hold exactly two fields',
+    );
+  });
+
+  it('rejects a validity SEQUENCE with a surplus field', () => {
+    const certificate = parseAsn1(sampleDer);
+    const tbs = certificate.children[0];
+    const validityIndex = tbsVersionFields(sampleDer) + 3;
+    const tbsContent = tbs.children.map((field, index) =>
+      index === validityIndex ? withSurplusField(field) : field.raw,
+    );
+    const mutated = encodeSequence(
+      concatBytes([
+        encodeSequence(concatBytes(tbsContent)),
+        certificate.children[1].raw,
+        certificate.children[2].raw,
+      ]),
+    );
+    expect(() => parseCertificate(mutated)).toThrow(
+      'The certificate validity is not exactly a notBefore and a notAfter',
     );
   });
 

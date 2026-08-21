@@ -599,10 +599,26 @@ function readBitStringBytes(node, label) {
   if (node.content.length === 0) {
     throw new Error(`${label} is an empty BIT STRING.`);
   }
-  if (node.content[0] > 7) {
+  const unusedBitCount = node.content[0];
+  if (unusedBitCount > 7) {
     throw new Error(`${label} declares an invalid unused-bit count.`);
   }
-  return node.content.subarray(1);
+  const bits = node.content.subarray(1);
+  // X.690 §11.2 pins down the two remaining degrees of freedom DER removes from
+  // BER: a BIT STRING with no content octets must declare zero unused bits, and
+  // the bits the final octet declares unused must themselves be zero. Without
+  // both checks the same bit string has several encodings, so a value could be
+  // altered without changing what it decodes to.
+  if (bits.length === 0) {
+    if (unusedBitCount !== 0) {
+      throw new Error(`${label} declares unused bits but carries no content octets.`);
+    }
+    return bits;
+  }
+  if ((bits[bits.length - 1] & ((1 << unusedBitCount) - 1)) !== 0) {
+    throw new Error(`${label} declares unused bits that are not zero.`);
+  }
+  return bits;
 }
 
 function formatDistinguishedName(fields) {
@@ -704,6 +720,12 @@ function readRsaModulusBits(keyBytes) {
 
 function parsePublicKeyInfo(node) {
   expectUniversal(node, ASN1_TAG.SEQUENCE, 'The subject public key info');
+  // RFC 5280 §4.1 defines SubjectPublicKeyInfo as exactly an AlgorithmIdentifier
+  // followed by the key BIT STRING, so surplus fields are rejected rather than
+  // skipped past.
+  if (node.children.length !== 2) {
+    throw new Error('The subject public key info does not hold exactly two fields.');
+  }
   const algorithm = parseAlgorithmIdentifier(node.children[0], 'The public key algorithm');
   const keyBytes = readBitStringBytes(node.children[1], 'The subject public key');
 
@@ -825,6 +847,49 @@ function parseExtensions(node) {
 }
 
 /**
+ * Reads the optional tail `TBSCertificate` allows after `subjectPublicKeyInfo`.
+ *
+ * RFC 5280 §4.1 admits exactly three optional fields there — `[1]
+ * issuerUniqueID`, `[2] subjectUniqueID`, and `[3] extensions` — each at most
+ * once and in ascending tag order. Scanning for the `[3]` wrapper and ignoring
+ * whatever else is present would let arbitrary extra fields ride along inside a
+ * body that still decodes, so every field is checked against that grammar and
+ * anything unknown, duplicated, out of order, or trailing is rejected.
+ *
+ * The first two are IMPLICIT `UniqueIdentifier` (a BIT STRING, hence primitive
+ * in DER); `[3]` is EXPLICIT and so wraps exactly one element, its `Extensions`
+ * SEQUENCE.
+ *
+ * @param {Array<object>} fields The tbsCertificate fields after the public key.
+ * @returns {object|null} The `[3]` extensions wrapper, or null when absent.
+ * @throws {Error} When the tail does not match the RFC 5280 grammar.
+ */
+function readTbsOptionalFields(fields) {
+  let lowestAllowedTag = 1;
+  let extensionsNode = null;
+
+  for (const field of fields) {
+    const isAllowedTag =
+      field.tagClass === ASN1_CLASS.CONTEXT &&
+      field.tagNumber >= lowestAllowedTag &&
+      field.tagNumber <= 3 &&
+      field.constructed === (field.tagNumber === 3);
+    if (!isAllowedTag) {
+      throw new Error('The certificate body has an unexpected field after its public key.');
+    }
+    lowestAllowedTag = field.tagNumber + 1;
+    if (field.tagNumber === 3) {
+      if (field.children.length !== 1) {
+        throw new Error('The certificate extensions wrapper does not hold exactly one element.');
+      }
+      extensionsNode = field;
+    }
+  }
+
+  return extensionsNode;
+}
+
+/**
  * Decodes a DER-encoded X.509 certificate into a plain inspection object.
  *
  * The decoder never verifies signatures, so `subjectMatchesIssuer` only reports
@@ -862,6 +927,10 @@ export function parseCertificate(der) {
   let version = 1;
 
   if (isContext(fields[0], 0) && fields[0].constructed) {
+    // `[0]` is EXPLICIT, so it wraps the version INTEGER and nothing else.
+    if (fields[0].children.length !== 1) {
+      throw new Error('The certificate version wrapper does not hold exactly one element.');
+    }
     version = decodeSmallInteger(fields[0].children[0], 'The certificate version') + 1;
     cursor = 1;
   }
@@ -905,13 +974,11 @@ export function parseCertificate(der) {
   const publicKey = parsePublicKeyInfo(fields[cursor]);
   cursor += 1;
 
-  if (validityNode.children.length < 2) {
-    throw new Error('The certificate validity is missing notBefore or notAfter.');
+  if (validityNode.children.length !== 2) {
+    throw new Error('The certificate validity is not exactly a notBefore and a notAfter.');
   }
 
-  const extensionsNode = fields
-    .slice(cursor)
-    .find((field) => isContext(field, 3) && field.constructed);
+  const extensionsNode = readTbsOptionalFields(fields.slice(cursor));
   const extensions = extensionsNode
     ? parseExtensions(extensionsNode.children[0])
     : { all: [], subjectAltNames: [], basicConstraints: null };
