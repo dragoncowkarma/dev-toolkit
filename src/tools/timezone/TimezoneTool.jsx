@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import {
   DEFAULT_PRESET_TIMEZONES,
   convertTimezone,
@@ -43,11 +43,24 @@ export default function TimezoneTool() {
   const [copiedTimezone, setCopiedTimezone] = useState(null);
   const [toastMessage, setToastMessage] = useState('');
   const [toastType, setToastType] = useState('info'); // 'info' | 'error' | 'success'
+  const toastTimeoutRef = useRef(null);
+  const copiedTimezoneTimeoutRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      clearTimeout(toastTimeoutRef.current);
+      toastTimeoutRef.current = null;
+      clearTimeout(copiedTimezoneTimeoutRef.current);
+      copiedTimezoneTimeoutRef.current = null;
+    };
+  }, []);
 
   const showToast = (message, type = 'info') => {
     setToastMessage(message);
     setToastType(type);
-    setTimeout(() => {
+    clearTimeout(toastTimeoutRef.current);
+    toastTimeoutRef.current = setTimeout(() => {
+      toastTimeoutRef.current = null;
       setToastMessage((current) => (current === message ? '' : current));
     }, 2500);
   };
@@ -109,7 +122,9 @@ export default function TimezoneTool() {
       await navigator.clipboard.writeText(timeString);
       setCopiedTimezone(tzName);
       showToast(`Copied ${tzName} time (${timeString}) to clipboard!`, 'success');
-      setTimeout(() => {
+      clearTimeout(copiedTimezoneTimeoutRef.current);
+      copiedTimezoneTimeoutRef.current = setTimeout(() => {
+        copiedTimezoneTimeoutRef.current = null;
         setCopiedTimezone((prev) => (prev === tzName ? null : prev));
       }, 2000);
     } catch {

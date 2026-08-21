@@ -4,6 +4,7 @@ import TimezoneTool from './TimezoneTool.jsx';
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -81,6 +82,121 @@ describe('TimezoneTool Component Tests', () => {
     expect(
       await screen.findByRole('button', { name: 'America/New_York time copied' }),
     ).toBeInTheDocument();
+  });
+
+  it('dismisses copied feedback and toast after their original durations', async () => {
+    Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });
+    render(<TimezoneTool />);
+    vi.useFakeTimers();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy America/New_York local time' }));
+    });
+    expect(
+      screen.getByRole('button', { name: 'America/New_York time copied' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Copied America\/New_York time/)).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    expect(
+      screen.getByRole('button', { name: 'Copy America/New_York local time' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Copied America\/New_York time/)).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+    expect(screen.queryByText(/Copied America\/New_York time/)).not.toBeInTheDocument();
+  });
+
+  it('resets copied feedback and toast dismissal timers for consecutive copies', async () => {
+    Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });
+    render(<TimezoneTool />);
+    vi.useFakeTimers();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy America/New_York local time' }));
+    });
+    expect(vi.getTimerCount()).toBe(2);
+
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'America/New_York time copied' }));
+    });
+    expect(vi.getTimerCount()).toBe(2);
+
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(
+      screen.getByRole('button', { name: 'America/New_York time copied' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Copied America\/New_York time/)).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(
+      screen.getByRole('button', { name: 'Copy America/New_York local time' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Copied America\/New_York time/)).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+    expect(screen.queryByText(/Copied America\/New_York time/)).not.toBeInTheDocument();
+  });
+
+  it('resets the toast dismissal timer for consecutive toasts', () => {
+    render(<TimezoneTool />);
+    vi.useFakeTimers();
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Reset to current time in source timezone' }),
+    );
+    expect(vi.getTimerCount()).toBe(1);
+
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Reset to current time in source timezone' }),
+    );
+    expect(vi.getTimerCount()).toBe(1);
+
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+    expect(screen.getByText(/Reset to current local time\./)).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    expect(screen.queryByText(/Reset to current local time\./)).not.toBeInTheDocument();
+  });
+
+  it('clears pending copied feedback and toast timeouts on unmount', async () => {
+    Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { unmount } = render(<TimezoneTool />);
+    vi.useFakeTimers();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy America/New_York local time' }));
+    });
+    expect(vi.getTimerCount()).toBe(2);
+
+    unmount();
+    expect(vi.getTimerCount()).toBe(0);
+
+    act(() => {
+      vi.advanceTimersByTime(2500);
+    });
+    expect(consoleError).not.toHaveBeenCalled();
   });
 
   it('shows error toast message when clipboard copy fails', async () => {

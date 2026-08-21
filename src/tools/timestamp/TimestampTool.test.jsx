@@ -4,6 +4,7 @@ import TimestampTool from './TimestampTool.jsx';
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -149,6 +150,80 @@ describe('TimestampTool clipboard copy', () => {
 
     expect(writeText).toHaveBeenCalledWith('2026-07-30T12:00:00.000Z');
     expect(await screen.findByRole('button', { name: 'ISO 8601 copied' })).toBeInTheDocument();
+  });
+
+  it('dismisses copied feedback after 1500 ms while mounted', async () => {
+    Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });
+    render(<TimestampTool />);
+    fireEvent.change(screen.getByLabelText('Unix Timestamp or Date String'), {
+      target: { value: '1785412800' },
+    });
+    vi.useFakeTimers();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy ISO 8601' }));
+    });
+    expect(screen.getByRole('button', { name: 'ISO 8601 copied' })).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+    expect(screen.getByRole('button', { name: 'Copy ISO 8601' })).toBeInTheDocument();
+  });
+
+  it('resets the copied feedback dismissal timer for consecutive copies', async () => {
+    Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });
+    render(<TimestampTool />);
+    fireEvent.change(screen.getByLabelText('Unix Timestamp or Date String'), {
+      target: { value: '1785412800' },
+    });
+    vi.useFakeTimers();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy ISO 8601' }));
+    });
+    expect(vi.getTimerCount()).toBe(1);
+
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'ISO 8601 copied' }));
+    });
+    expect(vi.getTimerCount()).toBe(1);
+
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+    expect(screen.getByRole('button', { name: 'ISO 8601 copied' })).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(screen.getByRole('button', { name: 'Copy ISO 8601' })).toBeInTheDocument();
+  });
+
+  it('clears the pending copied feedback timeout on unmount', async () => {
+    Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { unmount } = render(<TimestampTool />);
+    fireEvent.change(screen.getByLabelText('Unix Timestamp or Date String'), {
+      target: { value: '1785412800' },
+    });
+    vi.useFakeTimers();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy ISO 8601' }));
+    });
+    expect(vi.getTimerCount()).toBe(1);
+
+    unmount();
+    expect(vi.getTimerCount()).toBe(0);
+
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+    expect(consoleError).not.toHaveBeenCalled();
   });
 
   it('reports copy failure in alert box when clipboard access is rejected', async () => {
