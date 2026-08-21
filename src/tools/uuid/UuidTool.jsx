@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useCopyFeedback } from '../../hooks/useCopyFeedback.js';
 import {
   DEFAULT_BATCH_SIZE,
   MAX_BATCH_SIZE,
@@ -25,8 +26,9 @@ export default function UuidTool({ onBack }) {
   const [uppercase, setUppercase] = useState(false);
   const [hyphens, setHyphens] = useState(true);
   const [braces, setBraces] = useState(false);
-  const [copiedIndex, setCopiedIndex] = useState(null);
-  const [copiedAll, setCopiedAll] = useState(false);
+  const [copyFeedback, showCopyFeedback, dismissCopyFeedback] = useCopyFeedback({
+    duration: COPY_CONFIRMATION_DURATION,
+  });
   const [copyError, setCopyError] = useState('');
 
   const formattedUuids = useMemo(
@@ -41,20 +43,12 @@ export default function UuidTool({ onBack }) {
     [braces, hyphens, uppercase, uuids]
   );
 
-  useEffect(() => {
-    if (copiedIndex === null && !copiedAll) return undefined;
-
-    const timer = setTimeout(() => {
-      setCopiedIndex(null);
-      setCopiedAll(false);
-    }, COPY_CONFIRMATION_DURATION);
-    return () => clearTimeout(timer);
-  }, [copiedAll, copiedIndex]);
+  const copiedIndex = copyFeedback?.type === 'item' ? copyFeedback.index : null;
+  const copiedAll = copyFeedback?.type === 'all';
 
   function regenerate(nextVersion = version, nextBatchSize = batchSize) {
     setUuids(generateUuidBatch(nextBatchSize, nextVersion));
-    setCopiedIndex(null);
-    setCopiedAll(false);
+    dismissCopyFeedback();
     setCopyError('');
   }
 
@@ -77,12 +71,10 @@ export default function UuidTool({ onBack }) {
   async function copyText(value, index = null) {
     try {
       await navigator.clipboard.writeText(value);
-      setCopiedIndex(index);
-      setCopiedAll(index === null);
+      showCopyFeedback(index === null ? { type: 'all' } : { type: 'item', index });
       setCopyError('');
     } catch {
-      setCopiedIndex(null);
-      setCopiedAll(false);
+      dismissCopyFeedback();
       setCopyError('Failed to copy to clipboard.');
     }
   }
