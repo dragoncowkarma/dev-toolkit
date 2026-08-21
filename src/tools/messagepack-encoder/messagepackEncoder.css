@@ -1,0 +1,98 @@
+.messagepack-encoder {
+  --messagepack-encoder-panel: var(--color-surface);
+  --messagepack-encoder-code: var(--color-code-bg);
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 0 1rem 2rem;
+  display: grid;
+  gap: 0.85rem;
+}
+
+.messagepack-encoder__intro,
+.messagepack-encoder__results,
+.messagepack-encoder textarea {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--messagepack-encoder-panel);
+}
+
+.messagepack-encoder__intro,
+.messagepack-encoder__results { padding: 1rem; }
+.messagepack-encoder__intro,
+.messagepack-encoder label,
+.messagepack-encoder__results-header p { color: var(--color-text-muted); }
+
+.messagepack-encoder label {
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.messagepack-encoder__controls,
+.messagepack-encoder__samples,
+.messagepack-encoder__results-header,
+.messagepack-encoder__output-label {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.messagepack-encoder button {
+  min-height: 2.4rem;
+  padding: 0.35rem 0.65rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.messagepack-encoder button:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.messagepack-encoder textarea {
+  min-height: 180px;
+  padding: 0.8rem;
+  resize: vertical;
+  color: var(--color-text);
+  font: 0.9rem/1.5 'SF Mono', Consolas, monospace;
+}
+
+.messagepack-encoder textarea:focus { outline: 2px solid var(--color-primary); }
+
+.messagepack-encoder__error {
+  padding: 0.75rem;
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+}
+
+.messagepack-encoder__results { display: grid; gap: 1rem; overflow-wrap: anywhere; }
+.messagepack-encoder__results-header { justify-content: space-between; }
+.messagepack-encoder__outputs {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+}
+.messagepack-encoder__output-label { justify-content: space-between; margin-bottom: 0.35rem; }
+
+.messagepack-encoder pre {
+  min-height: 4rem;
+  padding: 0.8rem;
+  overflow: auto;
+  border-radius: 8px;
+  background: var(--messagepack-encoder-code);
+  color: var(--color-primary-light);
+  font: 0.85rem/1.5 'SF Mono', Consolas, monospace;
+  white-space: pre-wrap;
+}
+
+@media (min-width: 640px) {
+  .messagepack-encoder { padding: 0 1.5rem 2.5rem; }
+  .messagepack-encoder textarea { min-height: 220px; }
+}
