@@ -1,0 +1,101 @@
+.cbor-encoder {
+  --cbor-encoder-panel: var(--color-surface);
+  --cbor-encoder-code: var(--color-code-bg);
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 0 1rem 2rem;
+  display: grid;
+  gap: 0.85rem;
+}
+
+.cbor-encoder__intro,
+.cbor-encoder__results,
+.cbor-encoder textarea,
+.cbor-encoder select {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--cbor-encoder-panel);
+}
+
+.cbor-encoder__intro,
+.cbor-encoder__results { padding: 1rem; }
+.cbor-encoder__intro,
+.cbor-encoder label,
+.cbor-encoder__results-header p { color: var(--color-text-muted); }
+
+.cbor-encoder label {
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.cbor-encoder__controls,
+.cbor-encoder__samples,
+.cbor-encoder__results-header,
+.cbor-encoder__output-label {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.cbor-encoder button,
+.cbor-encoder select {
+  min-height: 2.4rem;
+  padding: 0.35rem 0.65rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.cbor-encoder button { cursor: pointer; }
+.cbor-encoder button:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.cbor-encoder textarea {
+  min-height: 180px;
+  padding: 0.8rem;
+  resize: vertical;
+  color: var(--color-text);
+  font: 0.9rem/1.5 'SF Mono', Consolas, monospace;
+}
+
+.cbor-encoder textarea:focus,
+.cbor-encoder select:focus { outline: 2px solid var(--color-primary); }
+
+.cbor-encoder__error {
+  padding: 0.75rem;
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+}
+
+.cbor-encoder__results { display: grid; gap: 1rem; overflow-wrap: anywhere; }
+.cbor-encoder__results-header { justify-content: space-between; }
+.cbor-encoder__outputs {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+}
+.cbor-encoder__output-label { justify-content: space-between; margin-bottom: 0.35rem; }
+
+.cbor-encoder pre {
+  min-height: 4rem;
+  padding: 0.8rem;
+  overflow: auto;
+  border-radius: 8px;
+  background: var(--cbor-encoder-code);
+  color: var(--color-primary-light);
+  font: 0.85rem/1.5 'SF Mono', Consolas, monospace;
+  white-space: pre-wrap;
+}
+
+@media (min-width: 640px) {
+  .cbor-encoder { padding: 0 1.5rem 2.5rem; }
+  .cbor-encoder textarea { min-height: 220px; }
+}
