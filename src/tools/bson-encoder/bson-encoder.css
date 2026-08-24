@@ -1,0 +1,97 @@
+.bson-encoder-tool {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  display: grid;
+  gap: 1.25rem;
+}
+
+.bson-encoder-panel {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.bson-encoder-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.bson-encoder-label {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.bson-encoder-textarea,
+.bson-encoder-output {
+  min-height: 220px;
+  resize: vertical;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  padding: 1rem;
+}
+
+.bson-encoder-output {
+  min-height: 150px;
+  background: var(--color-bg);
+}
+
+.bson-encoder-textarea:focus,
+.bson-encoder-output:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.bson-encoder-outputs {
+  display: grid;
+  gap: 1rem;
+}
+
+.bson-encoder-copy {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.35rem 0.75rem;
+}
+
+.bson-encoder-copy:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.bson-encoder-copy:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.bson-encoder-error {
+  margin: 0;
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+  padding: 0.75rem 1rem;
+}
+
+@media (min-width: 768px) {
+  .bson-encoder-tool {
+    padding: 0 2rem 3rem;
+  }
+
+  .bson-encoder-outputs {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
