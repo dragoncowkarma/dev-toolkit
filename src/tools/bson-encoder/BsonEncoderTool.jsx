@@ -71,7 +71,12 @@ export default function BsonEncoderTool() {
         {OUTPUT_FORMATS.map(([format, label]) => (
           <div className="bson-encoder-panel" key={format}>
             <div className="bson-encoder-label-row">
-              <label className="bson-encoder-label" htmlFor={`bson-${format}-output`}>{label}</label>
+              <label
+                className="bson-encoder-label"
+                htmlFor={`bson-${format}-output`}
+              >
+                {label}
+              </label>
               <button
                 type="button"
                 className="bson-encoder-copy"
@@ -93,7 +98,11 @@ export default function BsonEncoderTool() {
         ))}
       </div>
 
-      {copiedFormat && <p className="sr-only" role="status" aria-live="polite">Copied to clipboard.</p>}
+      {copiedFormat && (
+        <p className="sr-only" role="status" aria-live="polite">
+          Copied to clipboard.
+        </p>
+      )}
       {error && <p className="bson-encoder-error" role="alert" aria-live="polite">⚠ {error}</p>}
     </section>
   );

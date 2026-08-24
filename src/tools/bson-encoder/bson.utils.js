@@ -291,9 +291,11 @@ function decodeBinary(bytes, offset, limit) {
   const start = subtypeOffset + 1;
   const end = start + length;
   if (length < 0 || end > limit) throw new Error('Malformed BSON: binary value is invalid.');
+  const base64 = bytesToBase64(bytes.subarray(start, end));
+  const subType = bytes[subtypeOffset].toString(16).padStart(2, '0');
   return {
     value: {
-      $binary: { base64: bytesToBase64(bytes.subarray(start, end)), subType: bytes[subtypeOffset].toString(16).padStart(2, '0') },
+      $binary: { base64, subType },
     },
     nextOffset: end,
   };
@@ -301,12 +303,17 @@ function decodeBinary(bytes, offset, limit) {
 
 function decodeObjectId(bytes, offset, limit) {
   ensureAvailable(offset, 12, limit);
-  return { value: { $oid: bytesToHex(bytes.subarray(offset, offset + 12)) }, nextOffset: offset + 12 };
+  return {
+    value: { $oid: bytesToHex(bytes.subarray(offset, offset + 12)) },
+    nextOffset: offset + 12,
+  };
 }
 
 function decodeBoolean(bytes, offset, limit) {
   ensureAvailable(offset, 1, limit);
-  if (bytes[offset] !== 0 && bytes[offset] !== 1) throw new Error('Malformed BSON: boolean is invalid.');
+  if (bytes[offset] !== 0 && bytes[offset] !== 1) {
+    throw new Error('Malformed BSON: boolean is invalid.');
+  }
   return { value: bytes[offset] === 1, nextOffset: offset + 1 };
 }
 
