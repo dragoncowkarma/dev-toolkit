@@ -258,7 +258,7 @@ class ProviderFailureTests(unittest.TestCase):
 
         self.assertEqual("2026-07-30T04:16:47+00:00", retry_after)
 
-    def test_monthly_spend_limit_uses_default_cooldown(self):
+    def test_monthly_spend_limit_uses_extended_cooldown(self):
         ended_at = "2026-07-30T02:37:57+00:00"
 
         retry_after = swarm.ProcessTracker._provider_retry_after(
@@ -266,7 +266,7 @@ class ProviderFailureTests(unittest.TestCase):
             ended_at,
         )
 
-        self.assertEqual("2026-07-30T03:37:57+00:00", retry_after)
+        self.assertEqual("2026-07-31T02:37:57+00:00", retry_after)
 
     def test_cli_timeout_uses_default_cooldown(self):
         ended_at = "2026-07-30T02:19:35+00:00"
@@ -1363,6 +1363,36 @@ class CreateWorktreeTests(unittest.TestCase):
                 args = call[0][0]
                 self.assertNotIn("add", args)
 
+    def test_create_worktree_already_checked_out_branch_porcelain_no_git_add(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        existing_path = tmp_dir / "existing_worktree"
+        existing_path.mkdir(parents=True)
+        (existing_path / ".git").write_text("gitdir: ...")
+
+        porcelain_output = (
+            f"worktree {existing_path}\n"
+            "HEAD def5678\n"
+            "branch refs/heads/worker/239-branch\n\n"
+        )
+
+        def fake_run(cmd, **kwargs):
+            if cmd[:3] == ["git", "worktree", "list"]:
+                return subprocess.CompletedProcess(
+                    args=cmd, returncode=0, stdout=porcelain_output, stderr=""
+                )
+            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+        with (
+            patch.object(swarm, "WORKTREE_DIR", tmp_dir),
+            patch.object(swarm.subprocess, "run", side_effect=fake_run) as mock_run,
+        ):
+            wt = swarm.create_worktree(239, "worker/239-branch")
+            self.assertEqual(wt, existing_path)
+            for call in mock_run.call_args_list:
+                args = call[0][0]
+                self.assertNotIn("branch", args)
+                self.assertNotIn("add", args)
+
     def test_create_worktree_returns_existing_valid_worktree(self):
         tmp_dir = Path(tempfile.mkdtemp())
         target_path = tmp_dir / "156"
@@ -2004,7 +2034,7 @@ class RuntimeLifecycleTests(unittest.TestCase):
                     proc.terminate()
                     proc.wait(timeout=5)
 
-    def test_reset_process_history_clears_registry_and_memory(self):
+    def test_reset_process_history_clears_completed_but_preserves_failed(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             registry = Path(tmp_dir) / "registry.json"
             registry.write_text("{}", encoding="utf-8")
@@ -2014,15 +2044,22 @@ class RuntimeLifecycleTests(unittest.TestCase):
             original_history = list(tracker._history)
             try:
                 tracker._active["123"] = (None, SimpleNamespace())
-                tracker._history.append(
-                    record("issue#1:initial", "worker", swarm.ProcessStatus.FAILED)
+                failed_record = record(
+                    "issue#1:initial", "worker", swarm.ProcessStatus.FAILED
                 )
+                completed_record = record(
+                    "issue#2:initial", "worker", swarm.ProcessStatus.COMPLETED
+                )
+                tracker._history.extend([failed_record, completed_record])
+
+
                 with patch.object(swarm, "PROCESS_REGISTRY_FILE", registry):
                     swarm.reset_process_history()
 
-                self.assertFalse(registry.exists())
+                # Registry should still exist because we preserved the failed record
+                self.assertTrue(registry.exists())
                 self.assertEqual({}, tracker._active)
-                self.assertEqual([], tracker._history)
+                self.assertEqual([failed_record], tracker._history)
             finally:
                 tracker._active = original_active
                 tracker._history = original_history
@@ -2082,7 +2119,7 @@ class RuntimeLifecycleTests(unittest.TestCase):
                         ai_name="antigravity",
                         defer_scope="event",
                     ),
-                    # Ordinary crash attempt must not survive.
+                    # Ordinary crash attempt MUST survive to preserve the retry budget.
                     record("issue#7:initial", "worker", swarm.ProcessStatus.FAILED),
                 ]
 
@@ -2090,13 +2127,11 @@ class RuntimeLifecycleTests(unittest.TestCase):
                     swarm.reset_process_history()
 
                     self.assertEqual({}, tracker._active)
-                    self.assertEqual([active_cooldown], tracker._history)
+                    self.assertEqual(2, len(tracker._history))
+                    self.assertIn(active_cooldown, tracker._history)
                     self.assertTrue(registry.exists())
                     persisted = json.loads(registry.read_text(encoding="utf-8"))
-                    self.assertEqual(1, len(persisted["history"]))
-                    self.assertEqual(
-                        "antigravity", persisted["history"][0]["ai_name"],
-                    )
+                    self.assertEqual(2, len(persisted["history"]))
 
                     # And the preserved cooldown actually blocks a fresh
                     # dispatch to that AI post-restart.
