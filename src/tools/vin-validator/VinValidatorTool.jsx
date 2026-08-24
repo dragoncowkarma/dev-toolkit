@@ -166,6 +166,30 @@ export default function VinValidatorTool() {
                 </span>
               </div>
 
+              <div className="vin-validator__grid-item vin-validator__grid-item--wide">
+                <span className="vin-validator__grid-label">
+                  Model Year Resolution (Pos 7 Heuristic)
+                </span>
+                {validation.decoded.modelYearResolution?.resolvedModelYear ? (
+                  <div
+                    className="vin-validator__badge vin-validator__badge--valid"
+                    aria-label="Resolved model year"
+                  >
+                    ✓ Resolved: {validation.decoded.modelYearResolution.resolvedModelYear}
+                  </div>
+                ) : (
+                  <div
+                    className="vin-validator__badge vin-validator__badge--info"
+                    aria-label="Ambiguous model year"
+                  >
+                    ℹ Ambiguous — both candidates remain possible
+                  </div>
+                )}
+                <span className="vin-validator__grid-value vin-validator__grid-value--muted">
+                  {validation.decoded.modelYearResolution?.explanation}
+                </span>
+              </div>
+
               <div className="vin-validator__grid-item">
                 <span className="vin-validator__grid-label">Check Digit (Pos 9)</span>
                 <span className="vin-validator__grid-value">
