@@ -80,7 +80,15 @@ PROVIDER_LIMIT_PATTERNS = (
     "rate limit exceeded",
     "resource_exhausted",
     "too many requests",
+    "hit your usage limit",
 )
+# Spend-limit errors indicate provider-wide unavailability for hours/days.
+# Use a much longer cooldown than transient rate-limits.
+PROVIDER_SPEND_LIMIT_PATTERNS = (
+    "monthly spend limit",
+    "hit your usage limit",
+)
+PROVIDER_SPEND_LIMIT_COOLDOWN_SECONDS = 24 * 60 * 60  # 24 hours
 EVENT_DEFER_PATTERNS = (
     "timeout waiting for response",
     "no_tool_withdrawn",
@@ -102,6 +110,10 @@ DISPATCH_PROVIDER_COOLDOWN = "provider cooldown"
 # Upper bound on persisted history so the registry cannot grow without limit.
 MAX_HISTORY_RECORDS = 500
 IDLE_EXIT_CYCLES = 1
+
+# Maximum Worker revision cycles per PR before blocking further revisions.
+# Prevents infinite Reviewer↔Worker ping-pong loops.
+MAX_REVISION_CYCLES = 3
 
 # Metadata tag patterns
 WORKER_PATTERN = re.compile(
@@ -167,6 +179,14 @@ DEFAULT_AI_CONFIG: dict[str, dict[str, str]] = {
     "codex":       {"model": "5.6 terra",        "reasoning": "높음"},
     "antigravity": {"model": "gemini 3.6 flash", "reasoning": "high"},
     "claude":      {"model": "sonnet 5",         "reasoning": "높음"},
+}
+
+# Role-specific reasoning overrides (lower = fewer thinking tokens).
+# Worker needs high reasoning for implementation; Reviewer/Maintainer do not.
+ROLE_REASONING_OVERRIDE: dict[str, dict[str, str]] = {
+    "reviewer":      {"codex": "중간", "antigravity": "medium", "claude": "중간"},
+    "maintainer":    {"codex": "낮음", "antigravity": "low",    "claude": "낮음"},
+    "worker_revise": {"codex": "중간", "antigravity": "medium", "claude": "중간"},
 }
 
 # Prompt temp file directory (cleaned on shutdown)
@@ -585,6 +605,12 @@ class ProcessTracker:
             record for record in attempts
             if record.status in (ProcessStatus.FAILED, ProcessStatus.UNKNOWN)
         ]
+        # Event-scope deferrals (e.g. timeouts) also count toward the crash
+        # budget so a perpetually-hanging task cannot retry indefinitely.
+        event_deferrals = [
+            r for r in deferred if r.defer_scope == "event"
+        ]
+        budget_count = len(crash_attempts) + len(event_deferrals)
         completed_attempts = [
             record for record in attempts
             if record.status == ProcessStatus.COMPLETED
@@ -593,13 +619,13 @@ class ProcessTracker:
             if completion_confirmed:
                 return False, DISPATCH_COMPLETED
             return False, DISPATCH_UNCONFIRMED
-        if len(crash_attempts) >= MAX_DISPATCH_ATTEMPTS:
-            return False, f"exhausted {len(crash_attempts)} failed attempts"
+        if budget_count >= MAX_DISPATCH_ATTEMPTS:
+            return False, f"exhausted {budget_count} failed/deferred attempts"
         if deferred:
             return True, "retry after provider cooldown"
         return (
             True,
-            f"retry {len(crash_attempts) + 1}/{MAX_DISPATCH_ATTEMPTS} after failure",
+            f"retry {budget_count + 1}/{MAX_DISPATCH_ATTEMPTS} after failure",
         )
 
     @property
@@ -765,6 +791,8 @@ class ProcessTracker:
                 + int(reset_match.group("seconds") or 0)
                 + PROVIDER_COOLDOWN_BUFFER_SECONDS
             )
+        elif any(p in lowered for p in PROVIDER_SPEND_LIMIT_PATTERNS):
+            delay = PROVIDER_SPEND_LIMIT_COOLDOWN_SECONDS
 
         base = (
             datetime.fromisoformat(ended_at)
@@ -834,6 +862,7 @@ def reset_process_history(preserve_running: bool = False):
             record.status == ProcessStatus.RUNNING
             and tracker.check_pid_alive(record.pid)
         )
+        or record.status == ProcessStatus.FAILED
     ]
     for record in surviving:
         if record.status == ProcessStatus.RUNNING:
@@ -1895,8 +1924,13 @@ def dispatch_worker(
 
     prompt = (
         f"You are the Worker for Issue #{issue.number}: {issue.title}.\n"
-        f"Read AGENTS.md and .agents/rules/ for all project rules.\n"
+        f"Read .agents/rules/coding_standards.md for project rules.\n"
         f"Implement the task described in the Issue body:\n\n{issue.body}\n\n"
+        f"EFFICIENCY RULES:\n"
+        f"- Reference src/tools/base64/ as your ONLY template. Do not inspect other tools.\n"
+        f"- Run ONLY your tool's tests during development: npx vitest run src/tools/<your-tool>/\n"
+        f"- Run the full test suite (npm test -- --reporter=dot) exactly ONCE before committing.\n"
+        f"- Do NOT dump AGENTS.md or unrelated files into stdout.\n\n"
         f"Work inside this directory. When done:\n"
         f"1. Commit your changes with conventional commit messages referencing #{issue.number}.\n"
         f"2. Push the branch '{branch_name}'.\n"
@@ -1969,11 +2003,27 @@ def dispatch_reviewer(
             "issue a new approval.\n\n"
         )
 
+    # Pre-fetch PR diff and description so the Reviewer doesn't waste
+    # 3-5 exploration turns running gh/git commands.
+    pr_diff = gh(["pr", "diff", str(pr.number)], check=False)
+    pr_description = gh(
+        ["pr", "view", str(pr.number), "--json", "body", "-q", ".body"],
+        check=False,
+    )
+    max_diff_chars = 50000
+    if len(pr_diff) > max_diff_chars:
+        pr_diff = (
+            pr_diff[:max_diff_chars]
+            + "\n\n... [diff truncated, use `gh pr diff` for full diff]"
+        )
+
     prompt = (
         f"You are the Reviewer for PR #{pr.number}: {pr.title}.\n"
-        f"Read AGENTS.md and .agents/rules/review_checklist.md for review rules.\n"
+        f"Read .agents/rules/review_checklist.md for review rules.\n"
         f"{trigger_context}"
-        f"Review the PR diff, check code quality, and leave review comments.\n\n"
+        f"\n## PR Description\n{pr_description}\n\n"
+        f"## PR Diff\n```diff\n{pr_diff}\n```\n\n"
+        f"Review the code quality and leave review comments.\n\n"
         f"When your review is complete, you MUST post exactly ONE final summary comment "
         f"on the PR containing your [Reviewer: ...] metadata tag. The tag format is:\n"
         f"  [Reviewer: {reviewer.ai} | Model: {reviewer.model} | "
@@ -1993,10 +2043,13 @@ def dispatch_reviewer(
 
     task_ref = task_ref or f"review#{pr.number}-{pr.head_sha or 'initial'}"
     prompt_file = write_prompt_file(prompt, "reviewer", task_ref)
+    effective_reasoning = ROLE_REASONING_OVERRIDE.get(
+        "reviewer", {},
+    ).get(reviewer.ai, reviewer.reasoning)
     argv = build_ai_argv(
         reviewer.ai,
         reviewer.model,
-        reviewer.reasoning,
+        effective_reasoning,
         prompt_file,
         str(REPO_ROOT),
     )
@@ -2099,10 +2152,13 @@ def dispatch_maintainer(
 
     task_ref = task_ref or f"maintain#{pr.number}"
     prompt_file = write_prompt_file(prompt, "maintainer", task_ref)
+    effective_reasoning = ROLE_REASONING_OVERRIDE.get(
+        "maintainer", {},
+    ).get(maintainer.ai, maintainer.reasoning)
     argv = build_ai_argv(
         maintainer.ai,
         maintainer.model,
-        maintainer.reasoning,
+        effective_reasoning,
         prompt_file,
         str(REPO_ROOT),
     )
@@ -2198,7 +2254,10 @@ def dispatch_worker_revision(
     if not task_ref:
         task_ref = f"revise#{pr.number}"
     prompt_file = write_prompt_file(prompt, "worker-revise", task_ref)
-    argv = build_ai_argv(worker.ai, worker.model, worker.reasoning, prompt_file, str(worktree_path))
+    effective_reasoning = ROLE_REASONING_OVERRIDE.get(
+        "worker_revise", {},
+    ).get(worker.ai, worker.reasoning)
+    argv = build_ai_argv(worker.ai, worker.model, effective_reasoning, prompt_file, str(worktree_path))
 
     if dry_run:
         log.info("[DRY RUN] Would execute worker revision: %s", _format_argv_for_log(argv))
@@ -2531,12 +2590,27 @@ def process_prs(
             )
             continue
 
-        # "revise" action requires a Worker; skip if unavailable.
+        # \"revise\" action requires a Worker; skip if unavailable.
         if worker is None:
             log_blocker(
                 f"revise-no-worker:{pr_num}:{signal_id}",
                 "PR #%d needs Worker revision but no Worker is known; skipping.",
                 pr_num,
+                level=logging.WARNING,
+            )
+            continue
+
+        # Cap revision cycles to prevent infinite Reviewer↔Worker ping-pong.
+        revision_count = sum(
+            1 for c in comments
+            if "[Worker] Revision complete." in c.get("body", "")
+        )
+        if revision_count >= MAX_REVISION_CYCLES:
+            log_blocker(
+                f"revision-cap:{pr_num}",
+                "PR #%d has reached %d revision cycles (max %d); "
+                "blocking further revisions.",
+                pr_num, revision_count, MAX_REVISION_CYCLES,
                 level=logging.WARNING,
             )
             continue
