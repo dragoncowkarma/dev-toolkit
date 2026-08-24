@@ -2044,10 +2044,15 @@ class RuntimeLifecycleTests(unittest.TestCase):
             original_history = list(tracker._history)
             try:
                 tracker._active["123"] = (None, SimpleNamespace())
-                failed_record = record("issue#1:initial", "worker", swarm.ProcessStatus.FAILED)
-                completed_record = record("issue#2:initial", "worker", swarm.ProcessStatus.COMPLETED)
+                failed_record = record(
+                    "issue#1:initial", "worker", swarm.ProcessStatus.FAILED
+                )
+                completed_record = record(
+                    "issue#2:initial", "worker", swarm.ProcessStatus.COMPLETED
+                )
                 tracker._history.extend([failed_record, completed_record])
-                
+
+
                 with patch.object(swarm, "PROCESS_REGISTRY_FILE", registry):
                     swarm.reset_process_history()
 
