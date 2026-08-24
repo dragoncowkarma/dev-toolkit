@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useCopyFeedback } from '../../hooks/useCopyFeedback.js';
 import { encodeProtobufJson } from './protobufEncoder.utils.js';
 import './protobufEncoder.css';
 
@@ -16,19 +17,22 @@ const EXAMPLE_INPUT = `[
 export default function ProtobufEncoderTool() {
   const [input, setInput] = useState(EXAMPLE_INPUT);
   const [result, setResult] = useState(() => encodeProtobufJson(EXAMPLE_INPUT));
-  const [copied, setCopied] = useState('');
+  const [copied, showCopied, dismissCopied] = useCopyFeedback({
+    initialValue: '',
+    duration: 3000,
+  });
 
   useEffect(() => {
     setResult(encodeProtobufJson(input));
-    setCopied('');
-  }, [input]);
+    dismissCopied();
+  }, [dismissCopied, input]);
 
   async function copyValue(value, label) {
     try {
       await navigator.clipboard.writeText(value);
-      setCopied(label);
+      showCopied(`Copied ${label} to clipboard.`);
     } catch {
-      setCopied('Failed to copy to clipboard.');
+      showCopied('Failed to copy to clipboard.');
     }
   }
 
@@ -76,7 +80,7 @@ export default function ProtobufEncoderTool() {
       {copied && (
         <p
           className={copied.startsWith('Failed') ? 'protobuf-encoder__error' : ''}
-          role="status"
+          role={copied.startsWith('Failed') ? 'alert' : 'status'}
           aria-live="polite"
         >
           {copied}
