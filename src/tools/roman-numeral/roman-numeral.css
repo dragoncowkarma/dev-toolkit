@@ -1,0 +1,148 @@
+.roman-numeral-tool {
+  display: flex;
+  width: 100%;
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.roman-numeral-tool__intro,
+.roman-numeral-tool__fields,
+.roman-numeral-tool__controls,
+.roman-numeral-tool__error,
+.roman-numeral-tool__result {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.roman-numeral-tool__intro {
+  padding: 1rem;
+}
+
+.roman-numeral-tool__intro h2 {
+  margin: 0;
+}
+
+.roman-numeral-tool__intro > p:last-child,
+.roman-numeral-tool__controls > p,
+.roman-numeral-tool__field > p {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.roman-numeral-tool__eyebrow {
+  margin: 0 0 0.3rem;
+  color: var(--color-primary-light);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.roman-numeral-tool__controls,
+.roman-numeral-tool__fields {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+}
+
+.roman-numeral-tool__controls {
+  align-items: center;
+}
+
+.roman-numeral-tool__controls > p {
+  margin: 0;
+}
+
+.roman-numeral-tool__field {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.roman-numeral-tool__field label {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.roman-numeral-tool__field input {
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: calc(var(--radius) - 4px);
+  background: var(--color-code-bg);
+  color: var(--color-text);
+  font: inherit;
+  padding: 0.65rem 0.75rem;
+}
+
+.roman-numeral-tool__field input:focus {
+  outline: 0;
+  border-color: var(--color-primary);
+}
+
+.roman-numeral-tool__field input[aria-invalid='true'] {
+  border-color: var(--color-error);
+}
+
+.roman-numeral-tool__field > p {
+  margin: 0;
+}
+
+.roman-numeral-tool__arrow {
+  display: grid;
+  align-self: center;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--color-surface-hover);
+  color: var(--color-primary-light);
+  font-size: 1.2rem;
+}
+
+.roman-numeral-tool button {
+  justify-self: start;
+  border: 1px solid var(--color-border);
+  border-radius: calc(var(--radius) - 4px);
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 700;
+  padding: 0.5rem 0.75rem;
+}
+
+.roman-numeral-tool button:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.roman-numeral-tool__error,
+.roman-numeral-tool__result {
+  padding: 0.75rem 1rem;
+  font-size: 0.9rem;
+}
+
+.roman-numeral-tool__error {
+  border-color: var(--color-error-border);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+}
+
+.roman-numeral-tool__result {
+  color: var(--color-success);
+}
+
+@media (min-width: 680px) {
+  .roman-numeral-tool__controls {
+    grid-template-columns: 1fr auto;
+  }
+
+  .roman-numeral-tool__fields {
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+  }
+}
