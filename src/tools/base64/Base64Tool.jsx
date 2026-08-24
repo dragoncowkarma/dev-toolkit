@@ -5,6 +5,7 @@ import {
   fileToBase64,
   formatFileSize,
 } from './base64.utils.js';
+import { useCopyFeedback } from '../../hooks/useCopyFeedback.js';
 import './base64.css';
 
 const MODES = {
@@ -24,7 +25,7 @@ export default function Base64Tool() {
   const [error, setError] = useState('');
   const [copyError, setCopyError] = useState('');
   const [file, setFile] = useState(null);
-  const [copied, setCopied] = useState(false);
+  const [copied, showCopied] = useCopyFeedback({ initialValue: false, resetValue: false });
   const fileInputRef = useRef(null);
   const fileRequestRef = useRef(0);
 
@@ -46,12 +47,6 @@ export default function Base64Tool() {
       setError(err.message);
     }
   }, [input, mode, file]);
-
-  useEffect(() => {
-    if (!copied) return;
-    const timer = setTimeout(() => setCopied(false), 1500);
-    return () => clearTimeout(timer);
-  }, [copied]);
 
   function handleModeChange(nextMode) {
     if (nextMode === mode) return;
@@ -97,7 +92,7 @@ export default function Base64Tool() {
     if (!output) return;
     try {
       await navigator.clipboard.writeText(output);
-      setCopied(true);
+      showCopied(true);
       setCopyError('');
     } catch {
       // Clipboard failures are reported separately from conversion errors so

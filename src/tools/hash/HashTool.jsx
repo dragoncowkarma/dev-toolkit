@@ -7,6 +7,7 @@ import {
   hashFile,
   hashText,
 } from './hash.utils.js';
+import { useCopyFeedback } from '../../hooks/useCopyFeedback.js';
 import './hash.css';
 
 const EMPTY_HASHES = ALGORITHMS.reduce((acc, algorithm) => {
@@ -30,7 +31,10 @@ export default function HashTool({ onBack }) {
   const [error, setError] = useState('');
   const [copyError, setCopyError] = useState('');
   const [computing, setComputing] = useState(false);
-  const [copiedAlgorithm, setCopiedAlgorithm] = useState('');
+  const [copiedAlgorithm, showCopiedAlgorithm] = useCopyFeedback({
+    initialValue: '',
+    resetValue: '',
+  });
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef(null);
   const requestRef = useRef(0);
@@ -73,12 +77,6 @@ export default function HashTool({ onBack }) {
         if (requestRef.current === requestId) setComputing(false);
       });
   }, [input, file]);
-
-  useEffect(() => {
-    if (!copiedAlgorithm) return;
-    const timer = setTimeout(() => setCopiedAlgorithm(''), 1500);
-    return () => clearTimeout(timer);
-  }, [copiedAlgorithm]);
 
   function handleInputChange(event) {
     setFile(null);
@@ -133,7 +131,7 @@ export default function HashTool({ onBack }) {
     if (!value) return;
     try {
       await navigator.clipboard.writeText(formatHash(value, format));
-      setCopiedAlgorithm(algorithm);
+      showCopiedAlgorithm(algorithm);
       setCopyError('');
     } catch {
       // Clipboard failures are reported separately from hashing errors so a

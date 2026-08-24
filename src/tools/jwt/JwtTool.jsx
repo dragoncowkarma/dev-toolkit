@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useCopyFeedback } from '../../hooks/useCopyFeedback.js';
 import { formatDuration, getJwtTimeDetails, parseJwt } from './jwt.utils.js';
 import './jwt.css';
 
@@ -24,7 +25,10 @@ function formatTimestamp(timestamp) {
  */
 export default function JwtTool() {
   const [input, setInput] = useState('');
-  const [copiedSection, setCopiedSection] = useState('');
+  const [copiedSection, showCopiedSection] = useCopyFeedback({
+    initialValue: '',
+    resetValue: '',
+  });
   const [copyError, setCopyError] = useState('');
   const [now, setNow] = useState(Date.now());
 
@@ -44,16 +48,10 @@ export default function JwtTool() {
     return () => clearInterval(timer);
   }, [result.state]);
 
-  useEffect(() => {
-    if (!copiedSection) return undefined;
-    const timer = setTimeout(() => setCopiedSection(''), 1500);
-    return () => clearTimeout(timer);
-  }, [copiedSection]);
-
   async function handleCopy(section, value) {
     try {
       await navigator.clipboard.writeText(formatJson(value));
-      setCopiedSection(section);
+      showCopiedSection(section);
       setCopyError('');
     } catch {
       setCopyError('Could not copy JSON to the clipboard.');
