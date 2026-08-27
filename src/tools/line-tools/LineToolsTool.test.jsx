@@ -110,4 +110,22 @@ describe('LineToolsTool component', () => {
       expect(screen.getByRole('status')).toHaveTextContent('Copied result to clipboard.');
     });
   });
+
+  it('correctly uses real escape characters for Tab and Newline join delimiter options', () => {
+    render(<LineToolsTool />);
+
+    const inputArea = screen.getByLabelText('Input text');
+    fireEvent.change(inputArea, { target: { value: 'line1\nline2' } });
+
+    const joinSelect = screen.getByLabelText('Output join delimiter');
+
+    // Change join delimiter to Tab (\t)
+    fireEvent.change(joinSelect, { target: { value: '\t' } });
+    const outputArea = screen.getByLabelText('Transformed result');
+    expect(outputArea.value).toBe('line1\tline2');
+
+    // Change join delimiter back to Newline (\n)
+    fireEvent.change(joinSelect, { target: { value: '\n' } });
+    expect(outputArea.value).toBe('line1\nline2');
+  });
 });

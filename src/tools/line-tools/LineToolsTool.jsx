@@ -321,11 +321,11 @@ export default function LineToolsTool() {
                 onChange={(e) => setJoinDelimiter(e.target.value)}
                 aria-label="Output join delimiter"
               >
-                <option value="\n">Newline (\n)</option>
+                <option value={'\n'}>Newline (\n)</option>
                 <option value=", ">Comma space (, )</option>
                 <option value=",">Comma (,)</option>
                 <option value=" | ">Pipe ( | )</option>
-                <option value="\t">Tab (\t)</option>
+                <option value={'\t'}>Tab (\t)</option>
                 <option value=" ">Space ( )</option>
               </select>
             </label>
