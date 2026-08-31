@@ -336,7 +336,9 @@ class ProcessTracker:
             ):
                 continue
             output_tail = self._read_log_tail(record.log_file, 2000)
-            retry_after = self._provider_retry_after(output_tail, record.ended_at)
+            retry_after = self._provider_retry_after(
+                output_tail, record.ended_at or record.started_at
+            )
             if not retry_after:
                 continue
             record.status = ProcessStatus.DEFERRED
@@ -770,6 +772,7 @@ class ProcessTracker:
     def _provider_retry_after(
         output: str,
         ended_at: Optional[str] = None,
+        started_at: Optional[str] = None,
     ) -> Optional[str]:
         lowered = output.lower()
         deferred_patterns = PROVIDER_LIMIT_PATTERNS + EVENT_DEFER_PATTERNS
@@ -794,9 +797,10 @@ class ProcessTracker:
         elif any(p in lowered for p in PROVIDER_SPEND_LIMIT_PATTERNS):
             delay = PROVIDER_SPEND_LIMIT_COOLDOWN_SECONDS
 
+        base_time = ended_at or started_at
         base = (
-            datetime.fromisoformat(ended_at)
-            if ended_at
+            datetime.fromisoformat(base_time)
+            if base_time
             else datetime.now(timezone.utc)
         )
         return (base + timedelta(seconds=delay)).isoformat()
@@ -862,7 +866,6 @@ def reset_process_history(preserve_running: bool = False):
             record.status == ProcessStatus.RUNNING
             and tracker.check_pid_alive(record.pid)
         )
-        or record.status == ProcessStatus.FAILED
     ]
     for record in surviving:
         if record.status == ProcessStatus.RUNNING:
@@ -874,12 +877,25 @@ def reset_process_history(preserve_running: bool = False):
                 record.pid,
                 restart_kind,
             )
-        else:
+        elif tracker._is_active_provider_cooldown(record):
             log.info(
                 "⏸️ Preserving '%s' provider cooldown across restart "
                 "(retry after %s).",
                 record.ai_name,
                 record.retry_after,
+            )
+        elif record.status == ProcessStatus.FAILED:
+            log.info(
+                "⚠️ Preserving failed process %s %s across restart.",
+                record.role,
+                record.task_ref,
+            )
+        else:
+            log.info(
+                " Preserving process %s %s [%s] across restart.",
+                record.role,
+                record.task_ref,
+                record.status,
             )
     tracker._history = surviving
     if surviving:

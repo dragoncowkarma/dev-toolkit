@@ -2034,7 +2034,7 @@ class RuntimeLifecycleTests(unittest.TestCase):
                     proc.terminate()
                     proc.wait(timeout=5)
 
-    def test_reset_process_history_clears_completed_but_preserves_failed(self):
+    def test_reset_process_history_clears_completed_and_failed(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             registry = Path(tmp_dir) / "registry.json"
             registry.write_text("{}", encoding="utf-8")
@@ -2052,14 +2052,13 @@ class RuntimeLifecycleTests(unittest.TestCase):
                 )
                 tracker._history.extend([failed_record, completed_record])
 
-
                 with patch.object(swarm, "PROCESS_REGISTRY_FILE", registry):
                     swarm.reset_process_history()
 
-                # Registry should still exist because we preserved the failed record
-                self.assertTrue(registry.exists())
+                # Registry should be removed because no surviving records remained
+                self.assertFalse(registry.exists())
                 self.assertEqual({}, tracker._active)
-                self.assertEqual([failed_record], tracker._history)
+                self.assertEqual([], tracker._history)
             finally:
                 tracker._active = original_active
                 tracker._history = original_history
@@ -2119,7 +2118,7 @@ class RuntimeLifecycleTests(unittest.TestCase):
                         ai_name="antigravity",
                         defer_scope="event",
                     ),
-                    # Ordinary crash attempt MUST survive to preserve the retry budget.
+                    # FAILED records must not survive across restarts (Issue #303).
                     record("issue#7:initial", "worker", swarm.ProcessStatus.FAILED),
                 ]
 
@@ -2127,11 +2126,11 @@ class RuntimeLifecycleTests(unittest.TestCase):
                     swarm.reset_process_history()
 
                     self.assertEqual({}, tracker._active)
-                    self.assertEqual(2, len(tracker._history))
+                    self.assertEqual(1, len(tracker._history))
                     self.assertIn(active_cooldown, tracker._history)
                     self.assertTrue(registry.exists())
                     persisted = json.loads(registry.read_text(encoding="utf-8"))
-                    self.assertEqual(2, len(persisted["history"]))
+                    self.assertEqual(1, len(persisted["history"]))
 
                     # And the preserved cooldown actually blocks a fresh
                     # dispatch to that AI post-restart.
@@ -2142,6 +2141,78 @@ class RuntimeLifecycleTests(unittest.TestCase):
                     self.assertIn(swarm.DISPATCH_PROVIDER_COOLDOWN, reason)
             finally:
                 tracker._active = original_active
+                tracker._history = original_history
+
+    def test_ended_at_none_does_not_cause_sliding_cooldown_window(self):
+        temp_dir = Path(tempfile.mkdtemp())
+        log_file = temp_dir / "process.log"
+        log_file.write_text("Error: Individual quota reached. Resets in 1h.\n", encoding="utf-8")
+        started_at = "2026-07-30T01:00:00+00:00"
+        tracked = swarm.TrackedProcess(
+            pid=1234,
+            role="worker",
+            ai_name="antigravity",
+            model="gemini 3.1 pro",
+            reasoning="high",
+            task_ref="issue#303:initial",
+            branch="worker/303-branch",
+            command="agy -p",
+            cwd="/repo",
+            log_file=str(log_file),
+            started_at=started_at,
+            ended_at=None,
+            exit_code=1,
+            status=swarm.ProcessStatus.FAILED,
+        )
+        tracker = make_tracker([tracked])
+
+        tracker._reclassify_deferred_failures()
+
+        self.assertEqual(swarm.ProcessStatus.DEFERRED, tracked.status)
+        expected_retry = "2026-07-30T02:01:00+00:00"  # 1h + 1m buffer from started_at
+        self.assertEqual(expected_retry, tracked.retry_after)
+
+        # Calling again must yield the exact same retry_after based on started_at, not sliding
+        tracked.status = swarm.ProcessStatus.FAILED
+        tracker._reclassify_deferred_failures()
+        self.assertEqual(expected_retry, tracked.retry_after)
+
+    def test_reset_process_history_log_output_separates_failed_and_cooldown(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            registry = Path(tmp_dir) / "registry.json"
+            registry.write_text("{}", encoding="utf-8")
+
+            active_retry = (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat()
+            cooldown_rec = record(
+                "maintain#39-comment",
+                "maintainer",
+                swarm.ProcessStatus.DEFERRED,
+                retry_after=active_retry,
+                ai_name="antigravity",
+                defer_scope="provider",
+            )
+            failed_rec = record(
+                "issue#100:initial",
+                "worker",
+                swarm.ProcessStatus.FAILED,
+                ai_name="codex",
+            )
+
+            tracker = swarm.tracker
+            original_history = list(tracker._history)
+            try:
+                tracker._history = [cooldown_rec, failed_rec]
+                with patch.object(swarm, "PROCESS_REGISTRY_FILE", registry), \
+                     patch.object(swarm.log, "info") as mock_info:
+                    swarm.reset_process_history()
+
+                    # Only active cooldown record should be logged as preserved provider cooldown
+                    mock_info.assert_called_once_with(
+                        "⏸️ Preserving '%s' provider cooldown across restart (retry after %s).",
+                        "antigravity",
+                        active_retry,
+                    )
+            finally:
                 tracker._history = original_history
 
     def test_run_loop_exits_after_one_idle_cycle(self):
