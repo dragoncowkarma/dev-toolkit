@@ -413,6 +413,85 @@ class AiArgvTests(unittest.TestCase):
         self.assertEqual("medium", argv[argv.index("--effort") + 1])
 
 
+class ModelAndEffortValidationTests(unittest.TestCase):
+    def setUp(self):
+        temp_dir = Path(tempfile.mkdtemp())
+        self.prompt_file = temp_dir / "prompt.md"
+        self.prompt_file.write_text("Do the task.", encoding="utf-8")
+
+    def test_antigravity_resolves_advertised_claude_sonnet_4_6(self):
+        model, effort = swarm.validate_model_availability(
+            "antigravity", "claude-sonnet-4-6", "medium",
+        )
+        self.assertEqual("claude-sonnet-4-6", model)
+        self.assertEqual("medium", effort)
+
+        argv = swarm.build_ai_argv(
+            "antigravity", "claude-sonnet-4-6", "medium", self.prompt_file, "/repo",
+        )
+        self.assertEqual("Claude Sonnet 4.6 (Medium)", argv[argv.index("--model") + 1])
+
+    def test_antigravity_resolves_advertised_claude_opus_4_6_thinking(self):
+        model, effort = swarm.validate_model_availability(
+            "antigravity", "claude-opus-4-6-thinking", "high",
+        )
+        self.assertEqual("claude-opus-4-6-thinking", model)
+        self.assertEqual("high", effort)
+
+        argv = swarm.build_ai_argv(
+            "antigravity", "claude-opus-4-6-thinking", "high", self.prompt_file, "/repo",
+        )
+        self.assertEqual("Claude Opus 4.6 (Thinking)", argv[argv.index("--model") + 1])
+
+    def test_antigravity_resolves_advertised_gpt_oss_120b_medium(self):
+        model, effort = swarm.validate_model_availability(
+            "antigravity", "gpt-oss-120b-medium", "medium",
+        )
+        self.assertEqual("gpt-oss-120b-medium", model)
+        self.assertEqual("medium", effort)
+
+        argv = swarm.build_ai_argv(
+            "antigravity", "gpt-oss-120b-medium", "medium", self.prompt_file, "/repo",
+        )
+        self.assertEqual("GPT-OSS 120B (Medium)", argv[argv.index("--model") + 1])
+
+    def test_antigravity_unsupported_model_falls_back(self):
+        model, effort = swarm.validate_model_availability(
+            "antigravity", "unsupported-model", "high",
+        )
+        self.assertEqual("gemini 3.6 flash", model)
+        self.assertEqual("high", effort)
+
+    def test_antigravity_invalid_effort_falls_back(self):
+        model, effort = swarm.validate_model_availability(
+            "antigravity", "gemini 3.6 flash", "invalid-effort",
+        )
+        self.assertEqual("gemini 3.6 flash", model)
+        self.assertEqual("high", effort)
+
+    def test_claude_invalid_effort_falls_back(self):
+        model, effort = swarm.validate_model_availability(
+            "claude", "sonnet 5", "invalid-effort",
+        )
+        self.assertEqual("sonnet 5", model)
+        self.assertEqual("high", effort)
+
+    def test_codex_invalid_effort_falls_back(self):
+        model, effort = swarm.validate_model_availability(
+            "codex", "gpt-5.6-terra", "invalid-effort",
+        )
+        self.assertEqual("gpt-5.6-terra", model)
+        self.assertEqual("high", effort)
+
+    def test_effort_canonicalization(self):
+        _, effort_claude = swarm.validate_model_availability("claude", "sonnet 5", "중간")
+        self.assertEqual("medium", effort_claude)
+
+        _, effort_codex = swarm.validate_model_availability("codex", "gpt-5.6-terra", "낮음")
+        self.assertEqual("low", effort_codex)
+
+
+
 class LifecycleSignalTests(unittest.TestCase):
 
     def test_latest_recognized_signal_controls_action(self):

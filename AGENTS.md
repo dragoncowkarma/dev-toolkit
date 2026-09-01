@@ -59,11 +59,23 @@ This project uses a **vendor-agnostic autonomous multi-agent swarm** where multi
 
 The orchestrator uses these values when dynamically assigning roles.
 
-| AI Agent | Command | Available Models | Effort Levels | Default |
-|----------|---------|-----------------|---------------|---------|
-| **Codex** | `codex` | `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini` | `low`, `medium`, `high`, `extra high`, `max` (5.6), `ultra` (sol, terra) | `gpt-5.6-terra` |
-| **Antigravity** | `agy` | `gemini 3.7 flash`, `gemini 3.6 flash`, `gemini 3.1 pro`, `claude-sonnet-4-6`, `claude-opus-4-6-thinking`, `gpt-oss-120b-medium` | `low`, `medium`, `high` (embedded in model name) | `gemini 3.6 flash` |
-| **Claude** | `claude` | `opus 5`, `sonnet 5`, `haiku 4.5`, `opus 4.8`, `opus 4.7`, `opus 4.6`, `sonnet 4.6` | `low`, `medium`, `high`, `xhigh`, `max`, `ultracode` (>= 4.7) | `sonnet 5` |
+### Codex (`codex`)
+- **Available Models**: `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.5`, `gpt-5.4`,
+  `gpt-5.4-mini`
+- **Effort Levels**: `low`, `medium`, `high`, `extra high`, `max` (5.6), `ultra` (sol, terra)
+- **Default**: `gpt-5.6-terra` (`high`)
+
+### Antigravity (`agy`)
+- **Available Models**: `gemini 3.7 flash`, `gemini 3.6 flash`, `gemini 3.1 pro`,
+  `claude-sonnet-4-6`, `claude-opus-4-6-thinking`, `gpt-oss-120b-medium`
+- **Effort Levels**: `low`, `medium`, `high` (embedded in model name)
+- **Default**: `gemini 3.6 flash` (`high`)
+
+### Claude (`claude`)
+- **Available Models**: `opus 5`, `sonnet 5`, `haiku 4.5`, `opus 4.8`, `opus 4.7`, `opus 4.6`,
+  `sonnet 4.6`
+- **Effort Levels**: `low`, `medium`, `high`, `xhigh`, `max`, `ultracode` (>= 4.7)
+- **Default**: `sonnet 5` (`high`)
 
 ---
 
