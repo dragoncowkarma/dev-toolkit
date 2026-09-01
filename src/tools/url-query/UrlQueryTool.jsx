@@ -84,7 +84,7 @@ export default function UrlQueryTool() {
   }
 
   async function handleCopy(text, id) {
-    if (!text && text !== '') return;
+    if (text == null) return;
     try {
       if (navigator.clipboard && navigator.clipboard.writeText) {
         await navigator.clipboard.writeText(text);

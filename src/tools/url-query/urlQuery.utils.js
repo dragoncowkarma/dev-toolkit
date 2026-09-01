@@ -75,7 +75,12 @@ export function buildQueryString(params, hasLeadingQuestionMark = false) {
  * @param {Array<{ key: string, value: string }>} options.params
  * @returns {string}
  */
-export function buildUrlOrQuery({ isFullUrl, baseUrl, hasLeadingQuestionMark = false, params = [] }) {
+export function buildUrlOrQuery({
+  isFullUrl,
+  baseUrl,
+  hasLeadingQuestionMark = false,
+  params = [],
+}) {
   const queryString = buildQueryString(params, false);
 
   if (isFullUrl && baseUrl) {
@@ -120,7 +125,7 @@ export function parseUrlOrQuery(input) {
 
     for (const [key, value] of url.searchParams.entries()) {
       paramsList.push({
-        id: `param-${idCounter++}-${key}`,
+        id: `param-${idCounter++}`,
         key,
         value,
       });
@@ -149,7 +154,8 @@ export function parseUrlOrQuery(input) {
     };
   } catch (err) {
     // If input starts with a scheme prefix or ://, it was intended as a full URL but is malformed
-    const hasSchemePrefix = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(trimmed) || trimmed.startsWith('//');
+    const hasSchemePrefix =
+      /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(trimmed) || trimmed.startsWith('//');
 
     if (hasSchemePrefix) {
       return {
@@ -172,7 +178,7 @@ export function parseUrlOrQuery(input) {
 
       for (const [key, value] of searchParams.entries()) {
         paramsList.push({
-          id: `param-${idCounter++}-${key}`,
+          id: `param-${idCounter++}`,
           key,
           value,
         });
