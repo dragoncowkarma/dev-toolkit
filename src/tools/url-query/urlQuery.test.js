@@ -134,4 +134,20 @@ describe('urlQuery.utils - parseUrlOrQuery', () => {
     expect(result.isFullUrl).toBe(true);
     expect(result.error).toMatch(/Invalid URL format/);
   });
+
+  it('parses host:port or colon-containing bare params as query strings', () => {
+    const resHostPort = parseUrlOrQuery('localhost:8080');
+    expect(resHostPort.isValid).toBe(true);
+    expect(resHostPort.isFullUrl).toBe(false);
+    expect(resHostPort.urlParts).toBeNull();
+    expect(resHostPort.params).toHaveLength(1);
+    expect(resHostPort.params[0]).toMatchObject({ key: 'localhost:8080', value: '' });
+
+    const resColonParam = parseUrlOrQuery('foo:bar=baz');
+    expect(resColonParam.isValid).toBe(true);
+    expect(resColonParam.isFullUrl).toBe(false);
+    expect(resColonParam.urlParts).toBeNull();
+    expect(resColonParam.params).toHaveLength(1);
+    expect(resColonParam.params[0]).toMatchObject({ key: 'foo:bar', value: 'baz' });
+  });
 });
