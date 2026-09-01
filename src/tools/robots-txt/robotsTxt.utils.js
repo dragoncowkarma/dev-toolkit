@@ -176,41 +176,80 @@ function escapeRegExpLiteral(segment) {
 }
 
 /**
+ * The RFC 3986 §2.3 "unreserved" character set: octets that decode to one of these are safe to
+ * fold back to their literal form without changing a URI's meaning.
+ */
+const UNRESERVED_CHAR = /^[A-Za-z0-9\-._~]$/;
+
+/**
+ * Normalizes percent-encoded octets in a path or path-pattern so semantically-identical forms
+ * compare equal, per RFC 9309 §2.2.2 (which defers to RFC 3986 §2.3/§6.2.2.2): a `%XX` escape
+ * that decodes to an RFC 3986 "unreserved" character is folded back to that literal character
+ * (so `%69` and `i` compare equal); every other escape - reserved characters such as `%2F`
+ * (which must stay distinct from a literal `/` path separator), non-ASCII bytes, and malformed
+ * `%` sequences - is left as-is, only with its hex digits upper-cased for a stable comparison
+ * form. This intentionally decodes octet-by-octet rather than as UTF-8: non-ASCII bytes never
+ * match `UNRESERVED_CHAR`, so multi-byte sequences safely pass through unchanged.
+ * @param {string} value Raw path or path-pattern value.
+ * @returns {string} The value with safe percent-escapes decoded and the rest normalized.
+ */
+function normalizePercentEncoding(value) {
+  return value.replace(/%([0-9A-Fa-f]{2})/g, (match, hex) => {
+    const char = String.fromCharCode(parseInt(hex, 16));
+    return UNRESERVED_CHAR.test(char) ? char : `%${hex.toUpperCase()}`;
+  });
+}
+
+/**
  * Compiles a robots.txt path pattern into a matcher, per RFC 9309 §2.2.3: `*` matches any run
  * of characters (including none), and a trailing `$` anchors the match to the end of the path.
- * Matching is otherwise a literal prefix match, and is case-sensitive.
+ * Matching is otherwise a literal prefix match, and is case-sensitive. The pattern is
+ * percent-normalized first (see `normalizePercentEncoding`) so it lines up with a similarly
+ * normalized request path.
  * @param {string} pattern Rule path value (e.g. `/fish/*.php$`).
  * @returns {RegExp} A regular expression implementing the pattern's match semantics.
  */
 function compilePathPattern(pattern) {
-  const hasEndAnchor = pattern.endsWith('$');
-  const body = hasEndAnchor ? pattern.slice(0, -1) : pattern;
+  const normalized = normalizePercentEncoding(pattern);
+  const hasEndAnchor = normalized.endsWith('$');
+  const body = hasEndAnchor ? normalized.slice(0, -1) : normalized;
   const escaped = body.split('*').map(escapeRegExpLiteral).join('.*');
   return new RegExp(`^${escaped}${hasEndAnchor ? '$' : ''}`);
 }
 
 /**
- * Selects the group most specific to a requesting crawler's user-agent, per RFC 9309 §2.2.1:
- * the group whose token is the longest case-insensitive match found within the requested
- * user-agent string, falling back to the `*` group when no specific token matches. A literal
- * `*` (or blank) request always selects the `*` group directly, if one exists.
+ * Selects the rule set that applies to a requesting crawler's user-agent, per RFC 9309 §2.2.1.
+ * Every group whose token is a case-insensitive match found within the requested user-agent
+ * string is "specific" and applies; when more than one specific group matches (e.g. a crawler
+ * whose user-agent contains both a product token and a more specific variant of it, such as
+ * `Googlebot-News/1.0` matching both `googlebot` and `googlebot-news`), their rules are combined
+ * into a single synthesized group rather than picking only the longest-token match, since RFC
+ * 9309 requires every matching specific group's rules to be considered. The `*` group is used
+ * only as a fallback, when no specific group matches at all. A literal `*` (or blank) request
+ * always selects the `*` group directly, if one exists.
  * @param {RobotsGroup[]} groups Parsed, merged groups.
  * @param {string} userAgent Requesting crawler's user-agent (or product token).
- * @returns {RobotsGroup|null} The selected group, or `null` when nothing applies.
+ * @returns {RobotsGroup|null} The selected (possibly synthesized) group, or `null` when nothing
+ *   applies.
  */
 function selectGroup(groups, userAgent) {
   const wildcardGroup = groups.find((group) => group.userAgent === '*') ?? null;
   const requested = String(userAgent ?? '').trim().toLowerCase();
   if (!requested || requested === '*') return wildcardGroup;
 
-  let best = null;
-  groups.forEach((group) => {
-    if (group.userAgent === '*') return;
-    if (!requested.includes(group.userAgent)) return;
-    if (!best || group.userAgent.length > best.userAgent.length) best = group;
-  });
+  const matches = groups.filter(
+    (group) => group.userAgent !== '*' && requested.includes(group.userAgent),
+  );
 
-  return best ?? wildcardGroup;
+  if (matches.length === 0) return wildcardGroup;
+  if (matches.length === 1) return matches[0];
+
+  // More than one specific product token matched: RFC 9309 requires combining their rules
+  // rather than choosing a single "most specific" group.
+  return {
+    userAgent: matches.map((group) => group.userAgent).join(', '),
+    rules: matches.flatMap((group) => group.rules),
+  };
 }
 
 /**
@@ -227,6 +266,13 @@ function selectGroup(groups, userAgent) {
  * wrote both rules. An empty `Disallow:` (and, symmetrically, an empty `Allow:`) value carries
  * no path and is never a candidate, per the "empty value means no restriction" note in RFC 9309.
  *
+ * The request path is percent-normalized before matching (see `normalizePercentEncoding`), so a
+ * percent-escaped octet equivalent to a rule pattern's literal character (e.g.
+ * `/catalog/%69tem` vs. `Disallow: /catalog/item`) is correctly caught. The `/robots.txt` URI
+ * itself is always implicitly allowed regardless of any rule that would otherwise match it - per
+ * RFC 9309 §2.1, a robots.txt file can never disallow fetching itself - so it short-circuits to
+ * `ALLOWED` before any group's rules are consulted.
+ *
  * @param {RobotsGroup[]} groups Parsed, merged groups (typically `parseRobotsTxt(text).groups`).
  * @param {Object} [options]
  * @param {string} [options.userAgent='*'] Requesting crawler's user-agent or product token.
@@ -236,9 +282,15 @@ function selectGroup(groups, userAgent) {
 export function evaluatePath(groups, options = {}) {
   const list = Array.isArray(groups) ? groups : [];
   const userAgent = options.userAgent ?? '*';
-  const path = typeof options.path === 'string' && options.path ? options.path : '/';
+  const rawPath = typeof options.path === 'string' && options.path ? options.path : '/';
+  const path = normalizePercentEncoding(rawPath);
 
   const group = selectGroup(list, userAgent);
+
+  if (path.split('?')[0] === '/robots.txt') {
+    return { verdict: 'ALLOWED', matchedRule: null, group: group ? group.userAgent : null };
+  }
+
   if (!group) {
     return { verdict: 'ALLOWED', matchedRule: null, group: null };
   }
