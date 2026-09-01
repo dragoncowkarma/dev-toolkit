@@ -1,0 +1,127 @@
+.bson-decoder-tool {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.bson-decoder-toolbar,
+.bson-decoder-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.bson-decoder-toolbar {
+  justify-content: space-between;
+}
+
+.bson-decoder-format-label,
+.bson-decoder-label {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.bson-decoder-format-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.bson-decoder-format-label select,
+.bson-decoder-button {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.5rem 0.75rem;
+}
+
+.bson-decoder-file-button {
+  position: relative;
+  overflow: hidden;
+}
+
+.bson-decoder-file-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.bson-decoder-file-button:focus-within,
+.bson-decoder-format-label select:focus,
+.bson-decoder-button:focus {
+  outline: 2px solid var(--color-primary-light);
+  outline-offset: 3px;
+}
+
+.bson-decoder-file-name {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.bson-decoder-panels {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+}
+
+.bson-decoder-panel {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.bson-decoder-textarea,
+.bson-decoder-output {
+  min-height: 280px;
+  resize: vertical;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  padding: 1rem;
+}
+
+.bson-decoder-output {
+  background: var(--color-bg);
+}
+
+.bson-decoder-textarea:focus,
+.bson-decoder-output:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.bson-decoder-error {
+  margin: 0;
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+  padding: 0.75rem 1rem;
+}
+
+@media (min-width: 768px) {
+  .bson-decoder-tool {
+    padding: 0 2rem 3rem;
+  }
+
+  .bson-decoder-panels {
+    grid-template-columns: 1fr 1fr;
+  }
+}
