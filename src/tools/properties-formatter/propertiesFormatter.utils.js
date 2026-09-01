@@ -254,7 +254,9 @@ export function parseProperties(text) {
     entry.duplicate = keyCounts.get(entry.key) > 1;
   });
 
-  const data = {};
+  // Use a null-prototype map so keys like `__proto__` are stored as real own
+  // properties instead of being interpreted as the prototype slot.
+  const data = Object.create(null);
   entries.forEach((entry) => {
     data[entry.key] = entry.value;
   });

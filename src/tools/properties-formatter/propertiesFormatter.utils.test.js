@@ -136,6 +136,17 @@ key = value
       expect(data['app.author']).toBe('Jane Doe');
       expect(entries.filter((e) => e.key === 'app.name')).toHaveLength(2);
     });
+
+    it('preserves a key named __proto__ as a real own property', () => {
+      const { data, entries, errors } = parseProperties('__proto__=kept');
+      expect(errors).toHaveLength(0);
+      expect(entries).toEqual([
+        { key: '__proto__', value: 'kept', line: 1, duplicate: false },
+      ]);
+      expect(Object.keys(data)).toEqual(['__proto__']);
+      expect(Object.prototype.hasOwnProperty.call(data, '__proto__')).toBe(true);
+      expect(data.__proto__).toBe('kept');
+    });
   });
 
   describe('formatProperties', () => {
@@ -170,6 +181,10 @@ key = value
       expect(formatProperties('key = \\uZZZZ')).toBe('');
       expect(formatProperties(null)).toBe('');
     });
+
+    it('includes a key named __proto__ in the normalized output', () => {
+      expect(formatProperties('__proto__=kept')).toBe('__proto__=kept');
+    });
   });
 
   describe('toJSON', () => {
@@ -181,6 +196,14 @@ key = value
     it('accepts raw .properties text', () => {
       const json = toJSON('key = value');
       expect(JSON.parse(json)).toEqual({ key: 'value' });
+    });
+
+    it('includes a key named __proto__ in the JSON output', () => {
+      const json = toJSON('__proto__=kept');
+      expect(json).toContain('"__proto__": "kept"');
+      const parsed = JSON.parse(json);
+      expect(Object.keys(parsed)).toEqual(['__proto__']);
+      expect(parsed.__proto__).toBe('kept');
     });
   });
 
