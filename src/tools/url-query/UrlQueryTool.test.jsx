@@ -1,4 +1,5 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import UrlQueryTool from './UrlQueryTool.jsx';
 
@@ -93,12 +94,30 @@ describe('UrlQueryTool edit, add, remove parameter behavior', () => {
     const normalizedResult = screen.getByLabelText('Normalized URL result');
     expect(normalizedResult).toHaveValue('?a=1&c=3');
   });
+
+  it('maintains input focus when editing parameter key character-by-character', async () => {
+    const user = userEvent.setup();
+    render(<UrlQueryTool />);
+
+    const input = screen.getByLabelText('URL or query string input');
+    fireEvent.change(input, { target: { value: '?q=search' } });
+
+    const key1Input = screen.getByLabelText('Parameter 1 key');
+    await user.type(key1Input, 'uery');
+
+    expect(key1Input).toHaveValue('query');
+    expect(document.activeElement).toBe(key1Input);
+  });
 });
 
 describe('UrlQueryTool copy controls & accessibility', () => {
   it('copies normalized result with success feedback and aria-label', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.assign(navigator, { clipboard: { writeText } });
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      writable: true,
+      configurable: true,
+    });
 
     render(<UrlQueryTool />);
 
@@ -111,12 +130,18 @@ describe('UrlQueryTool copy controls & accessibility', () => {
     });
 
     expect(writeText).toHaveBeenCalledWith('https://example.com/?q=test');
-    expect(screen.getByRole('button', { name: 'Copy normalized URL' })).toHaveTextContent('✓ Copied');
+    expect(screen.getByRole('button', { name: 'Copy normalized URL' })).toHaveTextContent(
+      '✓ Copied'
+    );
   });
 
   it('copies parameter individual value with distinct accessible name', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.assign(navigator, { clipboard: { writeText } });
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      writable: true,
+      configurable: true,
+    });
 
     render(<UrlQueryTool />);
 
@@ -133,8 +158,10 @@ describe('UrlQueryTool copy controls & accessibility', () => {
   });
 
   it('handles copy error and displays role="alert"', async () => {
-    Object.assign(navigator, {
-      clipboard: { writeText: vi.fn().mockRejectedValue(new Error('denied')) },
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: vi.fn().mockRejectedValue(new Error('denied')) },
+      writable: true,
+      configurable: true,
     });
 
     render(<UrlQueryTool />);

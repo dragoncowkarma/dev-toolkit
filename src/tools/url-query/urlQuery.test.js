@@ -90,7 +90,11 @@ describe('urlQuery.utils - parseUrlOrQuery', () => {
     expect(result.hasLeadingQuestionMark).toBe(true);
     expect(result.urlParts).toBeNull();
     expect(result.params).toHaveLength(3);
-    expect(result.params[1]).toMatchObject({ key: 'author', value: 'John Doe', isDuplicate: false });
+    expect(result.params[1]).toMatchObject({
+      key: 'author',
+      value: 'John Doe',
+      isDuplicate: false,
+    });
     expect(result.params[0].isDuplicate).toBe(true);
     expect(result.params[2].isDuplicate).toBe(true);
   });
