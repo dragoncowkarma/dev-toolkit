@@ -58,6 +58,30 @@ describe('VinValidatorTool', () => {
     expect(screen.getByRole('alert')).toHaveTextContent("Disallowed letter 'I' found");
   });
 
+  it('shows a resolved model year for a North American VIN with an applicable heuristic', () => {
+    render(<VinValidatorTool />);
+
+    const input = screen.getByLabelText(/Vehicle Identification Number/i);
+    fireEvent.change(input, { target: { value: '1G1YY26E8A5100001' } });
+
+    const details = screen.getByLabelText('Validated VIN details');
+    const resolved = screen.getByLabelText('Resolved model year');
+    expect(resolved).toHaveTextContent('Resolved: 1980');
+    expect(details).toHaveTextContent("Position 7 ('6') is a digit");
+  });
+
+  it('shows an ambiguous explanation and retains both candidates for non-NA VINs', () => {
+    render(<VinValidatorTool />);
+
+    const sampleButton = screen.getByRole('button', { name: /Load Europe \(VW Germany\)/i });
+    fireEvent.click(sampleButton);
+
+    const details = screen.getByLabelText('Validated VIN details');
+    expect(screen.getByLabelText('Ambiguous model year')).toHaveTextContent('Ambiguous');
+    expect(details).toHaveTextContent('1998 or 2028');
+    expect(details).toHaveTextContent('only applies to North American VINs');
+  });
+
   it('clears input when Clear VIN button is clicked', () => {
     render(<VinValidatorTool />);
 

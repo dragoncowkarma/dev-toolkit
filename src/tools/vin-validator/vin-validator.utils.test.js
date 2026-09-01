@@ -4,6 +4,7 @@ import {
   decodeModelYear,
   decodeWmi,
   normalizeVin,
+  resolveModelYear,
   transliterateChar,
   validateVin,
 } from './vin-validator.utils.js';
@@ -117,6 +118,63 @@ describe('vin-validator utils', () => {
     });
   });
 
+  describe('resolveModelYear', () => {
+    it('resolves the pre-2010 cycle for a North American VIN with a digit at position 7', () => {
+      const normalized = '1G1YY26E8A5100001';
+      const wmiInfo = decodeWmi(normalized.slice(0, 3));
+      const result = resolveModelYear(normalized, wmiInfo);
+
+      expect(result.candidateModelYears).toEqual([1980, 2010]);
+      expect(result.heuristicApplied).toBe(true);
+      expect(result.resolvedModelYear).toBe(1980);
+      expect(result.explanation).toContain("Position 7 ('6') is a digit");
+    });
+
+    it('resolves the 2010+ cycle for a North American VIN with a letter at position 7', () => {
+      const normalized = '1G1YY2CE9L5100001';
+      const wmiInfo = decodeWmi(normalized.slice(0, 3));
+      const result = resolveModelYear(normalized, wmiInfo);
+
+      expect(result.candidateModelYears).toEqual([1990, 2020]);
+      expect(result.heuristicApplied).toBe(true);
+      expect(result.resolvedModelYear).toBe(2020);
+      expect(result.explanation).toContain("Position 7 ('C') is a letter");
+    });
+
+    it('preserves both candidates for non-North-American VINs without resolving a year', () => {
+      const normalized = 'WVWZZZ3CZWE000000';
+      const wmiInfo = decodeWmi(normalized.slice(0, 3));
+      const result = resolveModelYear(normalized, wmiInfo);
+
+      expect(result.candidateModelYears).toEqual([1998, 2028]);
+      expect(result.heuristicApplied).toBe(false);
+      expect(result.resolvedModelYear).toBeNull();
+      expect(result.explanation).toContain('only applies to North American VINs');
+    });
+
+    it('returns no candidates for an unknown model year code', () => {
+      const normalized = '1G1YY26E805100001';
+      const wmiInfo = decodeWmi(normalized.slice(0, 3));
+      const result = resolveModelYear(normalized, wmiInfo);
+
+      expect(result.candidateModelYears).toBeNull();
+      expect(result.heuristicApplied).toBe(false);
+      expect(result.resolvedModelYear).toBeNull();
+      expect(result.explanation).toContain('not a recognized model-year code');
+    });
+
+    it('never resolves a single year without a full 17-character VIN (no false resolution)', () => {
+      const wmiInfo = { isNorthAmerica: true };
+      expect(resolveModelYear('1G1YY26E8A', wmiInfo)).toEqual({
+        candidateModelYears: null,
+        resolvedModelYear: null,
+        heuristicApplied: false,
+        explanation: 'A normalized 17-character VIN is required to resolve a model year.',
+      });
+      expect(resolveModelYear(null, wmiInfo).resolvedModelYear).toBeNull();
+    });
+  });
+
   describe('validateVin', () => {
     it('validates a valid North American VIN with numeric check digit', () => {
       const res = validateVin('1HG CR2F8 5 HA000000');
@@ -127,6 +185,23 @@ describe('vin-validator utils', () => {
       expect(res.error).toBeNull();
       expect(res.decoded.wmi).toBe('1HG');
       expect(res.decoded.candidateModelYears).toEqual([1987, 2017]);
+      expect(res.decoded.modelYearResolution.heuristicApplied).toBe(true);
+      expect(res.decoded.modelYearResolution.resolvedModelYear).toBe(2017);
+    });
+
+    it('resolves the pre-2010 cycle within validateVin for a digit-position-7 NA VIN', () => {
+      const res = validateVin('1G1YY26E8A5100001');
+      expect(res.isValid).toBe(true);
+      expect(res.decoded.candidateModelYears).toEqual([1980, 2010]);
+      expect(res.decoded.modelYearResolution.heuristicApplied).toBe(true);
+      expect(res.decoded.modelYearResolution.resolvedModelYear).toBe(1980);
+    });
+
+    it('preserves ambiguous candidates within validateVin for non-North-American VINs', () => {
+      const res = validateVin('WVWZZZ3CZWE000000');
+      expect(res.decoded.candidateModelYears).toEqual([1998, 2028]);
+      expect(res.decoded.modelYearResolution.heuristicApplied).toBe(false);
+      expect(res.decoded.modelYearResolution.resolvedModelYear).toBeNull();
     });
 
     it('validates a valid North American VIN with X check digit', () => {
