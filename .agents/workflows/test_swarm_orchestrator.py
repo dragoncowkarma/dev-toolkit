@@ -2177,7 +2177,7 @@ class RuntimeLifecycleTests(unittest.TestCase):
         tracker._reclassify_deferred_failures()
         self.assertEqual(expected_retry, tracked.retry_after)
 
-    def test_reset_process_history_log_output_separates_failed_and_cooldown(self):
+    def test_reset_process_history_logs_preserved_provider_cooldown(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             registry = Path(tmp_dir) / "registry.json"
             registry.write_text("{}", encoding="utf-8")
@@ -2206,7 +2206,7 @@ class RuntimeLifecycleTests(unittest.TestCase):
                      patch.object(swarm.log, "info") as mock_info:
                     swarm.reset_process_history()
 
-                    # Only active cooldown record should be logged as preserved provider cooldown
+                    # Only active provider cooldown record is logged as preserved provider cooldown
                     mock_info.assert_called_once_with(
                         "⏸️ Preserving '%s' provider cooldown across restart (retry after %s).",
                         "antigravity",

@@ -877,25 +877,12 @@ def reset_process_history(preserve_running: bool = False):
                 record.pid,
                 restart_kind,
             )
-        elif tracker._is_active_provider_cooldown(record):
+        else:
             log.info(
                 "⏸️ Preserving '%s' provider cooldown across restart "
                 "(retry after %s).",
                 record.ai_name,
                 record.retry_after,
-            )
-        elif record.status == ProcessStatus.FAILED:
-            log.info(
-                "⚠️ Preserving failed process %s %s across restart.",
-                record.role,
-                record.task_ref,
-            )
-        else:
-            log.info(
-                " Preserving process %s %s [%s] across restart.",
-                record.role,
-                record.task_ref,
-                record.status,
             )
     tracker._history = surviving
     if surviving:
