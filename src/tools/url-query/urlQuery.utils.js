@@ -96,6 +96,15 @@ export function buildUrlOrQuery({
   return buildQueryString(params, hasLeadingQuestionMark);
 }
 
+const RECOGNIZED_SCHEMES = new Set([
+  'http:',
+  'https:',
+  'ftp:',
+  'file:',
+  'ws:',
+  'wss:',
+]);
+
 /**
  * Parses an absolute URL or bare query string into component parts and query parameters.
  *
@@ -120,38 +129,44 @@ export function parseUrlOrQuery(input) {
   // Attempt to parse as an absolute URL first
   try {
     const url = new URL(trimmed);
-    const paramsList = [];
-    let idCounter = 0;
+    const isSpecialScheme = RECOGNIZED_SCHEMES.has(url.protocol);
+    const hasAuthoritySlash =
+      /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(trimmed) || trimmed.startsWith('//');
 
-    for (const [key, value] of url.searchParams.entries()) {
-      paramsList.push({
-        id: `param-${idCounter++}`,
-        key,
-        value,
-      });
+    if (isSpecialScheme || hasAuthoritySlash) {
+      const paramsList = [];
+      let idCounter = 0;
+
+      for (const [key, value] of url.searchParams.entries()) {
+        paramsList.push({
+          id: `param-${idCounter++}`,
+          key,
+          value,
+        });
+      }
+
+      const params = detectDuplicates(paramsList);
+      const normalizedUrl = url.toString();
+
+      return {
+        isValid: true,
+        isFullUrl: true,
+        urlParts: {
+          origin: url.origin,
+          pathname: url.pathname,
+          hash: url.hash,
+          protocol: url.protocol,
+          host: url.host,
+          hostname: url.hostname,
+          port: url.port,
+          search: url.search,
+        },
+        hasLeadingQuestionMark: true,
+        params,
+        normalizedUrl,
+        error: null,
+      };
     }
-
-    const params = detectDuplicates(paramsList);
-    const normalizedUrl = url.toString();
-
-    return {
-      isValid: true,
-      isFullUrl: true,
-      urlParts: {
-        origin: url.origin,
-        pathname: url.pathname,
-        hash: url.hash,
-        protocol: url.protocol,
-        host: url.host,
-        hostname: url.hostname,
-        port: url.port,
-        search: url.search,
-      },
-      hasLeadingQuestionMark: true,
-      params,
-      normalizedUrl,
-      error: null,
-    };
   } catch (err) {
     // If input starts with a scheme prefix or ://, it was intended as a full URL but is malformed
     const hasSchemePrefix =
@@ -168,44 +183,44 @@ export function parseUrlOrQuery(input) {
         error: `Invalid URL format: ${err.message}`,
       };
     }
+  }
 
-    // Treat as bare query string
-    try {
-      const hasLeadingQuestionMark = trimmed.startsWith('?');
-      const searchParams = new URLSearchParams(trimmed);
-      const paramsList = [];
-      let idCounter = 0;
+  // Treat as bare query string
+  try {
+    const hasLeadingQuestionMark = trimmed.startsWith('?');
+    const searchParams = new URLSearchParams(trimmed);
+    const paramsList = [];
+    let idCounter = 0;
 
-      for (const [key, value] of searchParams.entries()) {
-        paramsList.push({
-          id: `param-${idCounter++}`,
-          key,
-          value,
-        });
-      }
-
-      const params = detectDuplicates(paramsList);
-      const normalizedUrl = buildQueryString(params, hasLeadingQuestionMark);
-
-      return {
-        isValid: true,
-        isFullUrl: false,
-        urlParts: null,
-        hasLeadingQuestionMark,
-        params,
-        normalizedUrl,
-        error: null,
-      };
-    } catch (parseErr) {
-      return {
-        isValid: false,
-        isFullUrl: false,
-        urlParts: null,
-        hasLeadingQuestionMark: false,
-        params: [],
-        normalizedUrl: '',
-        error: `Invalid query string: ${parseErr.message}`,
-      };
+    for (const [key, value] of searchParams.entries()) {
+      paramsList.push({
+        id: `param-${idCounter++}`,
+        key,
+        value,
+      });
     }
+
+    const params = detectDuplicates(paramsList);
+    const normalizedUrl = buildQueryString(params, hasLeadingQuestionMark);
+
+    return {
+      isValid: true,
+      isFullUrl: false,
+      urlParts: null,
+      hasLeadingQuestionMark,
+      params,
+      normalizedUrl,
+      error: null,
+    };
+  } catch (parseErr) {
+    return {
+      isValid: false,
+      isFullUrl: false,
+      urlParts: null,
+      hasLeadingQuestionMark: false,
+      params: [],
+      normalizedUrl: '',
+      error: `Invalid query string: ${parseErr.message}`,
+    };
   }
 }
