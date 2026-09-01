@@ -176,9 +176,35 @@ DEFAULT_ROTATION = {
 
 # Default model and reasoning configurations for each AI agent
 DEFAULT_AI_CONFIG: dict[str, dict[str, str]] = {
-    "codex":       {"model": "5.6 terra",        "reasoning": "높음"},
+    "codex":       {"model": "gpt-5.6-terra",    "reasoning": "high"},
     "antigravity": {"model": "gemini 3.6 flash", "reasoning": "high"},
-    "claude":      {"model": "sonnet 5",         "reasoning": "높음"},
+    "claude":      {"model": "sonnet 5",         "reasoning": "high"},
+}
+
+# Available models per AI agent. Used to validate model names before dispatch.
+# Update this when provider model availability changes.
+AVAILABLE_MODELS: dict[str, list[str]] = {
+    "antigravity": [
+        "gemini-3.7-flash-high", "gemini-3.7-flash-medium", "gemini-3.7-flash-low",
+        "gemini-3.6-flash-high", "gemini-3.6-flash-medium", "gemini-3.6-flash-low",
+        "gemini-3.1-pro-high", "gemini-3.1-pro-low",
+        "claude-sonnet-4-6", "claude-opus-4-6-thinking",
+        "gpt-oss-120b-medium",
+    ],
+    "claude": [
+        "opus 5", "sonnet 5", "haiku 4.5",
+        "opus 4.8", "opus 4.7", "opus 4.6", "sonnet 4.6",
+    ],
+    "codex": [
+        "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
+        "gpt-5.5", "gpt-5.4", "gpt-5.4-mini",
+    ],
+}
+
+AVAILABLE_EFFORTS: dict[str, list[str]] = {
+    "antigravity": [],  # effort is embedded in model name for agy
+    "claude": ["low", "medium", "high", "xhigh", "max", "ultracode"],
+    "codex": ["low", "medium", "high", "extra high", "max", "ultra"],
 }
 
 # Role-specific reasoning overrides (lower = fewer thinking tokens).
@@ -1758,21 +1784,41 @@ _AGY_EFFORT_LABEL: dict[str, str] = {
 }
 
 def _resolve_agy_model(model: str, reasoning: str) -> str:
-    """Build the full agy model string like 'Gemini 3.6 Flash (High)'."""
+    """Build the full agy model string like 'Gemini 3.6 Flash (High)'.
+
+    Supports model families: gemini 3.7 flash, gemini 3.6 flash, gemini 3.1 pro.
+    """
     effort = _AGY_EFFORT_LABEL.get(reasoning.lower().strip(), "High")
-    # All AGENTS.md antigravity models map to Gemini 3.6 Flash
-    return f"Gemini 3.6 Flash ({effort})"
+    model_lower = model.lower().strip()
+
+    if "3.7" in model_lower:
+        return f"Gemini 3.7 Flash ({effort})"
+    elif "3.1" in model_lower or "pro" in model_lower:
+        # 3.1 Pro only supports High and Low
+        if effort == "Medium":
+            effort = "Low"
+        return f"Gemini 3.1 Pro ({effort})"
+    else:
+        # Default: Gemini 3.6 Flash
+        return f"Gemini 3.6 Flash ({effort})"
 
 _CLAUDE_MODEL_MAP: dict[str, str] = {
-    "sonnet 5":     "claude-sonnet-5",
+    # Current available models
     "opus 5":       "claude-opus-5",
-    "fable 5":      "claude-fable-5",
-    "haiku 4.5":    "claude-haiku-4-5-20251001",
+    "sonnet 5":     "claude-sonnet-5",
+    "haiku 4.5":    "claude-haiku-4-5",
+    "opus 4.8":     "claude-opus-4-8",
+    "opus 4.7":     "claude-opus-4-7",
+    "opus 4.6":     "claude-opus-4-6",
+    "sonnet 4.6":   "claude-sonnet-4-6",
     # Already fully-qualified names pass through.
-    "claude-sonnet-5":             "claude-sonnet-5",
-    "claude-opus-5":               "claude-opus-5",
-    "claude-fable-5":              "claude-fable-5",
-    "claude-haiku-4-5-20251001":   "claude-haiku-4-5-20251001",
+    "claude-opus-5":       "claude-opus-5",
+    "claude-sonnet-5":     "claude-sonnet-5",
+    "claude-haiku-4-5":    "claude-haiku-4-5",
+    "claude-opus-4-8":     "claude-opus-4-8",
+    "claude-opus-4-7":     "claude-opus-4-7",
+    "claude-opus-4-6":     "claude-opus-4-6",
+    "claude-sonnet-4-6":   "claude-sonnet-4-6",
 }
 
 # Claude CLI effort levels: low, medium, high, xhigh, max.
@@ -1790,6 +1836,14 @@ _CLAUDE_EFFORT_MAP: dict[str, str] = {
 # the bare `gpt-5.6` ID.  Keep the generic aliases on the configured default
 # variant so a valid Issue/PR tag cannot be turned into a deterministic 400.
 _CODEX_MODEL_MAP: dict[str, str] = {
+    # Current available models
+    "gpt-5.6-sol":    "gpt-5.6-sol",
+    "gpt-5.6-terra":  "gpt-5.6-terra",
+    "gpt-5.6-luna":   "gpt-5.6-luna",
+    "gpt-5.5":        "gpt-5.5",
+    "gpt-5.4":        "gpt-5.4",
+    "gpt-5.4-mini":   "gpt-5.4-mini",
+    # Human-friendly aliases from AGENTS.md
     "5.6 (sol, terra, luna)": "gpt-5.6-terra",
     "5.6":                    "gpt-5.6-terra",
     "5.6 (sol)":              "gpt-5.6-sol",
@@ -1798,10 +1852,64 @@ _CODEX_MODEL_MAP: dict[str, str] = {
     "5.6 sol":                "gpt-5.6-sol",
     "5.6 terra":              "gpt-5.6-terra",
     "5.6 luna":               "gpt-5.6-luna",
-    "5.5":                    "gpt-5.6-terra",
-    "5.4":                    "gpt-5.6-terra",
-    "5.4 mini":               "gpt-5.6-terra",
+    "5.5":                    "gpt-5.5",
+    "5.4":                    "gpt-5.4",
+    "5.4 mini":               "gpt-5.4-mini",
 }
+
+
+def validate_model_availability(
+    ai_name: str,
+    model: str,
+    reasoning: str,
+) -> tuple[str, str]:
+    """Validate model+reasoning against AVAILABLE_MODELS and return corrected values.
+
+    When the specified model is not in the available list for the agent, falls
+    back to the agent's default from DEFAULT_AI_CONFIG and logs a warning.
+    Returns (model, reasoning) — possibly corrected.
+    """
+    ai = ai_name.lower().strip()
+    available = AVAILABLE_MODELS.get(ai)
+    if available is None:
+        return model, reasoning
+
+    model_lower = model.lower().strip()
+
+    # For antigravity, the resolved model name embeds effort — check the
+    # resolved form rather than raw AGENTS.md human names.
+    if ai == "antigravity":
+        resolved = _resolve_agy_model(model, reasoning)
+        # Build the dash-separated key that AVAILABLE_MODELS uses:
+        # "Gemini 3.6 Flash (High)" → "gemini-3.6-flash-high"
+        resolved_key = resolved.lower().replace(" ", "-").replace("(", "").replace(")", "")
+        if resolved_key in available:
+            return model, reasoning
+    else:
+        # For claude/codex, check if the model name (human-friendly or CLI ID)
+        # is in the available list.
+        if model_lower in [m.lower() for m in available]:
+            return model, reasoning
+        # Also check if it resolves through the model maps.
+        if ai == "claude":
+            resolved = _CLAUDE_MODEL_MAP.get(model_lower)
+            if resolved and resolved.lower() in [m.lower().replace(" ", "-") for m in available]:
+                return model, reasoning
+        elif ai == "codex":
+            resolved = _CODEX_MODEL_MAP.get(model_lower)
+            if resolved and resolved.lower() in [m.lower() for m in available]:
+                return model, reasoning
+
+    # Model not found — fall back to default.
+    cfg = DEFAULT_AI_CONFIG.get(ai, {})
+    default_model = cfg.get("model", model)
+    default_reasoning = cfg.get("reasoning", reasoning)
+    log.warning(
+        "Model '%s' (reasoning=%s) is not available for %s; "
+        "falling back to default '%s' (reasoning=%s).",
+        model, reasoning, ai_name, default_model, default_reasoning,
+    )
+    return default_model, default_reasoning
 
 
 def build_ai_argv(ai_name: str, model: str, reasoning: str,
@@ -1815,6 +1923,9 @@ def build_ai_argv(ai_name: str, model: str, reasoning: str,
         --dangerously-skip-permissions -p <prompt>
       claude -p --model <model> --effort <level> --dangerously-skip-permissions <prompt>
     """
+    # Validate model availability before building the command.
+    model, reasoning = validate_model_availability(ai_name, model, reasoning)
+
     prompt_text = prompt_file.read_text(encoding="utf-8")
 
     if ai_name == "codex":

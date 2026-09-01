@@ -388,19 +388,20 @@ class AiArgvTests(unittest.TestCase):
 
         self.assertEqual("gpt-5.6-sol", argv[argv.index("-m") + 1])
 
-    def test_codex_does_not_silently_replace_unknown_model(self):
+    def test_invalid_model_falls_back_to_default(self):
         argv = swarm.build_ai_argv(
             "codex", "custom-provider-model", "높음", self.prompt_file, "/repo",
         )
 
-        self.assertEqual("custom-provider-model", argv[argv.index("-m") + 1])
+        # Should fall back to codex default 'gpt-5.6-terra'
+        self.assertEqual("gpt-5.6-terra", argv[argv.index("-m") + 1])
 
-    def test_antigravity_embeds_effort_in_resolved_model(self):
+    def test_antigravity_resolves_model_family_and_effort(self):
         argv = swarm.build_ai_argv(
-            "antigravity", "gemini 3.1 pro", "높음", self.prompt_file, "/repo",
+            "antigravity", "gemini 3.1 pro", "high", self.prompt_file, "/repo",
         )
 
-        self.assertEqual("Gemini 3.6 Flash (High)", argv[argv.index("--model") + 1])
+        self.assertEqual("Gemini 3.1 Pro (High)", argv[argv.index("--model") + 1])
         self.assertNotIn("--effort", argv)
 
     def test_claude_resolves_model_and_effort(self):
@@ -1037,7 +1038,7 @@ class PollingLifecycleTests(unittest.TestCase):
         maintainer_arg = dispatch_maintainer.call_args[0][2]
         self.assertEqual("claude", maintainer_arg.ai)
         self.assertEqual("sonnet 5", maintainer_arg.model)
-        self.assertEqual("높음", maintainer_arg.reasoning)
+        self.assertEqual("high", maintainer_arg.reasoning)
 
     def test_select_maintainer_excludes_reviewer_and_worker(self):
         reviewer = swarm.RoleAssignment("antigravity", "gemini 3.6 flash", "high")
