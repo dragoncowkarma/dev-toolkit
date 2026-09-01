@@ -254,6 +254,88 @@ export function decodeModelYear(code) {
 }
 
 /**
+ * Resolves the North American model-year cycle using the VIN position-7 heuristic.
+ *
+ * Per common North American VIN convention, position 7 disambiguates the repeating
+ * 30-year position-10 model-year cycle: a letter at position 7 indicates the newer
+ * cycle (the second, 2010-and-later candidate) while a digit at position 7 indicates
+ * the older cycle (the first, pre-2010 candidate). The heuristic only narrows VINs
+ * whose WMI resolves to North America; it never resolves a single year from
+ * insufficient data, so every other input keeps both cycle candidates.
+ * @param {string} normalizedVin - Normalized 17-character VIN.
+ * @param {{ isNorthAmerica: boolean }} wmiInfo - Decoded WMI context from decodeWmi().
+ * @returns {{
+ *   candidateModelYears: number[]|null,
+ *   resolvedModelYear: number|null,
+ *   heuristicApplied: boolean,
+ *   explanation: string,
+ * }} Model-year resolution metadata for the UI and tests.
+ */
+export function resolveModelYear(normalizedVin, wmiInfo) {
+  if (typeof normalizedVin !== 'string' || normalizedVin.length !== 17) {
+    return {
+      candidateModelYears: null,
+      resolvedModelYear: null,
+      heuristicApplied: false,
+      explanation: 'A normalized 17-character VIN is required to resolve a model year.',
+    };
+  }
+
+  const modelYearCode = normalizedVin[9];
+  const candidateModelYears = decodeModelYear(modelYearCode);
+
+  if (!candidateModelYears) {
+    return {
+      candidateModelYears: null,
+      resolvedModelYear: null,
+      heuristicApplied: false,
+      explanation: `Position 10 code '${modelYearCode}' is not a recognized model-year code,` +
+        ' so no candidate years are available.',
+    };
+  }
+
+  const isNorthAmerica = Boolean(wmiInfo && wmiInfo.isNorthAmerica);
+  if (!isNorthAmerica) {
+    return {
+      candidateModelYears,
+      resolvedModelYear: null,
+      heuristicApplied: false,
+      explanation: 'The position-7 heuristic only applies to North American VINs;' +
+        ` both ${candidateModelYears.join(' and ')} remain equally possible.`,
+    };
+  }
+
+  const positionSeven = normalizedVin[6];
+  const isPositionSevenAlpha = /^[A-Z]$/.test(positionSeven);
+  const isPositionSevenDigit = /^[0-9]$/.test(positionSeven);
+
+  if (!isPositionSevenAlpha && !isPositionSevenDigit) {
+    return {
+      candidateModelYears,
+      resolvedModelYear: null,
+      heuristicApplied: false,
+      explanation: `Position 7 character '${positionSeven}' could not be classified as a` +
+        ' letter or digit, so the model-year cycle cannot be narrowed.',
+    };
+  }
+
+  const [olderCycleYear, newerCycleYear] = candidateModelYears;
+  const resolvedModelYear = isPositionSevenAlpha ? newerCycleYear : olderCycleYear;
+  const explanation = isPositionSevenAlpha
+    ? `Position 7 ('${positionSeven}') is a letter, indicating the ${newerCycleYear}-and-later` +
+      ` cycle per North American convention; resolved to ${resolvedModelYear}.`
+    : `Position 7 ('${positionSeven}') is a digit, indicating the pre-2010 cycle per North` +
+      ` American convention; resolved to ${resolvedModelYear}.`;
+
+  return {
+    candidateModelYears,
+    resolvedModelYear,
+    heuristicApplied: true,
+    explanation,
+  };
+}
+
+/**
  * Validates and decodes a VIN per ISO 3779 / NHTSA check digit algorithm.
  * @param {string} input - Raw VIN input string.
  * @returns {object} Detailed validation and decoding result object.
@@ -331,6 +413,7 @@ export function validateVin(input) {
   const checkDigitResult = calculateCheckDigit(normalized);
   const modelYearCode = normalized[9];
   const candidateModelYears = decodeModelYear(modelYearCode);
+  const modelYearResolution = resolveModelYear(normalized, wmiInfo);
 
   const isCheckDigitValid = checkDigitResult.matches;
   const isNorthAmerican = wmiInfo.isNorthAmerica;
@@ -370,6 +453,7 @@ export function validateVin(input) {
     checkDigitChar: normalized[8],
     modelYearCode,
     candidateModelYears,
+    modelYearResolution,
     plantCode: normalized[10],
     vis: normalized.slice(11),
   };
