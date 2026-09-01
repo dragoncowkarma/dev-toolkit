@@ -218,8 +218,20 @@ describe('resolveLocalRef', () => {
     expect(resolveLocalRef(doc, '#/components/schemas/Missing')).toBe(false);
   });
 
-  it('returns false for non-local reference', () => {
-    expect(resolveLocalRef(doc, 'https://example.com/schema.json')).toBe(false);
+  it('returns false for inherited prototype properties like toString', () => {
+    expect(resolveLocalRef(doc, '#/components/schemas/toString')).toBe(false);
+    expect(resolveLocalRef(doc, '#/components/schemas/valueOf')).toBe(false);
+  });
+
+  it('returns true for an own property named toString', () => {
+    const docWithToString = {
+      components: {
+        schemas: {
+          toString: { type: 'string' },
+        },
+      },
+    };
+    expect(resolveLocalRef(docWithToString, '#/components/schemas/toString')).toBe(true);
   });
 });
 
@@ -277,5 +289,24 @@ describe('inspectOpenApi', () => {
     expect(result.errors).toHaveLength(0);
     expect(result.normalizedJson).toBeDefined();
     expect(result.summary.title).toBe('JSON 3.0 API');
+  });
+
+  it('handles cyclic YAML aliases safely without throwing', () => {
+    const cyclicYaml = `
+openapi: 3.0.3
+info:
+  title: test
+  version: 1
+paths: {}
+components:
+  schemas:
+    Loop: &loop
+      self: *loop
+`;
+    expect(() => inspectOpenApi(cyclicYaml)).not.toThrow();
+    const result = inspectOpenApi(cyclicYaml);
+    expect(result.valid).toBe(false);
+    expect(result.parseError).toBeDefined();
+    expect(result.summary).toBeNull();
   });
 });

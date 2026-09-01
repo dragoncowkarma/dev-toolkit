@@ -65,7 +65,11 @@ export function resolveLocalRef(doc, refStr) {
   let current = doc;
   for (const part of parts) {
     const unescaped = part.replace(/~1/g, '/').replace(/~0/g, '~');
-    if (current && typeof current === 'object' && unescaped in current) {
+    if (
+      current &&
+      typeof current === 'object' &&
+      Object.prototype.hasOwnProperty.call(current, unescaped)
+    ) {
       current = current[unescaped];
     } else {
       return false;
@@ -81,13 +85,16 @@ export function resolveLocalRef(doc, refStr) {
  * @param {*} current - Current value being inspected.
  * @param {string} currentPath - Line-independent field path.
  * @param {Array<{path: string, message: string}>} warnings - Accumulated warnings.
+ * @param {WeakSet} [visited] - Visited objects to prevent infinite recursion on cyclic graphs.
  */
-function validateRefs(doc, current, currentPath, warnings) {
+function validateRefs(doc, current, currentPath, warnings, visited = new WeakSet()) {
   if (!current || typeof current !== 'object') return;
+  if (visited.has(current)) return;
+  visited.add(current);
 
   if (Array.isArray(current)) {
     current.forEach((item, index) => {
-      validateRefs(doc, item, `${currentPath}[${index}]`, warnings);
+      validateRefs(doc, item, `${currentPath}[${index}]`, warnings, visited);
     });
     return;
   }
@@ -103,7 +110,7 @@ function validateRefs(doc, current, currentPath, warnings) {
 
   Object.entries(current).forEach(([key, value]) => {
     if (key !== '$ref') {
-      validateRefs(doc, value, currentPath ? `${currentPath}.${key}` : key, warnings);
+      validateRefs(doc, value, currentPath ? `${currentPath}.${key}` : key, warnings, visited);
     }
   });
 }
@@ -390,31 +397,29 @@ export function inspectOpenApi(rawInput) {
     };
   }
 
-  let doc;
   try {
-    doc = parseOpenApi(rawInput);
+    const doc = parseOpenApi(rawInput);
+    const { errors, warnings } = validateOpenApi(doc);
+    const valid = errors.length === 0;
+    const summary = summarizeOpenApi(doc);
+    const normalizedJson = JSON.stringify(doc, null, 2);
+
+    return {
+      valid,
+      parseError: null,
+      errors,
+      warnings,
+      summary,
+      normalizedJson,
+    };
   } catch (err) {
     return {
       valid: false,
-      parseError: err.message || 'Failed to parse OpenAPI document.',
+      parseError: err.message || 'Failed to inspect OpenAPI document.',
       errors: [],
       warnings: [],
       summary: null,
       normalizedJson: null,
     };
   }
-
-  const { errors, warnings } = validateOpenApi(doc);
-  const valid = errors.length === 0;
-  const summary = summarizeOpenApi(doc);
-  const normalizedJson = JSON.stringify(doc, null, 2);
-
-  return {
-    valid,
-    parseError: null,
-    errors,
-    warnings,
-    summary,
-    normalizedJson,
-  };
 }
