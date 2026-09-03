@@ -87,6 +87,18 @@ describe('parseRobotsTxt grouping', () => {
       { type: 'allow', value: '/b', line: 4 },
     ]);
   });
+
+  it('deduplicates a token repeated within one consecutive User-agent run', () => {
+    const result = parseRobotsTxt([
+      'User-agent: Foo',
+      'User-agent: foo',
+      'Disallow: /a',
+    ].join('\n'));
+
+    expect(result.groups).toHaveLength(1);
+    expect(result.groups[0].userAgent).toBe('foo');
+    expect(result.groups[0].rules).toEqual([{ type: 'disallow', value: '/a', line: 3 }]);
+  });
 });
 
 describe('parseRobotsTxt sitemaps', () => {
