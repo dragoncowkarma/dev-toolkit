@@ -1,0 +1,159 @@
+.base36-tool {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+}
+
+.base36-tool__toolbar,
+.base36-tool__output-label-row,
+.base36-tool__actions {
+  display: flex;
+  align-items: center;
+}
+
+.base36-tool__toolbar {
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.base36-tool__mode-toggle {
+  display: inline-flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.base36-tool__mode-button,
+.base36-tool__button {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  transition: all var(--transition);
+}
+
+.base36-tool__mode-button {
+  border-color: transparent;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding: 0.5rem 1.25rem;
+}
+
+.base36-tool__mode-button.is-active {
+  background: var(--color-primary);
+  color: var(--color-text);
+}
+
+.base36-tool__actions {
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.base36-tool__button {
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 0.5rem 1rem;
+}
+
+.base36-tool__mode-button:hover:not(.is-active),
+.base36-tool__button:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.base36-tool__button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.base36-tool__hint,
+.base36-tool__label {
+  color: var(--color-text-muted);
+}
+
+.base36-tool__hint {
+  font-size: 0.9rem;
+}
+
+.base36-tool__panels {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+}
+
+.base36-tool__panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.base36-tool__label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.base36-tool__output-label-row {
+  justify-content: space-between;
+}
+
+.base36-tool__copy-button {
+  padding: 0.3rem 0.75rem;
+}
+
+.base36-tool__textarea {
+  min-height: 220px;
+  resize: vertical;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  padding: 1rem;
+  transition: border-color var(--transition);
+}
+
+.base36-tool__textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.base36-tool__textarea[readonly] {
+  background: var(--color-bg);
+  cursor: text;
+}
+
+.base36-tool__textarea[aria-invalid='true'] {
+  border-color: var(--color-error);
+}
+
+.base36-tool__error {
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+  font-size: 0.875rem;
+  padding: 0.75rem 1rem;
+}
+
+@media (min-width: 768px) {
+  .base36-tool {
+    padding: 0 2rem 3rem;
+  }
+
+  .base36-tool__panels {
+    grid-template-columns: 1fr 1fr;
+  }
+}
