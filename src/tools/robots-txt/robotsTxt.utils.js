@@ -137,8 +137,9 @@ export function parseRobotsTxt(text) {
         // group already gathered rules: this starts a brand-new group.
         currentAgents = [token];
         currentGroupHasRules = false;
-      } else {
+      } else if (!currentAgents.includes(token)) {
         // Still inside a consecutive run of User-agent lines: they all share one rule set.
+        // Skip tokens already collected so a repeated token doesn't get the rule attached twice.
         currentAgents.push(token);
       }
       if (!groupByToken.has(token)) {
