@@ -1,0 +1,174 @@
+.nanoid-cuid-tool {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.nanoid-cuid-toolbar,
+.nanoid-cuid-panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1rem;
+}
+
+.nanoid-cuid-toolbar,
+.nanoid-cuid-settings,
+.nanoid-cuid-format {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.75rem;
+}
+
+.nanoid-cuid-format {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  align-items: center;
+}
+
+.nanoid-cuid-format legend,
+.nanoid-cuid-panel > label,
+.nanoid-cuid-label-row > label {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.nanoid-cuid-format label,
+.nanoid-cuid-settings label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  color: var(--color-text);
+  font-size: 0.875rem;
+}
+
+.nanoid-cuid-format label {
+  flex-direction: row;
+  align-items: center;
+}
+
+.nanoid-cuid-settings {
+  flex: 1;
+}
+
+.nanoid-cuid-settings input,
+.nanoid-cuid-panel input,
+.nanoid-cuid-panel textarea {
+  box-sizing: border-box;
+  width: 100%;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  font: inherit;
+  padding: 0.6rem 0.75rem;
+}
+
+.nanoid-cuid-settings input[type='number'] {
+  width: 6rem;
+}
+
+.nanoid-cuid-settings label:has(#nanoid-alphabet) {
+  flex: 1 1 15rem;
+}
+
+.nanoid-cuid-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.nanoid-cuid-panel textarea {
+  min-height: 9rem;
+  resize: vertical;
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+}
+
+.nanoid-cuid-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.nanoid-cuid-button {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  padding: 0.55rem 0.9rem;
+}
+
+.nanoid-cuid-button.primary {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.nanoid-cuid-button:hover:not(:disabled),
+.nanoid-cuid-settings input:focus,
+.nanoid-cuid-panel input:focus,
+.nanoid-cuid-panel textarea:focus {
+  border-color: var(--color-primary);
+}
+
+.nanoid-cuid-button:focus-visible,
+.nanoid-cuid-settings input:focus,
+.nanoid-cuid-panel input:focus,
+.nanoid-cuid-panel textarea:focus {
+  outline: 2px solid var(--color-primary-light);
+  outline-offset: 2px;
+}
+
+.nanoid-cuid-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.nanoid-cuid-inspection {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: 0.75rem;
+  margin: 0.25rem 0 0;
+}
+
+.nanoid-cuid-inspection div {
+  border-left: 2px solid var(--color-primary);
+  padding-left: 0.6rem;
+}
+
+.nanoid-cuid-inspection dt {
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+}
+
+.nanoid-cuid-inspection dd {
+  margin: 0.15rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+.nanoid-cuid-error {
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  color: var(--color-error-light);
+  padding: 0.75rem 1rem;
+}
+
+@media (min-width: 768px) {
+  .nanoid-cuid-tool {
+    padding: 0 2rem 3rem;
+  }
+}
