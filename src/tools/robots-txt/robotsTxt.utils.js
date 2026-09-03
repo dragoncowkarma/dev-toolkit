@@ -259,13 +259,18 @@ function selectGroup(groups, userAgent) {
  *
  * Precedence (documented here since the RFC leaves exact tie-break wording implementation
  * defined beyond "the most specific rule wins"): among rules in the selected group whose
- * pattern matches the path, the rule whose path *value* has the greatest character length wins
- * (wildcards and the `$` anchor count as their literal characters, matching how most production
- * crawlers - e.g. Google's documented algorithm - implement "most specific"). On an exact
- * length tie between a matching `Allow` and a matching `Disallow`, `Allow` wins, mirroring
- * Google's and Bing's documented tie-break and the least-surprising outcome for an author who
- * wrote both rules. An empty `Disallow:` (and, symmetrically, an empty `Allow:`) value carries
- * no path and is never a candidate, per the "empty value means no restriction" note in RFC 9309.
+ * pattern matches the path, the rule whose *percent-normalized* path value (see
+ * `normalizePercentEncoding`) has the greatest character length wins (wildcards and the `$`
+ * anchor count as their literal characters, matching how most production crawlers - e.g.
+ * Google's documented algorithm - implement "most specific"). Normalizing before measuring
+ * ensures two rules that match the same octets rank identically regardless of how each author
+ * spelled a percent-escape (e.g. `Disallow: /%61` and `Allow: /a` are equally specific, per RFC
+ * 9309's deference to RFC 3986 §6.2.2.2 octet equivalence), rather than letting a longer raw
+ * `%XX` escape spuriously outrank an equivalent literal. On an exact length tie between a
+ * matching `Allow` and a matching `Disallow`, `Allow` wins, mirroring Google's and Bing's
+ * documented tie-break and the least-surprising outcome for an author who wrote both rules. An
+ * empty `Disallow:` (and, symmetrically, an empty `Allow:`) value carries no path and is never a
+ * candidate, per the "empty value means no restriction" note in RFC 9309.
  *
  * The request path is percent-normalized before matching (see `normalizePercentEncoding`), so a
  * percent-escaped octet equivalent to a rule pattern's literal character (e.g.
@@ -298,21 +303,22 @@ export function evaluatePath(groups, options = {}) {
 
   const candidates = group.rules
     .filter((rule) => (rule.type === 'allow' || rule.type === 'disallow') && rule.value !== '')
-    .filter((rule) => compilePathPattern(rule.value).test(path));
+    .filter((rule) => compilePathPattern(rule.value).test(path))
+    .map((rule) => ({ rule, specificity: normalizePercentEncoding(rule.value).length }));
 
   if (candidates.length === 0) {
     return { verdict: 'ALLOWED', matchedRule: null, group: group.userAgent };
   }
 
-  const winner = candidates.reduce((best, rule) => {
-    if (!best) return rule;
-    if (rule.value.length > best.value.length) return rule;
-    const isTie = rule.value.length === best.value.length;
-    if (isTie && rule.type === 'allow' && best.type === 'disallow') {
-      return rule;
+  const winner = candidates.reduce((best, candidate) => {
+    if (!best) return candidate;
+    if (candidate.specificity > best.specificity) return candidate;
+    const isTie = candidate.specificity === best.specificity;
+    if (isTie && candidate.rule.type === 'allow' && best.rule.type === 'disallow') {
+      return candidate;
     }
     return best;
-  }, null);
+  }, null).rule;
 
   return {
     verdict: winner.type === 'allow' ? 'ALLOWED' : 'DISALLOWED',

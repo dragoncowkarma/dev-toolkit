@@ -314,6 +314,21 @@ describe('evaluatePath percent-encoding normalization', () => {
     expect(result.matchedRule).toEqual({ type: 'disallow', value: '/catalog/item', line: 2 });
   });
 
+  it('ranks precedence by normalized octets, not raw source-text length', () => {
+    const { groups } = parseRobotsTxt([
+      'User-agent: *',
+      'Disallow: /%61',
+      'Allow: /a',
+    ].join('\n'));
+
+    // "/%61" and "/a" both normalize to the same one-character path "/a", so they are equally
+    // specific; the Allow/Disallow tie-break must then pick Allow. Ranking by raw value length
+    // (4 vs. 2) would wrongly favor the longer-spelled Disallow instead.
+    const result = evaluatePath(groups, { userAgent: '*', path: '/a' });
+    expect(result.verdict).toBe('ALLOWED');
+    expect(result.matchedRule).toEqual({ type: 'allow', value: '/a', line: 3 });
+  });
+
   it('does not decode a reserved escape such as %2F into a literal path separator', () => {
     const { groups } = parseRobotsTxt([
       'User-agent: *',
