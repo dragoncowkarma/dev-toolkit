@@ -419,6 +419,42 @@ class ModelAndEffortValidationTests(unittest.TestCase):
         self.prompt_file = temp_dir / "prompt.md"
         self.prompt_file.write_text("Do the task.", encoding="utf-8")
 
+    def test_antigravity_resolves_advertised_gemini_3_7_flash(self):
+        model, effort = swarm.validate_model_availability(
+            "antigravity", "gemini 3.7 flash", "high",
+        )
+        self.assertEqual("gemini 3.7 flash", model)
+        self.assertEqual("high", effort)
+
+        argv = swarm.build_ai_argv(
+            "antigravity", "gemini 3.7 flash", "high", self.prompt_file, "/repo",
+        )
+        self.assertEqual("Gemini 3.7 Flash (High)", argv[argv.index("--model") + 1])
+
+    def test_antigravity_resolves_advertised_gemini_3_6_flash(self):
+        model, effort = swarm.validate_model_availability(
+            "antigravity", "gemini 3.6 flash", "high",
+        )
+        self.assertEqual("gemini 3.6 flash", model)
+        self.assertEqual("high", effort)
+
+        argv = swarm.build_ai_argv(
+            "antigravity", "gemini 3.6 flash", "high", self.prompt_file, "/repo",
+        )
+        self.assertEqual("Gemini 3.6 Flash (High)", argv[argv.index("--model") + 1])
+
+    def test_antigravity_resolves_advertised_gemini_3_1_pro(self):
+        model, effort = swarm.validate_model_availability(
+            "antigravity", "gemini 3.1 pro", "high",
+        )
+        self.assertEqual("gemini 3.1 pro", model)
+        self.assertEqual("high", effort)
+
+        argv = swarm.build_ai_argv(
+            "antigravity", "gemini 3.1 pro", "high", self.prompt_file, "/repo",
+        )
+        self.assertEqual("Gemini 3.1 Pro (High)", argv[argv.index("--model") + 1])
+
     def test_antigravity_resolves_advertised_claude_sonnet_4_6(self):
         model, effort = swarm.validate_model_availability(
             "antigravity", "claude-sonnet-4-6", "medium",
