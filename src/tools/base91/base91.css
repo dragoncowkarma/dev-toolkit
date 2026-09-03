@@ -1,0 +1,23 @@
+.base91-tool { max-width: 1000px; margin: 0 auto; padding: 0 1.25rem 2rem; display: flex; flex-direction: column; gap: 1rem; }
+.base91-tool .base91-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; }
+.base91-tool .mode-toggle, .base91-tool .btn { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); }
+.base91-tool .mode-toggle { display: inline-flex; padding: .25rem; gap: .25rem; }
+.base91-tool .mode-btn { border: 0; background: transparent; color: var(--color-text-muted); font: 600 .9rem inherit; padding: .5rem 1.25rem; border-radius: calc(var(--radius) - 4px); cursor: pointer; }
+.base91-tool .mode-btn.active { background: var(--color-primary); color: #fff; }
+.base91-tool .toolbar-actions { display: flex; gap: .5rem; flex-wrap: wrap; }
+.base91-tool .btn { display: inline-flex; align-items: center; gap: .4rem; color: var(--color-text); font: 500 .85rem inherit; padding: .5rem 1rem; cursor: pointer; }
+.base91-tool .btn:hover:not(:disabled) { border-color: var(--color-primary); color: var(--color-primary-light); }
+.base91-tool .btn:disabled { opacity: .5; cursor: not-allowed; }
+.base91-tool .file-btn { position: relative; overflow: hidden; }
+.base91-tool .file-btn:focus-within { outline: 2px solid var(--color-primary-light); outline-offset: 3px; }
+.base91-tool .file-input { position: absolute; inset: 0; width: 100%; opacity: 0; cursor: pointer; }
+.base91-tool .copy-btn { padding: .3rem .75rem; font-size: .8rem; }
+.base91-tool .base91-panels { display: grid; grid-template-columns: 1fr; gap: 1.5rem; }
+.base91-tool .panel { display: flex; flex-direction: column; gap: .5rem; }
+.base91-tool .panel-label { color: var(--color-text-muted); font-size: .8rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+.base91-tool .panel-label-row { display: flex; align-items: center; justify-content: space-between; }
+.base91-tool .panel-textarea { min-height: 280px; resize: vertical; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); color: var(--color-text); font-family: 'SF Mono', 'Fira Code', Consolas, monospace; font-size: .9rem; line-height: 1.5; padding: 1rem; }
+.base91-tool .panel-textarea:focus { outline: none; border-color: var(--color-primary); }
+.base91-tool .panel-textarea[readonly] { background: var(--color-bg); cursor: text; }
+.base91-tool .base91-error { background: var(--color-error-bg); border: 1px solid var(--color-error-border); color: var(--color-error-light); border-radius: var(--radius); padding: .75rem 1rem; font-size: .875rem; }
+@media (min-width: 768px) { .base91-tool { padding: 0 2rem 3rem; } .base91-tool .base91-panels { grid-template-columns: 1fr 1fr; } }
