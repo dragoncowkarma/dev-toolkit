@@ -1,0 +1,286 @@
+.openapi-tool {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.openapi-tool .openapi-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.openapi-tool .toolbar-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.openapi-tool .tool-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--color-text);
+  margin: 0;
+}
+
+.openapi-tool .tool-description {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.openapi-tool .toolbar-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.openapi-tool .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 0.5rem 0.85rem;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.openapi-tool .btn:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.openapi-tool .btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.openapi-tool .openapi-panels {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+}
+
+.openapi-tool .panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.openapi-tool .panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.openapi-tool .panel-label {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.openapi-tool .panel-textarea {
+  min-height: 380px;
+  resize: vertical;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  padding: 1rem;
+  transition: border-color var(--transition);
+}
+
+.openapi-tool .panel-textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.openapi-tool .openapi-alert {
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  color: var(--color-error-light);
+  border-radius: var(--radius);
+  padding: 0.85rem 1rem;
+  font-size: 0.875rem;
+}
+
+.openapi-tool .alert-list {
+  margin: 0.5rem 0 0 1.25rem;
+  padding: 0;
+}
+
+.openapi-tool .openapi-warning {
+  background: rgba(234, 179, 8, 0.1);
+  border: 1px solid rgba(234, 179, 8, 0.3);
+  color: var(--color-text);
+  border-radius: var(--radius);
+  padding: 0.85rem 1rem;
+  font-size: 0.875rem;
+}
+
+.openapi-tool .summary-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.openapi-tool .summary-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.openapi-tool .api-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--color-text);
+  margin: 0;
+}
+
+.openapi-tool .meta-badges {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.25rem;
+}
+
+.openapi-tool .badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.5rem;
+  border-radius: calc(var(--radius) - 4px);
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+}
+
+.openapi-tool .badge.badge-primary {
+  background: var(--color-primary);
+  color: #fff;
+  border-color: var(--color-primary);
+}
+
+.openapi-tool .servers-list,
+.openapi-tool .schemes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  color: var(--color-text);
+}
+
+.openapi-tool .section-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.35rem;
+}
+
+.openapi-tool .operations-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.openapi-tool .op-item {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.openapi-tool .op-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.openapi-tool .method-badge {
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  font-weight: 700;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  color: #fff;
+}
+
+.openapi-tool .method-badge.get { background: #10b981; }
+.openapi-tool .method-badge.post { background: #3b82f6; }
+.openapi-tool .method-badge.put { background: #f59e0b; }
+.openapi-tool .method-badge.delete { background: #ef4444; }
+.openapi-tool .method-badge.patch { background: #8b5cf6; }
+.openapi-tool .method-badge.options,
+.openapi-tool .method-badge.head,
+.openapi-tool .method-badge.trace { background: #6b7280; }
+
+.openapi-tool .op-path {
+  font-family: monospace;
+  font-weight: 600;
+  color: var(--color-text);
+  font-size: 0.9rem;
+}
+
+.openapi-tool .op-id {
+  font-family: monospace;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
+.openapi-tool .op-details {
+  font-size: 0.825rem;
+  color: var(--color-text-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.openapi-tool .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (min-width: 768px) {
+  .openapi-tool {
+    padding: 0 2rem 3rem;
+  }
+
+  .openapi-tool .openapi-panels {
+    grid-template-columns: 1fr 1fr;
+  }
+}
