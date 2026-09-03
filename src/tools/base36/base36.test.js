@@ -32,9 +32,11 @@ describe('decodeFromBase36', () => {
   });
 
   it('rejects empty and invalid Base36 input', () => {
+    const invalidBase36Message = 'Base36 can only contain digits 0-9 and letters A-Z.';
+
     expect(() => decodeFromBase36('')).toThrow('Enter a Base36 value.');
-    expect(() => decodeFromBase36('A-1')).toThrow('Base36 can only contain digits 0-9 and letters A-Z.');
-    expect(() => decodeFromBase36('ABC ')).toThrow('Base36 can only contain digits 0-9 and letters A-Z.');
+    expect(() => decodeFromBase36('A-1')).toThrow(invalidBase36Message);
+    expect(() => decodeFromBase36('ABC ')).toThrow(invalidBase36Message);
   });
 });
 
