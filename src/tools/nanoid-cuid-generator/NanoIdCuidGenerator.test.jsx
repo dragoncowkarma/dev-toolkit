@@ -27,6 +27,24 @@ describe('NanoIdCuidGenerator', () => {
     expect(screen.getByText('6')).toBeInTheDocument();
   });
 
+  it('allows numeric fields to be cleared before normalizing them on blur', () => {
+    render(<NanoIdCuidGenerator />);
+
+    const lengthInput = screen.getByLabelText('NanoID length');
+    const batchSizeInput = screen.getByLabelText('Batch size');
+    fireEvent.change(lengthInput, { target: { value: '' } });
+    fireEvent.change(batchSizeInput, { target: { value: '' } });
+
+    expect(lengthInput.value).toBe('');
+    expect(batchSizeInput.value).toBe('');
+
+    fireEvent.blur(lengthInput);
+    fireEvent.blur(batchSizeInput);
+
+    expect(lengthInput.value).toBe('21');
+    expect(batchSizeInput.value).toBe('1');
+  });
+
   it('announces successful copies in a polite status region', async () => {
     Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });
     render(<NanoIdCuidGenerator />);
