@@ -68,8 +68,12 @@ export default function NanoIdCuidGenerator() {
     }
   }
 
-  function handleNumericChange(event, setter, clampValue) {
-    setter(clampValue(event.target.value));
+  function handleNumericChange(event, setter) {
+    setter(event.target.value);
+  }
+
+  function handleNumericBlur(setter, clampValue) {
+    setter((value) => clampValue(value));
   }
 
   const alertMessage = error || copyError;
@@ -112,9 +116,8 @@ export default function NanoIdCuidGenerator() {
                   min="1"
                   max={MAX_IDENTIFIER_LENGTH}
                   value={nanoIdLength}
-                  onChange={(event) =>
-                    handleNumericChange(event, setNanoIdLength, clampIdentifierLength)
-                  }
+                  onChange={(event) => handleNumericChange(event, setNanoIdLength)}
+                  onBlur={() => handleNumericBlur(setNanoIdLength, clampIdentifierLength)}
                 />
               </label>
               <label htmlFor="nanoid-alphabet">
@@ -136,7 +139,8 @@ export default function NanoIdCuidGenerator() {
               min="1"
               max={MAX_BATCH_SIZE}
               value={batchSize}
-              onChange={(event) => handleNumericChange(event, setBatchSize, clampBatchSize)}
+              onChange={(event) => handleNumericChange(event, setBatchSize)}
+              onBlur={() => handleNumericBlur(setBatchSize, clampBatchSize)}
             />
           </label>
           <button type="button" className="nanoid-cuid-button primary" onClick={handleGenerate}>

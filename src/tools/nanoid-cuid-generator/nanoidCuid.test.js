@@ -20,7 +20,9 @@ describe('NanoID generation', () => {
   it('keeps multi-code-unit alphabet characters intact', () => {
     const identifier = generateNanoId(8, '😀🚀');
     expect(Array.from(identifier)).toHaveLength(8);
-    expect([...identifier].every((character) => character === '😀' || character === '🚀')).toBe(true);
+    expect(
+      [...identifier].every((character) => character === '😀' || character === '🚀')
+    ).toBe(true);
   });
 
   it('creates unique values across a sample run', () => {
@@ -62,6 +64,16 @@ describe('identifier inspection', () => {
       format: 'NanoID',
       length: 4,
       alphabet: 'ab',
+    });
+  });
+
+  it('recognizes a multi-code-unit NanoID using its code point length', () => {
+    expect(
+      inspectIdentifier('😀🚀😀🚀', { nanoIdAlphabet: '😀🚀', nanoIdLength: 4 })
+    ).toEqual({
+      format: 'NanoID',
+      length: 4,
+      alphabet: '😀🚀',
     });
   });
 

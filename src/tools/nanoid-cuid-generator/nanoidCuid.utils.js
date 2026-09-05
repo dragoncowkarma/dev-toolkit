@@ -80,18 +80,18 @@ export function generateNanoId(
   const normalizedAlphabet = normalizeNanoIdAlphabet(alphabet);
   const alphabetCharacters = Array.from(normalizedAlphabet);
   const maxValidByte = 256 - (256 % alphabetCharacters.length);
-  let identifier = '';
+  const identifierCharacters = [];
 
-  while (identifier.length < normalizedLength) {
-    const randomBytes = getSecureRandomBytes(normalizedLength - identifier.length);
+  while (identifierCharacters.length < normalizedLength) {
+    const randomBytes = getSecureRandomBytes(normalizedLength - identifierCharacters.length);
     for (const byte of randomBytes) {
       if (byte < maxValidByte) {
-        identifier += alphabetCharacters[byte % alphabetCharacters.length];
+        identifierCharacters.push(alphabetCharacters[byte % alphabetCharacters.length]);
       }
-      if (identifier.length === normalizedLength) break;
+      if (identifierCharacters.length === normalizedLength) break;
     }
   }
-  return identifier;
+  return identifierCharacters.join('');
 }
 
 /**
@@ -133,15 +133,17 @@ export function inspectIdentifier(value, options = {}) {
   const nanoIdAlphabet = options.nanoIdAlphabet ?? DEFAULT_NANOID_ALPHABET;
   const requestedLength = options.nanoIdLength ?? DEFAULT_NANOID_LENGTH;
   const nanoIdLength = clampIdentifierLength(requestedLength);
-  const nanoIdCharacters = new Set(nanoIdAlphabet);
+  const inputCharacters = Array.from(input);
+  const nanoIdCharacters = new Set(Array.from(nanoIdAlphabet));
   const matchesNanoId =
-    input.length === nanoIdLength && [...input].every((character) => nanoIdCharacters.has(character));
+    inputCharacters.length === nanoIdLength &&
+    inputCharacters.every((character) => nanoIdCharacters.has(character));
 
   if (matchesNanoId) {
-    return { format: 'NanoID', length: input.length, alphabet: nanoIdAlphabet };
+    return { format: 'NanoID', length: inputCharacters.length, alphabet: nanoIdAlphabet };
   }
   if (CUID2_PATTERN.test(input)) {
-    return { format: 'CUID2', length: input.length, alphabet: CUID2_ALPHABET };
+    return { format: 'CUID2', length: inputCharacters.length, alphabet: CUID2_ALPHABET };
   }
-  return { format: 'Neither', length: input.length, alphabet: '' };
+  return { format: 'Neither', length: inputCharacters.length, alphabet: '' };
 }
