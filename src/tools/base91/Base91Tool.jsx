@@ -21,7 +21,10 @@ export default function Base91Tool() {
   const [error, setError] = useState('');
   const [copyError, setCopyError] = useState('');
   const [file, setFile] = useState(null);
-  const [copied, showCopied] = useCopyFeedback({ initialValue: false, resetValue: false });
+  const [copied, showCopied, dismissCopyFeedback] = useCopyFeedback({
+    initialValue: false,
+    resetValue: false,
+  });
   const fileInputRef = useRef(null);
   const fileRequestRef = useRef(0);
 
@@ -29,7 +32,6 @@ export default function Base91Tool() {
     if (file) return;
     if (input === '') {
       setOutput('');
-      setError('');
       return;
     }
     try {
@@ -56,6 +58,7 @@ export default function Base91Tool() {
   function handleInputChange(event) {
     fileRequestRef.current += 1;
     setFile(null);
+    setError('');
     setInput(event.target.value);
   }
 
@@ -74,6 +77,7 @@ export default function Base91Tool() {
     setError('');
     setCopyError('');
     setFile(null);
+    dismissCopyFeedback();
     if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
@@ -101,71 +105,88 @@ export default function Base91Tool() {
       setOutput(encoded);
       setError('');
     } catch (fileError) {
-      if (fileRequestRef.current === requestId) setError(fileError.message);
+      if (fileRequestRef.current !== requestId) return;
+      setInput('');
+      setOutput('');
+      setFile(null);
+      setError(fileError.message);
     }
   }
 
   const alertMessage = error || copyError;
   return (
     <section className="base91-tool" aria-label="Base91 Encoder/Decoder Tool">
-      <div className="base91-toolbar">
-        <div className="mode-toggle" role="group" aria-label="Conversion mode">
+      <div className="base91-tool__toolbar">
+        <div className="base91-tool__mode-toggle" role="group" aria-label="Conversion mode">
           {Object.entries(MODES).map(([label, value]) => (
             <button
               key={value}
               type="button"
               aria-pressed={mode === value}
-              className={`mode-btn ${mode === value ? 'active' : ''}`}
+              className={`base91-tool__mode-button${
+                mode === value ? ' base91-tool__mode-button--active' : ''
+              }`}
               onClick={() => handleModeChange(value)}
             >
               {label[0] + label.slice(1).toLowerCase()}
             </button>
           ))}
         </div>
-        <div className="toolbar-actions">
-          <label className="btn file-btn">
+        <div className="base91-tool__actions">
+          <label className="base91-tool__button base91-tool__file-button">
             Upload File
             <input
               ref={fileInputRef}
               type="file"
-              className="file-input"
+              className="base91-tool__file-input"
               onChange={handleFileChange}
               aria-label="Convert a file to Base91"
             />
           </label>
           <button
             type="button"
-            className="btn"
+            className="base91-tool__button"
             onClick={handleSwap}
             disabled={!output || !!error}
           >
             ⇅ Swap
           </button>
-          <button type="button" className="btn" onClick={handleClear}>Clear</button>
+          <button type="button" className="base91-tool__button" onClick={handleClear}>
+            Clear
+          </button>
         </div>
       </div>
-      <div className="base91-panels">
-        <div className="panel">
-          <label className="panel-label" htmlFor="base91-input">
+      <div className="base91-tool__panels">
+        <div className="base91-tool__panel">
+          <label className="base91-tool__panel-label" htmlFor="base91-input">
             {mode === MODES.ENCODE ? 'Text' : 'Base91'}
           </label>
           <textarea
             id="base91-input"
-            className="panel-textarea"
+            className="base91-tool__textarea"
             value={input}
             onChange={handleInputChange}
             placeholder={
-              mode === MODES.ENCODE ? 'Type or paste text to encode…' : 'Paste Base91 to decode…'
+              mode === MODES.ENCODE
+                ? 'Type or paste text to encode…'
+                : 'Paste Base91 to decode…'
             }
             spellCheck={false}
+            aria-invalid={Boolean(error)}
+            aria-describedby={error ? 'base91-error' : undefined}
           />
         </div>
-        <div className="panel">
-          <div className="panel-label-row">
-            <label className="panel-label" htmlFor="base91-output">
+        <div className="base91-tool__panel">
+          <div className="base91-tool__panel-label-row">
+            <label className="base91-tool__panel-label" htmlFor="base91-output">
               {mode === MODES.ENCODE ? 'Base91' : 'Text'}
             </label>
-            <button type="button" className="btn copy-btn" onClick={handleCopy} disabled={!output}>
+            <button
+              type="button"
+              className="base91-tool__button base91-tool__copy-button"
+              onClick={handleCopy}
+              disabled={!output}
+            >
               {copied ? '✓ Copied' : 'Copy'}
             </button>
             {copied && (
@@ -176,7 +197,7 @@ export default function Base91Tool() {
           </div>
           <textarea
             id="base91-output"
-            className="panel-textarea"
+            className="base91-tool__textarea"
             value={output}
             readOnly
             placeholder="Result will appear here…"
@@ -185,7 +206,9 @@ export default function Base91Tool() {
         </div>
       </div>
       {alertMessage && (
-        <div className="base91-error" role="alert">⚠ {alertMessage}</div>
+        <div id="base91-error" className="base91-tool__error" role="alert">
+          ⚠ {alertMessage}
+        </div>
       )}
     </section>
   );

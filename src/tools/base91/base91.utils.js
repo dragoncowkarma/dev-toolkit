@@ -8,13 +8,17 @@ function assertString(value) {
   }
 }
 
+function isUint8Array(value) {
+  return Object.prototype.toString.call(value) === '[object Uint8Array]';
+}
+
 /**
  * Encodes raw bytes as a basE91 string.
  * @param {Uint8Array} bytes - The bytes to encode.
  * @returns {string} The basE91-encoded result.
  */
 export function encodeBytesToBase91(bytes) {
-  if (!(bytes instanceof Uint8Array)) {
+  if (!isUint8Array(bytes)) {
     throw new TypeError('Input must be a Uint8Array.');
   }
 
