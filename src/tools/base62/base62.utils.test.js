@@ -4,6 +4,10 @@ import { BASE62_ALPHABET, decodeBase62, encodeBase62 } from './base62.utils.js';
 describe('encodeBase62', () => {
   it('uses the standard 0-9, a-z, A-Z alphabet', () => {
     expect(BASE62_ALPHABET).toBe('0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ');
+    expect(encodeBase62('0')).toBe('0');
+    expect(encodeBase62('10')).toBe('a');
+    expect(encodeBase62('35')).toBe('z');
+    expect(encodeBase62('36')).toBe('A');
     expect(encodeBase62('61')).toBe('Z');
     expect(encodeBase62('62')).toBe('10');
   });
@@ -22,6 +26,8 @@ describe('encodeBase62', () => {
     expect(() => encodeBase62('-1')).toThrow('Negative numbers');
     expect(() => encodeBase62('1.5')).toThrow('non-negative whole number');
     expect(() => encodeBase62('12e3')).toThrow('non-negative whole number');
+    expect(() => encodeBase62('')).toThrow('Enter a non-negative');
+    expect(() => encodeBase62(62)).toThrow(TypeError);
   });
 });
 
@@ -38,7 +44,10 @@ describe('decodeBase62', () => {
   });
 
   it('rejects invalid characters with a clear validation message', () => {
+    expect(() => decodeBase62('')).toThrow('Enter a Base62 value.');
     expect(() => decodeBase62('abc-123')).toThrow('0-9, a-z, and A-Z');
     expect(() => decodeBase62('abc 123')).toThrow('0-9, a-z, and A-Z');
+    expect(() => decodeBase62('abc_123')).toThrow('Invalid Base62 character "_"');
+    expect(() => decodeBase62(10)).toThrow(TypeError);
   });
 });
