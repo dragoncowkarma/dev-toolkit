@@ -4,6 +4,7 @@ import {
   formatBytes,
   formatDuration,
   getOverview,
+  getTimelineBounds,
   parseHar,
 } from './har.utils.js';
 
@@ -65,17 +66,48 @@ describe('HAR overview and filters', () => {
   it('calculates transfer, page span, statuses, and response size bins', () => {
     const overview = getOverview(entries);
 
-    expect(overview).toMatchObject({ totalRequests: 2, totalTransferSize: 14048, totalLoadTime: 130 });
+    expect(overview).toMatchObject({
+      totalRequests: 2,
+      totalTransferSize: 14048,
+      totalLoadTime: 130,
+    });
     expect(overview.statusCounts).toMatchObject({ '2xx': 1, '4xx': 1 });
     expect(overview.sizeDistribution.map((bin) => bin.count)).toEqual([1, 1, 0, 0]);
   });
 
+  it('calculates time bounds safely for a large archive', () => {
+    const largeEntries = Array.from({ length: 150_000 }, (_, index) => ({
+      startedAt: index,
+      duration: 1,
+      transferSize: 0,
+      response: { status: 200 },
+    }));
+
+    expect(getTimelineBounds(largeEntries)).toEqual({ start: 0, end: 150_000 });
+    expect(getOverview(largeEntries).totalLoadTime).toBe(150_000);
+  });
+
   it('filters requests by URL, method, status range, and resource type together', () => {
-    expect(filterEntries(entries, { url: 'api.', method: 'POST', status: '400', resourceType: 'XHR/Fetch' }))
+    expect(filterEntries(entries, {
+      url: 'api.',
+      method: 'POST',
+      status: '400',
+      resourceType: 'XHR/Fetch',
+    }))
       .toEqual([entries[1]]);
-    expect(filterEntries(entries, { url: '', method: '', status: '200', resourceType: 'JS' }))
+    expect(filterEntries(entries, {
+      url: '',
+      method: '',
+      status: '200',
+      resourceType: 'JS',
+    }))
       .toEqual([entries[0]]);
-    expect(filterEntries(entries, { url: '', method: '', status: '500', resourceType: '' }))
+    expect(filterEntries(entries, {
+      url: '',
+      method: '',
+      status: '500',
+      resourceType: '',
+    }))
       .toEqual([]);
   });
 

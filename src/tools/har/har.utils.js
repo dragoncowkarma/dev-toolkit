@@ -32,22 +32,46 @@ export function getResourceType(entry) {
   ).toLowerCase();
   const mimeType = String(response.content?.mimeType ?? '').toLowerCase();
   const url = String(request.url ?? '').toLowerCase();
+  const isStylesheet = extensionType === 'stylesheet' ||
+    mimeType.includes('text/css') ||
+    /\.css(?:[?#]|$)/.test(url);
+  const isScript = extensionType === 'script' ||
+    /javascript|ecmascript/.test(mimeType) ||
+    /\.m?js(?:[?#]|$)/.test(url);
+  const isImage = extensionType === 'image' ||
+    mimeType.startsWith('image/') ||
+    /\.(png|jpe?g|gif|svg|webp|ico)(?:[?#]|$)/.test(url);
+  const isMedia = extensionType === 'media' ||
+    /^(audio|video)\//.test(mimeType) ||
+    /\.(mp3|mp4|ogg|webm|wav)(?:[?#]|$)/.test(url);
 
   if (['xhr', 'fetch', 'xmlhttprequest'].includes(extensionType)) return 'XHR/Fetch';
   if (extensionType === 'document' || mimeType.includes('text/html')) return 'Doc';
-  if (extensionType === 'stylesheet' || mimeType.includes('text/css') || /\.css(?:[?#]|$)/.test(url)) {
-    return 'CSS';
-  }
-  if (extensionType === 'script' || /javascript|ecmascript/.test(mimeType) || /\.m?js(?:[?#]|$)/.test(url)) {
-    return 'JS';
-  }
-  if (extensionType === 'image' || mimeType.startsWith('image/') || /\.(png|jpe?g|gif|svg|webp|ico)(?:[?#]|$)/.test(url)) {
-    return 'Img';
-  }
-  if (extensionType === 'media' || /^(audio|video)\//.test(mimeType) || /\.(mp3|mp4|ogg|webm|wav)(?:[?#]|$)/.test(url)) {
-    return 'Media';
-  }
+  if (isStylesheet) return 'CSS';
+  if (isScript) return 'JS';
+  if (isImage) return 'Img';
+  if (isMedia) return 'Media';
   return 'Other';
+}
+
+/**
+ * Finds the earliest request start and latest request end without expanding an array.
+ * @param {Array<object>} entries
+ * @returns {{start: number, end: number}}
+ */
+export function getTimelineBounds(entries) {
+  let start = Infinity;
+  let end = -Infinity;
+
+  for (const entry of entries) {
+    const entryStart = Number.isFinite(entry?.startedAt) ? entry.startedAt : 0;
+    const entryEnd = entryStart + safeDuration(entry?.duration);
+
+    if (entryStart < start) start = entryStart;
+    if (entryEnd > end) end = entryEnd;
+  }
+
+  return start === Infinity ? { start: 0, end: 0 } : { start, end };
 }
 
 /**
@@ -68,7 +92,8 @@ export function parseHar(text) {
     throw new Error('This is not valid JSON. Check the pasted content and try again.');
   }
 
-  if (!parsed || typeof parsed !== 'object' || !parsed.log || !Array.isArray(parsed.log.entries)) {
+  if (!parsed || typeof parsed !== 'object' || !parsed.log ||
+    !Array.isArray(parsed.log.entries)) {
     throw new Error('This JSON is not a HAR file. Expected a log.entries array.');
   }
 
@@ -97,14 +122,25 @@ export function normalizeEntry(entry, index) {
     (total, value) => total + value,
     0
   );
-  const transferSize = safeSize(response._transferSize) || safeSize(response.bodySize) ||
+  const transferSize = safeSize(response._transferSize) ||
+    safeSize(response.bodySize) ||
     safeSize(response.content?.size);
 
   return {
     ...safeEntry,
     id: `${index}-${safeEntry.startedDateTime ?? ''}-${request.url ?? ''}`,
-    request: { ...request, headers: request.headers ?? [], queryString: request.queryString ?? [], cookies: request.cookies ?? [] },
-    response: { ...response, headers: response.headers ?? [], cookies: response.cookies ?? [], content: response.content ?? {} },
+    request: {
+      ...request,
+      headers: request.headers ?? [],
+      queryString: request.queryString ?? [],
+      cookies: request.cookies ?? [],
+    },
+    response: {
+      ...response,
+      headers: response.headers ?? [],
+      cookies: response.cookies ?? [],
+      content: response.content ?? {},
+    },
     startedAt: Number.isNaN(startedAt) ? index : startedAt,
     duration,
     transferSize,
@@ -116,7 +152,13 @@ export function normalizeEntry(entry, index) {
 /**
  * Calculates aggregate display values for an array of normalized HAR entries.
  * @param {Array<object>} entries
- * @returns {{totalRequests: number, totalTransferSize: number, totalLoadTime: number, statusCounts: object, sizeDistribution: Array<object>}}
+ * @returns {{
+ *   totalRequests: number,
+ *   totalTransferSize: number,
+ *   totalLoadTime: number,
+ *   statusCounts: object,
+ *   sizeDistribution: Array<object>
+ * }}
  */
 export function getOverview(entries) {
   const statusCounts = { '2xx': 0, '3xx': 0, '4xx': 0, '5xx': 0, Other: 0 };
@@ -126,23 +168,29 @@ export function getOverview(entries) {
     { label: '100 KB–1 MB', min: 100 * 1024, max: 1024 * 1024, count: 0 },
     { label: '≥ 1 MB', min: 1024 * 1024, max: Infinity, count: 0 },
   ];
-  const totalTransferSize = entries.reduce((total, entry) => total + entry.transferSize, 0);
-  const starts = entries.map((entry) => entry.startedAt);
-  const ends = entries.map((entry) => entry.startedAt + entry.duration);
+  const totalTransferSize = entries.reduce(
+    (total, entry) => total + entry.transferSize,
+    0
+  );
+  const { start, end } = getTimelineBounds(entries);
 
   entries.forEach((entry) => {
     const status = Number(entry.response?.status);
-    const group = status >= 200 && status < 300 ? '2xx' : status >= 300 && status < 400 ? '3xx' :
-      status >= 400 && status < 500 ? '4xx' : status >= 500 && status < 600 ? '5xx' : 'Other';
+    const group = status >= 200 && status < 300 ? '2xx' :
+      status >= 300 && status < 400 ? '3xx' :
+        status >= 400 && status < 500 ? '4xx' :
+          status >= 500 && status < 600 ? '5xx' : 'Other';
     statusCounts[group] += 1;
-    const bin = sizeBins.find((item) => entry.transferSize >= item.min && entry.transferSize < item.max);
+    const bin = sizeBins.find(
+      (item) => entry.transferSize >= item.min && entry.transferSize < item.max
+    );
     if (bin) bin.count += 1;
   });
 
   return {
     totalRequests: entries.length,
     totalTransferSize,
-    totalLoadTime: entries.length ? Math.max(...ends) - Math.min(...starts) : 0,
+    totalLoadTime: end - start,
     statusCounts,
     sizeDistribution: sizeBins,
   };
@@ -156,15 +204,18 @@ export function getOverview(entries) {
  */
 export function filterEntries(entries, filters) {
   const urlQuery = (filters.url ?? '').trim().toLowerCase();
+
   return entries.filter((entry) => {
     const status = Number(entry.response?.status);
-    const matchesUrl = !urlQuery || String(entry.request?.url ?? '').toLowerCase().includes(urlQuery);
+    const matchesUrl = !urlQuery ||
+      String(entry.request?.url ?? '').toLowerCase().includes(urlQuery);
     const matchesMethod = !filters.method || entry.request?.method === filters.method;
     const matchesStatus = !filters.status || (
       filters.status === 'other' ? status < 200 || status >= 600 :
-      status >= Number(filters.status) && status < Number(filters.status) + 100
+        status >= Number(filters.status) && status < Number(filters.status) + 100
     );
     const matchesType = !filters.resourceType || entry.resourceType === filters.resourceType;
+
     return matchesUrl && matchesMethod && matchesStatus && matchesType;
   });
 }
@@ -186,5 +237,6 @@ export function formatBytes(bytes) {
  * @returns {string}
  */
 export function formatDuration(duration) {
-  return duration >= 1000 ? `${(duration / 1000).toFixed(2)} s` : `${Math.round(duration)} ms`;
+  return duration >= 1000 ? `${(duration / 1000).toFixed(2)} s` :
+    `${Math.round(duration)} ms`;
 }
