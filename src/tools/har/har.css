@@ -1,0 +1,475 @@
+.har-tool {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  color: var(--color-text);
+}
+
+.har-tool__intro {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.har-tool__intro h2,
+.har-tool h3,
+.har-tool h4 {
+  margin: 0;
+}
+
+.har-tool__intro > p {
+  max-width: 34rem;
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.har-tool__eyebrow {
+  margin: 0 0 0.25rem;
+  color: var(--color-primary-light);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.har-dropzone,
+.har-input-panel,
+.har-distribution,
+.har-waterfall,
+.har-inspector {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.har-dropzone {
+  display: flex;
+  min-height: 8rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 1rem;
+  border-style: dashed;
+  color: var(--color-text-muted);
+}
+
+.har-dropzone--active {
+  border-color: var(--color-primary);
+  background: var(--color-surface-hover);
+}
+
+.har-dropzone strong {
+  color: var(--color-text);
+}
+
+.har-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.55rem 0.9rem;
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius);
+  background: var(--color-primary);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.har-button:hover {
+  filter: brightness(1.1);
+}
+
+.har-button:focus-visible,
+.har-button:focus-within {
+  outline: 2px solid var(--color-primary-light);
+  outline-offset: 3px;
+}
+
+.har-button input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.har-button--quiet {
+  border-color: var(--color-border);
+  background: transparent;
+  color: var(--color-text);
+}
+
+.har-input-panel {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 1rem;
+  padding: 1rem;
+}
+
+.har-input-panel label,
+.har-filters label {
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.har-input-panel textarea {
+  min-height: 9rem;
+  resize: vertical;
+}
+
+.har-input-panel textarea,
+.har-filters input,
+.har-filters select {
+  padding: 0.65rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.har-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.har-error {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+}
+
+.har-overview {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.har-overview article {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.9rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.har-overview span {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
+.har-overview strong {
+  font-size: 1.1rem;
+}
+
+.har-overview__status {
+  grid-column: span 2;
+}
+
+.har-distribution,
+.har-waterfall,
+.har-inspector {
+  margin-top: 1rem;
+  padding: 1rem;
+}
+
+.har-distribution > div {
+  display: grid;
+  grid-template-columns: 5.5rem 1fr 2rem;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.65rem;
+  font-size: 0.83rem;
+}
+
+.har-distribution > div > div {
+  height: 0.5rem;
+  overflow: hidden;
+  border-radius: 99px;
+  background: var(--color-bg);
+}
+
+.har-distribution i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-primary);
+}
+
+.har-filters {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.har-filters label {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.har-results-count {
+  color: var(--color-text-muted);
+  font-size: 0.86rem;
+}
+
+.har-waterfall__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin: 0.75rem 0;
+  font-size: 0.76rem;
+}
+
+.har-phase::before {
+  display: inline-block;
+  width: 0.55rem;
+  height: 0.55rem;
+  margin-right: 0.25rem;
+  border-radius: 2px;
+  background: currentColor;
+  content: '';
+}
+
+.har-phase--blocked {
+  color: var(--color-primary-light);
+}
+
+.har-phase--dns {
+  color: var(--color-warning);
+}
+
+.har-phase--connect {
+  color: var(--color-scheduler);
+}
+
+.har-phase--send {
+  color: var(--color-info);
+}
+
+.har-phase--wait {
+  color: var(--color-accent);
+}
+
+.har-phase--receive {
+  color: var(--color-success);
+}
+
+.har-waterfall__row {
+  display: grid;
+  grid-template-columns: minmax(10rem, 2fr) minmax(8rem, 3fr) 4rem;
+  align-items: center;
+  width: 100%;
+  gap: 0.75rem;
+  padding: 0.55rem 0;
+  border: 0;
+  border-top: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.har-waterfall__row--selected {
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+}
+
+.har-waterfall__row:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid var(--color-primary-light);
+  outline-offset: 2px;
+}
+
+.har-waterfall__request {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.har-waterfall__request > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.har-waterfall__request b,
+.har-waterfall__request em {
+  font-size: 0.72rem;
+}
+
+.har-waterfall__request em {
+  font-style: normal;
+}
+
+.har-status--2 {
+  color: var(--color-success);
+}
+
+.har-status--3 {
+  color: var(--color-info);
+}
+
+.har-status--4,
+.har-status--5 {
+  color: var(--color-error-light);
+}
+
+.har-waterfall__track {
+  display: flex;
+  height: 0.8rem;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--color-bg);
+}
+
+.har-waterfall__track i {
+  display: block;
+  flex: 0 0 auto;
+}
+
+.har-waterfall__track .har-waterfall__offset {
+  background: transparent;
+}
+
+.har-waterfall__track .har-phase::before {
+  display: none;
+}
+
+.har-waterfall__row time {
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  text-align: right;
+}
+
+.har-inspector__heading {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.har-inspector__heading h3 {
+  overflow-wrap: anywhere;
+  font-size: 1rem;
+}
+
+.har-inspector__heading span {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.har-inspector__grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.har-inspector__section h4 {
+  margin-bottom: 0.5rem;
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.har-details-list {
+  margin: 0;
+}
+
+.har-details-list div {
+  display: grid;
+  grid-template-columns: minmax(6rem, 1fr) minmax(0, 2fr);
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+  border-top: 1px solid var(--color-border);
+  font-size: 0.82rem;
+}
+
+.har-details-list dt {
+  overflow-wrap: anywhere;
+  color: var(--color-text-muted);
+}
+
+.har-details-list dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.har-code {
+  max-height: 16rem;
+  margin: 0;
+  overflow: auto;
+  padding: 0.75rem;
+  border-radius: var(--radius);
+  background: var(--color-code-bg);
+  font: 0.78rem/1.5 'SF Mono', Consolas, monospace;
+  white-space: pre-wrap;
+}
+
+.har-code__key {
+  color: var(--color-info);
+}
+
+.har-code__string {
+  color: var(--color-success);
+}
+
+.har-code__literal {
+  color: var(--color-scheduler);
+}
+
+.har-code__number {
+  color: var(--color-warning);
+}
+
+.har-code__notice {
+  color: var(--color-text-muted);
+}
+
+.har-empty {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+@media (min-width: 768px) {
+  .har-tool {
+    padding: 0 2rem 3rem;
+  }
+
+  .har-overview {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .har-overview__status {
+    grid-column: span 1;
+  }
+
+  .har-filters {
+    grid-template-columns: 2fr 1fr 1fr 1fr;
+  }
+
+  .har-inspector__grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .har-inspector__section--wide {
+    grid-column: span 2;
+  }
+}
