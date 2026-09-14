@@ -6,6 +6,7 @@ import {
   getOverview,
   getTimelineBounds,
   parseHar,
+  toCurlCommand,
 } from './har.utils.js';
 
 const sampleHar = {
@@ -114,5 +115,61 @@ describe('HAR overview and filters', () => {
   it('formats compact display values', () => {
     expect(formatBytes(1536)).toBe('1.5 KB');
     expect(formatDuration(1250)).toBe('1.25 s');
+  });
+});
+
+describe('toCurlCommand', () => {
+  it('builds a GET command with headers', () => {
+    const command = toCurlCommand({
+      request: {
+        method: 'GET',
+        url: 'https://example.test/app.js',
+        headers: [{ name: 'Accept', value: 'text/javascript' }],
+      },
+    });
+
+    expect(command).toContain('curl');
+    expect(command).toContain('-X GET');
+    expect(command).toContain("'https://example.test/app.js'");
+    expect(command).toContain("-H 'Accept: text/javascript'");
+    expect(command).not.toContain('--data-raw');
+  });
+
+  it('builds a POST command with a JSON body', () => {
+    const command = toCurlCommand({
+      request: {
+        method: 'POST',
+        url: 'https://api.example.test/items',
+        headers: [{ name: 'Content-Type', value: 'application/json' }],
+        postData: { mimeType: 'application/json', text: '{"id":1}' },
+      },
+    });
+
+    expect(command).toContain('-X POST');
+    expect(command).toContain("-H 'Content-Type: application/json'");
+    expect(command).toContain(`--data-raw '{"id":1}'`);
+  });
+
+  it('omits --data-raw when there is no request body', () => {
+    const command = toCurlCommand({
+      request: { method: 'DELETE', url: 'https://api.example.test/items/1', headers: [] },
+    });
+
+    expect(command).toContain('-X DELETE');
+    expect(command).not.toContain('--data-raw');
+  });
+
+  it('escapes single quotes in header values and the body', () => {
+    const command = toCurlCommand({
+      request: {
+        method: 'POST',
+        url: 'https://api.example.test/items',
+        headers: [{ name: 'X-Note', value: "it's fine" }],
+        postData: { mimeType: 'text/plain', text: "O'Brien" },
+      },
+    });
+
+    expect(command).toContain(`-H 'X-Note: it'\\''s fine'`);
+    expect(command).toContain(`--data-raw 'O'\\''Brien'`);
   });
 });

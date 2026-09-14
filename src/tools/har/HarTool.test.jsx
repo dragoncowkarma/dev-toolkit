@@ -1,5 +1,5 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import HarTool, {
   MAX_HIGHLIGHTED_TOKENS,
   MAX_PREVIEW_CHARACTERS,
@@ -116,5 +116,46 @@ describe('HarTool', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Analyze HAR' }));
 
     expect(screen.getByRole('alert')).toHaveTextContent('This is not valid JSON.');
+  });
+});
+
+describe('HarTool Copy as cURL', () => {
+  it('copies the equivalent curl command for the selected request', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    render(<HarTool />);
+
+    fireEvent.change(screen.getByLabelText('Paste raw HAR JSON'), { target: { value: harText } });
+    fireEvent.click(screen.getByRole('button', { name: 'Analyze HAR' }));
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy as cURL' }));
+    });
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    const command = writeText.mock.calls[0][0];
+    expect(command).toContain('-X POST');
+    expect(command).toContain("'https://api.example.test/users'");
+    expect(command).toContain("-H 'Authorization: redacted'");
+    expect(command).toContain(`--data-raw '{"name":"Ada"}'`);
+    expect(screen.getByRole('button', { name: '✓ Copied' })).toBeInTheDocument();
+  });
+
+  it('reports a copy failure when the clipboard write is denied', async () => {
+    Object.assign(navigator, {
+      clipboard: { writeText: vi.fn().mockRejectedValue(new Error('denied')) },
+    });
+
+    render(<HarTool />);
+
+    fireEvent.change(screen.getByLabelText('Paste raw HAR JSON'), { target: { value: harText } });
+    fireEvent.click(screen.getByRole('button', { name: 'Analyze HAR' }));
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy as cURL' }));
+    });
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Failed to copy to clipboard.');
   });
 });

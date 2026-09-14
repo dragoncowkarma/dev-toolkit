@@ -6,7 +6,9 @@ import {
   getOverview,
   getTimelineBounds,
   parseHar,
+  toCurlCommand,
 } from './har.utils.js';
+import { useCopyFeedback } from '../../hooks/useCopyFeedback.js';
 import './har.css';
 
 const TIMING_PHASES = [
@@ -146,6 +148,8 @@ export default function HarTool() {
   });
   const [selectedId, setSelectedId] = useState(null);
   const [dragging, setDragging] = useState(false);
+  const [copyError, setCopyError] = useState('');
+  const [copied, showCopied] = useCopyFeedback({ initialValue: false, resetValue: false });
   const fileInputRef = useRef(null);
 
   const overview = useMemo(() => getOverview(har?.entries ?? []), [har]);
@@ -193,6 +197,16 @@ export default function HarTool() {
       analyze(await file.text());
     } catch {
       setError('The selected file could not be read locally.');
+    }
+  }
+
+  async function copyAsCurl(entry) {
+    try {
+      await navigator.clipboard.writeText(toCurlCommand(entry));
+      showCopied(true);
+      setCopyError('');
+    } catch {
+      setCopyError('Failed to copy to clipboard.');
     }
   }
 
@@ -435,7 +449,20 @@ export default function HarTool() {
                 <span>
                   {selectedEntry.resourceType} · {selectedEntry.response.status || 'No status'}
                 </span>
+                <button
+                  type="button"
+                  className="har-button har-button--quiet"
+                  onClick={() => copyAsCurl(selectedEntry)}
+                >
+                  {copied ? '✓ Copied' : 'Copy as cURL'}
+                </button>
+                {copied && (
+                  <div className="sr-only" role="status" aria-live="polite">
+                    Copied to clipboard
+                  </div>
+                )}
               </div>
+              {copyError && <div className="har-error" role="alert">{copyError}</div>}
               <div className="har-inspector__grid">
                 <DetailsList title="Request headers" items={selectedEntry.request.headers} />
                 <DetailsList title="Response headers" items={selectedEntry.response.headers} />
