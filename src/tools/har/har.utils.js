@@ -221,6 +221,40 @@ export function filterEntries(entries, filters) {
 }
 
 /**
+ * Escapes a value for safe placement inside single quotes in a POSIX shell command.
+ * @param {string} value
+ * @returns {string}
+ */
+function toShellSingleQuoted(value) {
+  return `'${String(value).replace(/'/g, `'\\''`)}'`;
+}
+
+/**
+ * Builds an equivalent `curl` command for a normalized HAR entry.
+ * @param {object} entry
+ * @returns {string}
+ */
+export function toCurlCommand(entry) {
+  const request = entry?.request ?? {};
+  const method = String(request.method ?? 'GET').toUpperCase();
+  const url = String(request.url ?? '');
+  const headers = Array.isArray(request.headers) ? request.headers : [];
+  const postData = request.postData;
+  const parts = ['curl', `-X ${method}`, toShellSingleQuoted(url)];
+
+  headers.forEach((header) => {
+    if (!header?.name) return;
+    parts.push(`-H ${toShellSingleQuoted(`${header.name}: ${header.value ?? ''}`)}`);
+  });
+
+  if (postData?.text) {
+    parts.push(`--data-raw ${toShellSingleQuoted(postData.text)}`);
+  }
+
+  return parts.join(' \\\n  ');
+}
+
+/**
  * Formats a byte count for the interface.
  * @param {number} bytes
  * @returns {string}
