@@ -16,14 +16,16 @@ afterEach(() => {
 describe("Z85ConverterTool", () => {
   it("encodes text with explicit zero padding when requested", async () => {
     render(<Z85ConverterTool />);
-    fireEvent.change(screen.getByLabelText("Text"), {
+    fireEvent.change(screen.getByRole("textbox", { name: "Text input" }), {
       target: { value: "abc" },
     });
     expect(await screen.findByRole("alert")).toHaveTextContent("multiple of 4");
 
     fireEvent.click(screen.getByLabelText("Pad incomplete bytes with zeros"));
     await waitFor(() =>
-      expect(screen.getByLabelText("Z85")).toHaveValue("vpAZD"),
+      expect(
+        screen.getByRole("textbox", { name: "Z85 output" }),
+      ).toHaveValue("vpAZD"),
     );
   });
 
@@ -31,24 +33,26 @@ describe("Z85ConverterTool", () => {
     render(<Z85ConverterTool />);
     fireEvent.click(screen.getByRole("button", { name: "Use sample" }));
     await waitFor(() =>
-      expect(screen.getByLabelText("Z85")).toHaveValue("HelloWorld"),
+      expect(
+        screen.getByRole("textbox", { name: "Z85 output" }),
+      ).toHaveValue("HelloWorld"),
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Decode" }));
-    fireEvent.change(screen.getByLabelText("Z85"), {
+    fireEvent.change(screen.getByRole("textbox", { name: "Z85 input" }), {
       target: { value: "HelloWorld" },
     });
     await waitFor(() =>
-      expect(screen.getByLabelText("Hex bytes")).toHaveValue(
-        "86 4F D2 6F B5 59 F7 5B",
-      ),
+      expect(
+        screen.getByRole("textbox", { name: "Hex bytes output" }),
+      ).toHaveValue("86 4F D2 6F B5 59 F7 5B"),
     );
   });
 
   it("reports invalid Z85 input accessibly", async () => {
     render(<Z85ConverterTool />);
     fireEvent.click(screen.getByRole("button", { name: "Decode" }));
-    fireEvent.change(screen.getByLabelText("Z85"), {
+    fireEvent.change(screen.getByRole("textbox", { name: "Z85 input" }), {
       target: { value: "abcd~" },
     });
     expect(await screen.findByRole("alert")).toHaveTextContent(
@@ -61,11 +65,13 @@ describe("Z85ConverterTool", () => {
       clipboard: { writeText: vi.fn().mockResolvedValue(undefined) },
     });
     render(<Z85ConverterTool />);
-    fireEvent.change(screen.getByLabelText("Text"), {
+    fireEvent.change(screen.getByRole("textbox", { name: "Text input" }), {
       target: { value: "test" },
     });
     await waitFor(() =>
-      expect(screen.getByLabelText("Z85")).not.toHaveValue(""),
+      expect(
+        screen.getByRole("textbox", { name: "Z85 output" }),
+      ).not.toHaveValue(""),
     );
     fireEvent.click(screen.getByRole("button", { name: "Copy" }));
     expect(await screen.findByRole("status")).toHaveAttribute(

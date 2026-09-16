@@ -35,7 +35,7 @@ export default function Z85ConverterTool() {
       if (mode === "encode") {
         const bytes =
           inputType === "text"
-            ? new TextEncoder().encode(input)
+            ? Uint8Array.from(new TextEncoder().encode(input))
             : parseByteInput(input);
         const aligned = padInput ? padBytesToZ85Block(bytes) : bytes;
         setOutput(encodeZ85(aligned));
@@ -80,9 +80,17 @@ export default function Z85ConverterTool() {
   }
 
   const inputLabel =
-    mode === "encode" ? (inputType === "text" ? "Text" : "Hex bytes") : "Z85";
+    mode === "encode"
+      ? inputType === "text"
+        ? "Text input"
+        : "Hex bytes input"
+      : "Z85 input";
   const outputLabel =
-    mode === "encode" ? "Z85" : inputType === "text" ? "Text" : "Hex bytes";
+    mode === "encode"
+      ? "Z85 output"
+      : inputType === "text"
+        ? "Text output"
+        : "Hex bytes output";
 
   return (
     <section className="z85-tool" aria-label="Z85 Encoder and Decoder Tool">
