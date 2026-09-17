@@ -8,14 +8,30 @@ vi.mock('./base91.utils.js', async (importOriginal) => {
   return { ...actual, fileToBase91: vi.fn(actual.fileToBase91) };
 });
 
+let restoreClipboard = () => {};
+
 function selectFile(input, file) {
   Object.defineProperty(input, 'files', { value: [file], configurable: true });
   fireEvent.change(input);
 }
 
+function setClipboard(writeText) {
+  const clipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+  Object.assign(navigator, { clipboard: { writeText } });
+  restoreClipboard = () => {
+    if (clipboardDescriptor) {
+      Object.defineProperty(navigator, 'clipboard', clipboardDescriptor);
+      return;
+    }
+    delete navigator.clipboard;
+  };
+}
+
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  restoreClipboard();
+  restoreClipboard = () => {};
 });
 
 describe('Base91Tool', () => {
@@ -86,7 +102,7 @@ describe('Base91Tool', () => {
 
   it('copies output and clears all toolbar state', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.assign(navigator, { clipboard: { writeText } });
+    setClipboard(writeText);
 
     render(<Base91Tool />);
     fireEvent.change(screen.getByLabelText('Text'), { target: { value: 'hello' } });
