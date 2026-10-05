@@ -6,7 +6,7 @@ import {
   encodeToBase58Check,
   fileToBase58,
   formatFileSize,
-  MAX_FILE_SIZE,
+  MAX_INPUT_BYTES,
 } from './base58.utils.js';
 import './base58.css';
 
@@ -270,13 +270,14 @@ export default function Base58Tool() {
   function handleFileChange(event) {
     const selected = event.target.files?.[0];
     if (!selected) return;
-    if (selected.size > MAX_FILE_SIZE) {
+    if (selected.size > MAX_INPUT_BYTES) {
       setFile(null);
       setInput('');
       setOutput('');
       setError(
-        'File is too large for Base58 (max 16 KB). ' +
-          'Base58 is intended for short payloads such as addresses and keys.'
+        `File is ${formatFileSize(selected.size)}, which exceeds the ` +
+          `${formatFileSize(MAX_INPUT_BYTES)} Base58 limit. Base58 is intended for ` +
+          'short identifiers and keys (e.g. addresses, public keys), not large payloads.'
       );
       setNotice('');
       setNoticeType('info');
