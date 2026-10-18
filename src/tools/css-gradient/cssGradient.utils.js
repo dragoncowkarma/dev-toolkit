@@ -4,6 +4,162 @@
  */
 
 /**
+ * Complete, dependency-free W3C CSS named color keyword set including transparent and currentcolor.
+ */
+const CSS_NAMED_COLORS = new Set([
+  'aliceblue',
+  'antiquewhite',
+  'aqua',
+  'aquamarine',
+  'azure',
+  'beige',
+  'bisque',
+  'black',
+  'blanchedalmond',
+  'blue',
+  'blueviolet',
+  'brown',
+  'burlywood',
+  'cadetblue',
+  'chartreuse',
+  'chocolate',
+  'coral',
+  'cornflowerblue',
+  'cornsilk',
+  'crimson',
+  'currentcolor',
+  'cyan',
+  'darkblue',
+  'darkcyan',
+  'darkgoldenrod',
+  'darkgray',
+  'darkgreen',
+  'darkgrey',
+  'darkkhaki',
+  'darkmagenta',
+  'darkolivegreen',
+  'darkorange',
+  'darkorchid',
+  'darkred',
+  'darksalmon',
+  'darkseagreen',
+  'darkslateblue',
+  'darkslategray',
+  'darkslategrey',
+  'darkturquoise',
+  'darkviolet',
+  'deeppink',
+  'deepskyblue',
+  'dimgray',
+  'dimgrey',
+  'dodgerblue',
+  'firebrick',
+  'floralwhite',
+  'forestgreen',
+  'fuchsia',
+  'gainsboro',
+  'ghostwhite',
+  'gold',
+  'goldenrod',
+  'gray',
+  'green',
+  'greenyellow',
+  'grey',
+  'honeydew',
+  'hotpink',
+  'indianred',
+  'indigo',
+  'ivory',
+  'khaki',
+  'lavender',
+  'lavenderblush',
+  'lawngreen',
+  'lemonchiffon',
+  'lightblue',
+  'lightcoral',
+  'lightcyan',
+  'lightgoldenrodyellow',
+  'lightgray',
+  'lightgreen',
+  'lightgrey',
+  'lightpink',
+  'lightsalmon',
+  'lightseagreen',
+  'lightskyblue',
+  'lightslategray',
+  'lightslategrey',
+  'lightsteelblue',
+  'lightyellow',
+  'lime',
+  'limegreen',
+  'linen',
+  'magenta',
+  'maroon',
+  'mediumaquamarine',
+  'mediumblue',
+  'mediumorchid',
+  'mediumpurple',
+  'mediumseagreen',
+  'mediumslateblue',
+  'mediumspringgreen',
+  'mediumturquoise',
+  'mediumvioletred',
+  'midnightblue',
+  'mintcream',
+  'mistyrose',
+  'moccasin',
+  'navajowhite',
+  'navy',
+  'oldlace',
+  'olive',
+  'olivedrab',
+  'orange',
+  'orangered',
+  'orchid',
+  'palegoldenrod',
+  'palegreen',
+  'paleturquoise',
+  'palevioletred',
+  'papayawhip',
+  'peachpuff',
+  'peru',
+  'pink',
+  'plum',
+  'powderblue',
+  'purple',
+  'rebeccapurple',
+  'red',
+  'rosybrown',
+  'royalblue',
+  'saddlebrown',
+  'salmon',
+  'sandybrown',
+  'seagreen',
+  'seashell',
+  'sienna',
+  'silver',
+  'skyblue',
+  'slateblue',
+  'slategray',
+  'slategrey',
+  'snow',
+  'springgreen',
+  'steelblue',
+  'tan',
+  'teal',
+  'thistle',
+  'tomato',
+  'transparent',
+  'turquoise',
+  'violet',
+  'wheat',
+  'white',
+  'whitesmoke',
+  'yellow',
+  'yellowgreen',
+]);
+
+/**
  * Checks if RGB channel component is valid (0-255 or 0%-100%).
  *
  * @param {string} val - RGB component value string.
@@ -37,7 +193,7 @@ function checkAlphaComponent(val) {
 
 /**
  * Validates whether a color string is valid CSS color format.
- * Accepts HEX (#rgb, #rgba, #rrggbb, #rrggbbaa), RGB/RGBA, HSL/HSLA, and named colors.
+ * Accepts HEX (#rgb, #rgba, #rrggbb, #rrggbbaa), RGB/RGBA, HSL/HSLA, and CSS named colors.
  *
  * @param {string} color - The color string to validate.
  * @returns {boolean} True if the color is valid, false otherwise.
@@ -92,27 +248,8 @@ export function validateColor(color) {
   const hslRegex = new RegExp(hslPattern, 'i');
   if (hslRegex.test(trimmed)) return true;
 
-  // 4. Common CSS named colors & transparent
-  const namedColors = [
-    'transparent',
-    'currentcolor',
-    'black',
-    'white',
-    'red',
-    'green',
-    'blue',
-    'yellow',
-    'cyan',
-    'magenta',
-    'gray',
-    'grey',
-    'orange',
-    'purple',
-    'pink',
-  ];
-  if (namedColors.includes(trimmed.toLowerCase())) return true;
-
-  return false;
+  // 4. Complete CSS named colors, currentcolor, and transparent
+  return CSS_NAMED_COLORS.has(trimmed.toLowerCase());
 }
 
 /**
@@ -186,7 +323,10 @@ export function validateGradientConfig(config) {
   if (type === 'conic' && conicAngle !== undefined) {
     const numAngle = Number(conicAngle);
     if (Number.isNaN(numAngle) || numAngle < 0 || numAngle > 360) {
-      return { valid: false, error: 'Conic gradient starting angle must be between 0° and 360°.' };
+      return {
+        valid: false,
+        error: 'Conic gradient starting angle must be between 0° and 360°.',
+      };
     }
   }
 
@@ -248,25 +388,69 @@ export function generateCssGradient(config) {
 }
 
 /**
- * Adds a new stop to the stops array at an appropriate default position.
+ * Adds a new stop to the stops array at a collision-free default position.
+ *
+ * Position selection algorithm:
+ * 1. Collect all valid numeric positions in range [0, 100] from current stops.
+ * 2. Sort unique valid positions in ascending order.
+ * 3. Find all adjacent positive intervals (end - start > 0).
+ * 4. Select the largest interval by width (end - start).
+ * 5. Tie-break rule: If multiple intervals share the maximum width, pick the first interval
+ *    (the one starting at the lowest position).
+ * 6. Calculate position strictly inside the selected interval:
+ *    Try rounded integer midpoint Math.round((start + end) / 2); if strictly inside, use it.
+ *    Otherwise try 2-decimal midpoint Number(((start + end) / 2).toFixed(2)); if strictly inside,
+ *    use it. Otherwise fall back to exact midpoint (start + end) / 2.
+ * 7. Fallback strategy (when no positive interval exists or all valid positions are equal):
+ *    If all valid positions equal X, choose 100 if X < 100 else 50.
+ *    If no valid positions exist, choose 50.
  *
  * @param {Array<Object>} stops - Current stops array.
  * @param {Object} [newStopProps] - Optional properties for the new stop.
- * @returns {Array<Object>} Updated stops array.
+ * @returns {Array<Object>} Updated stops array preserving existing stops and order.
  */
 export function addStop(stops, newStopProps = {}) {
-  const currentStops = stops || [];
+  const currentStops = Array.isArray(stops) ? stops : [];
   const nextId = 'stop-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7);
 
+  const validPositions = [];
+  for (const stop of currentStops) {
+    if (stop && validatePosition(stop.position)) {
+      validPositions.push(Number(stop.position));
+    }
+  }
+
   let defaultPosition = 50;
-  if (currentStops.length >= 2) {
-    const lastPos = Number(currentStops[currentStops.length - 1].position);
-    const secondLastPos = Number(currentStops[currentStops.length - 2].position);
-    if (!Number.isNaN(lastPos) && !Number.isNaN(secondLastPos)) {
-      defaultPosition = Math.min(100, Math.round(lastPos + (100 - lastPos) / 2));
-      if (defaultPosition <= lastPos && lastPos < 100) {
-        defaultPosition = Math.min(100, lastPos + 10);
+
+  if (validPositions.length > 0) {
+    const uniqueSorted = Array.from(new Set(validPositions)).sort((a, b) => a - b);
+
+    let maxInterval = null;
+    for (let i = 0; i < uniqueSorted.length - 1; i += 1) {
+      const start = uniqueSorted[i];
+      const end = uniqueSorted[i + 1];
+      const width = end - start;
+      if (width > 0) {
+        if (!maxInterval || width > maxInterval.width) {
+          maxInterval = { start, end, width };
+        }
       }
+    }
+
+    if (maxInterval) {
+      const exactMid = (maxInterval.start + maxInterval.end) / 2;
+      const rounded = Math.round(exactMid);
+      const twoDecimals = Number(exactMid.toFixed(2));
+      if (rounded > maxInterval.start && rounded < maxInterval.end) {
+        defaultPosition = rounded;
+      } else if (twoDecimals > maxInterval.start && twoDecimals < maxInterval.end) {
+        defaultPosition = twoDecimals;
+      } else {
+        defaultPosition = exactMid;
+      }
+    } else {
+      const x = uniqueSorted[0];
+      defaultPosition = x < 100 ? 100 : 50;
     }
   }
 
