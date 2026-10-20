@@ -612,6 +612,130 @@ class ModelTableIntegrityTests(unittest.TestCase):
                 )
 
 
+class UnknownModelSafetyTests(unittest.TestCase):
+    """An unrecognized model must be loud, and must never be handed `ultra`."""
+
+    def setUp(self):
+        self.prompt_file = Path(tempfile.mkdtemp()) / "prompt.md"
+        self.prompt_file.write_text("x", encoding="utf-8")
+
+    def test_bare_gpt_5_6_resolves_to_a_real_variant(self):
+        """`codex debug models` lists no bare `gpt-5.6`; the map must cover it."""
+        for tagged in ("gpt-5.6", "5.6", "gpt-5.3", "gpt-5.5-codex",
+                       "gpt-5.6-spark", "5.6 spark"):
+            with self.subTest(model=tagged):
+                argv = swarm.build_ai_argv(
+                    "codex", tagged, "높음", self.prompt_file, "/repo",
+                )
+                self.assertIn(
+                    argv[argv.index("-m") + 1], swarm._CODEX_MODEL_EFFORTS,
+                )
+
+    def test_unknown_codex_model_warns_and_is_denied_ultra(self):
+        with self.assertLogs(swarm.log, level="WARNING") as captured:
+            argv = swarm.build_ai_argv(
+                "codex", "gpt-reserve", "울트라", self.prompt_file, "/repo",
+            )
+
+        self.assertEqual("gpt-reserve", argv[argv.index("-m") + 1])
+        self.assertEqual(
+            "model_reasoning_effort=max", argv[argv.index("-c") + 1],
+            "an unverified model must not be granted the Sol/Terra-only "
+            "`ultra` rung",
+        )
+        self.assertTrue(
+            any("Unrecognized codex model" in line for line in captured.output),
+            captured.output,
+        )
+
+    def test_unknown_claude_model_warns_but_still_passes_through(self):
+        with self.assertLogs(swarm.log, level="WARNING") as captured:
+            argv = swarm.build_ai_argv(
+                "claude", "opus 6", "높음", self.prompt_file, "/repo",
+            )
+
+        self.assertEqual("opus 6", argv[argv.index("--model") + 1])
+        self.assertTrue(
+            any("Unrecognized claude model" in line for line in captured.output),
+            captured.output,
+        )
+
+    def test_known_claude_alias_does_not_warn(self):
+        with self.assertNoLogs(swarm.log, level="WARNING"):
+            swarm.build_ai_argv(
+                "claude", "claude-opus-5", "높음", self.prompt_file, "/repo",
+            )
+
+    def test_codex_fallback_efforts_exclude_ultra(self):
+        self.assertNotIn("ultra", swarm._CODEX_FALLBACK_EFFORTS)
+
+
+class MakerCheckerModelFamilyTests(unittest.TestCase):
+    """agy serves Claude and GPT-OSS; those must not fill an antigravity role.
+
+    validate_distinct_roles() compares only the agent name, so an antigravity
+    role running Claude would let Claude review its own work while the
+    orchestrator believed AGENTS.md 2.4 held.
+    """
+
+    def setUp(self):
+        self.prompt_file = Path(tempfile.mkdtemp()) / "prompt.md"
+        self.prompt_file.write_text("x", encoding="utf-8")
+
+    def test_foreign_family_models_are_redirected_to_the_gemini_tier(self):
+        for tagged in ("claude opus 5.5", "claude sonnet 5.5", "gpt-oss 120b",
+                       "claude-opus-5-5-high", "claude-sonnet-5-5-low"):
+            with self.subTest(model=tagged):
+                with self.assertLogs(swarm.log, level="WARNING"):
+                    resolved = swarm._resolve_agy_model(tagged, "high")
+                self.assertTrue(
+                    resolved.startswith("gemini-"),
+                    f"{tagged} -> {resolved} would break AGENTS.md 2.4",
+                )
+
+    def test_no_antigravity_tag_can_resolve_to_another_ai_family(self):
+        """Exhaustive: no spelling of any agy model escapes the Gemini tier."""
+        spellings = list(swarm._AGY_MODEL_ALIAS)
+        spellings += list(swarm._AGY_MODEL_EFFORTS)
+        spellings += [
+            f"{stem}-{effort}"
+            for stem, efforts in swarm._AGY_MODEL_EFFORTS.items()
+            for effort in efforts
+        ]
+        for tagged in spellings:
+            with self.subTest(model=tagged):
+                resolved = swarm._resolve_agy_model(tagged, "high")
+                stem = resolved.rsplit("-", 1)[0]
+                self.assertNotIn(stem, swarm._AGY_FOREIGN_FAMILY_STEMS)
+                self.assertIn(stem, swarm._AGY_MODEL_EFFORTS)
+
+    def test_rotation_pairings_never_collide_on_model_family(self):
+        """Every DEFAULT_ROTATION triple must use three distinct families."""
+        def family(ai, model):
+            argv = swarm.build_ai_argv(
+                ai, model, "높음", self.prompt_file, "/repo",
+            )
+            flag = "-m" if ai == "codex" else "--model"
+            resolved = argv[argv.index(flag) + 1]
+            if resolved.startswith("gemini"):
+                return "gemini"
+            if resolved.startswith("claude"):
+                return "claude"
+            return "gpt"
+
+        for worker_ai, roles in swarm.DEFAULT_ROTATION.items():
+            triple = [worker_ai, roles["reviewer"], roles["maintainer"]]
+            families = {
+                family(ai, swarm.DEFAULT_AI_CONFIG[ai]["model"])
+                for ai in triple
+            }
+            with self.subTest(worker=worker_ai):
+                self.assertEqual(
+                    3, len(families),
+                    f"{triple} collapse to families {families}",
+                )
+
+
 class RoleReasoningOverrideCompositionTests(unittest.TestCase):
     """ROLE_REASONING_OVERRIDE is what reaches the CLI, not the tag.
 

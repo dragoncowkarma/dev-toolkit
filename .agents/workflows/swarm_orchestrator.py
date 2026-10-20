@@ -1864,8 +1864,20 @@ _AGY_ALIAS_SLUGS: dict[str, str] = {
 _AGY_SLUG_SUFFIX_RE = re.compile(r"^(?P<stem>.+?)-(?:low|medium|high)$")
 
 # Stem used when a tag names no known antigravity model.  MUST be a key of
-# _AGY_MODEL_EFFORTS; AgyModelTableTests asserts that.
+# _AGY_MODEL_EFFORTS; ModelTableIntegrityTests asserts that.
 _AGY_FALLBACK_STEM = "gemini-3.8-flash"
+
+# agy also serves models belonging to the other two swarm AIs' families.  They
+# are real `agy --model` values, but they MUST NOT fill an antigravity role:
+# validate_distinct_roles() compares only the `ai` string, so
+# `[Reviewer: antigravity | Model: claude opus 5.5]` would let Claude review
+# Claude's own work while the orchestrator believed Worker/Reviewer/Maintainer
+# were three different AIs (AGENTS.md 2.4).  Redirect them to the Gemini tier.
+_AGY_FOREIGN_FAMILY_STEMS: frozenset = frozenset({
+    "claude-opus-5-5",
+    "claude-sonnet-5-5",
+    "gpt-oss-120b",
+})
 
 
 def _agy_stem(model: str) -> Optional[str]:
@@ -1887,6 +1899,15 @@ def _resolve_agy_model(model: str, reasoning: str) -> str:
             "Unknown antigravity model '%s'; falling back to '%s' "
             "(run `agy models` for the current list)",
             model, _AGY_FALLBACK_STEM,
+        )
+        stem = _AGY_FALLBACK_STEM
+
+    if stem in _AGY_FOREIGN_FAMILY_STEMS:
+        log.warning(
+            "Antigravity model '%s' resolves to '%s', which belongs to another "
+            "swarm AI's family; using '%s' instead so that Worker, Reviewer "
+            "and Maintainer stay three different AIs (AGENTS.md 2.4).",
+            model, stem, _AGY_FALLBACK_STEM,
         )
         stem = _AGY_FALLBACK_STEM
 
@@ -1951,6 +1972,15 @@ _CODEX_MODEL_EFFORTS: dict[str, tuple[str, ...]] = {
     "gpt-5.6-luna":  ("low", "medium", "high", "xhigh", "max"),
 }
 
+# Efforts assumed for a model id we do not recognize.  Deliberately excludes
+# `ultra`: only Sol and Terra accept it, and `codex debug models` shows every
+# other entry (including the hidden gpt-reserve and codex-auto-review) stopping
+# at `max`.  Granting `ultra` by default would turn an unknown-model tag into
+# two invalid arguments instead of one.
+_CODEX_FALLBACK_EFFORTS: tuple[str, ...] = (
+    "low", "medium", "high", "xhigh", "max",
+)
+
 # Map the human-friendly model names used in AGENTS.md to Codex CLI model IDs.
 # The ChatGPT-authenticated Codex CLI exposes the named variants, but not the
 # bare `gpt-5.6` ID.  Keep the generic aliases on the configured default
@@ -1958,6 +1988,7 @@ _CODEX_MODEL_EFFORTS: dict[str, tuple[str, ...]] = {
 _CODEX_MODEL_MAP: dict[str, str] = {
     "5.6 (sol, terra, luna)": "gpt-5.6-terra",
     "5.6":                    "gpt-5.6-terra",
+    "gpt-5.6":                "gpt-5.6-terra",
     "5.6 (sol)":              "gpt-5.6-sol",
     "5.6 (terra)":            "gpt-5.6-terra",
     "5.6 (luna)":             "gpt-5.6-luna",
@@ -1972,6 +2003,7 @@ _CODEX_MODEL_MAP: dict[str, str] = {
     # live in PR comments, which are an immutable record, so a PR approved
     # months ago still dispatches through these.
     "5.6 spark":              "gpt-5.6-luna",
+    "gpt-5.6-spark":          "gpt-5.6-luna",
     "5.5":                    "gpt-5.6-terra",
     "5.4":                    "gpt-5.6-terra",
     "5.4 mini":               "gpt-5.6-luna",
@@ -1979,8 +2011,10 @@ _CODEX_MODEL_MAP: dict[str, str] = {
     "5.2":                    "gpt-5.6-terra",
     "5.1":                    "gpt-5.6-terra",
     "gpt-5.5":                "gpt-5.6-terra",
+    "gpt-5.5-codex":          "gpt-5.6-terra",
     "gpt-5.4":                "gpt-5.6-terra",
     "gpt-5.4-mini":           "gpt-5.6-luna",
+    "gpt-5.3":                "gpt-5.6-terra",
     "gpt-5.3-codex":          "gpt-5.6-terra",
     "gpt-5.2-codex":          "gpt-5.6-terra",
     "gpt-5.2":                "gpt-5.6-terra",
@@ -2016,10 +2050,17 @@ def build_ai_argv(ai_name: str, model: str, reasoning: str,
                 "Model alias: '%s' → '%s' (codex)",
                 model, resolved_model,
             )
-        effort = _resolve_effort(
-            reasoning,
-            _CODEX_MODEL_EFFORTS.get(resolved_model, _REASONING_LADDER),
-        )
+        supported = _CODEX_MODEL_EFFORTS.get(resolved_model)
+        if supported is None:
+            # Passed through on purpose so a genuinely custom provider model
+            # still works, but say so: a bad id fails identically on all three
+            # attempts and blocks the event for good.
+            log.warning(
+                "Unrecognized codex model '%s'; passing it through. Run "
+                "`codex debug models` to see valid ids.", resolved_model,
+            )
+            supported = _CODEX_FALLBACK_EFFORTS
+        effort = _resolve_effort(reasoning, supported)
         # codex exec: -C workdir, prompt is positional
         # --dangerously-bypass-approvals-and-sandbox for autonomous mode
         # -s workspace-write to allow file edits
@@ -2067,6 +2108,13 @@ def build_ai_argv(ai_name: str, model: str, reasoning: str,
             log.info(
                 "Model alias: '%s' → '%s' (claude)",
                 model, resolved_model,
+            )
+        elif resolved_model not in set(_CLAUDE_MODEL_MAP.values()):
+            # Same reasoning as the codex branch: pass through, but loudly.
+            log.warning(
+                "Unrecognized claude model '%s'; passing it through. Valid "
+                "aliases: %s", resolved_model,
+                ", ".join(sorted(k for k in _CLAUDE_MODEL_MAP if " " in k)),
             )
         effort = _resolve_effort(reasoning, _CLAUDE_EFFORTS)
         return [

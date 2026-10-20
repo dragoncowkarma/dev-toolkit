@@ -68,10 +68,15 @@ The orchestrator uses these values when dynamically assigning roles.
 Last verified: 2026-10-21. Re-verify before editing this table:
 
 ```bash
+codex debug models | python3 -m json.tool | grep -E '"slug"|"visibility"|"effort"'
 agy models
 claude --help | grep -A4 -- '--model <model>'
-codex exec -m gpt-5.6-terra -c model_reasoning_effort=low -s read-only 'exit'
 ```
+
+Use `codex debug models`, not a trial `codex exec` — it reports every slug with
+its `supported_reasoning_levels` and its `visibility`, and costs no dispatch.
+Only `visibility: list` entries are selectable presets; `gpt-reserve` and
+`codex-auto-review` are hidden internals and must stay out of the preset table.
 
 Rules for this table:
 
@@ -84,8 +89,15 @@ Rules for this table:
    Only Codex Sol and Terra accept `울트라`. An unrecognized label logs a
    WARNING and resolves to `중간`.
 3. Retired model names stay in the orchestrator's alias maps so that open
-   Issues and PRs tagged with them keep dispatching.
-4. A tag's `Reasoning:` governs **only the initial Worker dispatch**.
+   Issues and PRs tagged with them keep dispatching. An unrecognized model is
+   passed through to the CLI with a WARNING rather than rewritten, and is
+   granted only the efforts every model supports — never `울트라`.
+4. `agy` also serves Claude and GPT-OSS models. They are **not** valid for an
+   `antigravity` role — `validate_distinct_roles()` compares only the agent
+   name, so `[Reviewer: antigravity | Model: claude opus 5.5]` would let Claude
+   review Claude's own work while appearing to satisfy section 2.4. The
+   orchestrator redirects them to the Gemini tier with a WARNING.
+5. A tag's `Reasoning:` governs **only the initial Worker dispatch**.
    `ROLE_REASONING_OVERRIDE` replaces it with `중간` for Reviewer, `낮음` for
    Maintainer and `중간` for Worker revisions, by design — those roles do not
    need Worker-level reasoning. Raising a tag's `Reasoning:` will not make a
