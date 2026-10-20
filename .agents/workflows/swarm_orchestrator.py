@@ -174,10 +174,11 @@ DEFAULT_ROTATION = {
     "claude":      {"reviewer": "codex",       "maintainer": "antigravity"},
 }
 
-# Default model and reasoning configurations for each AI agent
+# Default model and reasoning configurations for each AI agent.
+# Must stay in sync with the AGENTS.md section 3 "Default Preset" column.
 DEFAULT_AI_CONFIG: dict[str, dict[str, str]] = {
     "codex":       {"model": "5.6 terra",        "reasoning": "높음"},
-    "antigravity": {"model": "gemini 3.6 flash", "reasoning": "high"},
+    "antigravity": {"model": "gemini 3.8 flash", "reasoning": "high"},
     "claude":      {"model": "sonnet 5",         "reasoning": "높음"},
 }
 
@@ -1065,7 +1066,7 @@ def select_maintainer_for_issueless_pr(
 
     cfg = DEFAULT_AI_CONFIG.get(
         maintainer_ai,
-        {"model": "gemini 3.6 flash", "reasoning": "high"},
+        DEFAULT_AI_CONFIG["antigravity"],
     )
     return RoleAssignment(
         ai=maintainer_ai,
@@ -1743,51 +1744,216 @@ EXECUTION_INTEGRITY_NOTICE = (
     "Execute your task completely and exit."
 )
 
-# Maps AGENTS.md model names + reasoning level to actual agy CLI model IDs.
-# agy embeds the effort level in the model name itself, e.g.:
-#   "Gemini 3.6 Flash (High)", "Gemini 3.6 Flash (Medium)", "Gemini 3.6 Flash (Low)"
-# There is NO separate --effort flag for agy.
+# ---------------------------------------------------------------------------
+# Model and reasoning resolution
+#
+# Verified against the installed CLIs on 2026-10-21:
+#   codex  model table : GPT-5.6-Sol, GPT-5.6-Terra, GPT-5.6-Luna.  GPT-5.4 and
+#                        GPT-5.4 Mini are retired; Codex migrates them to Terra
+#                        and Luna respectively.
+#   `agy models`       : gemini-4-argon-*, gemini-3.8-flash-*, claude-opus-5-5-*,
+#                        claude-sonnet-5-5-*, gpt-oss-120b-medium.
+#                        Gemini 3.6 Flash and Gemini 3.1 Pro are gone.
+#   `claude --model`   : claude-opus-5, claude-sonnet-5, claude-fable-5,
+#                        claude-haiku-4-5 (plus the opus/sonnet/haiku/fable
+#                        aliases).
+#
+# Re-verify with `agy models`, `claude --help` and a `codex exec` dry dispatch
+# whenever a provider ships a new generation, then update AGENTS.md section 3
+# and the tables below together.
+# ---------------------------------------------------------------------------
 
-_AGY_EFFORT_LABEL: dict[str, str] = {
-    "high": "High", "높음": "High", "울트라": "High",
-    "매우 높음": "High",
-    "medium": "Medium", "중간": "Medium",
-    "low": "Low", "낮음": "Low", "light": "Low",
-    "thinking": "High",
-    "엑스트라": "High", "최대": "High", "ultracode": "High",
+# One canonical reasoning ladder, lowest rung first.  AGENTS.md declares
+# 낮음/중간/높음; the extra labels below appear in real Issue/PR tags and are
+# folded onto the same ladder so no tag can produce an invalid CLI argument.
+_REASONING_LADDER: tuple[str, ...] = (
+    "low", "medium", "high", "xhigh", "max", "ultra",
+)
+
+_REASONING_ALIAS: dict[str, str] = {
+    "low": "low", "낮음": "low", "light": "low",
+    "medium": "medium", "중간": "medium",
+    "high": "high", "높음": "high", "thinking": "high",
+    "xhigh": "xhigh", "매우 높음": "xhigh", "매우높음": "xhigh",
+    "엑스트라": "xhigh",
+    "max": "max", "최대": "max", "ultracode": "max",
+    "ultra": "ultra", "울트라": "ultra",
 }
+
+# Tags are hand- and AI-written prose, so a label arrives with stray internal
+# whitespace, a non-breaking space, or trailing punctuation often enough to
+# matter.  Without this, `매우  높음` missed _REASONING_ALIAS and silently
+# resolved to `medium` — *below* a plain `높음`.
+_REASONING_WHITESPACE_RE = re.compile(r"[\s\u00a0]+")
+
+# Rung used when a label matches nothing.  Deliberately mid-ladder: guessing
+# high would let a typo bill max-effort runs.
+_REASONING_DEFAULT = "medium"
+
+
+def _normalize_reasoning(reasoning: str) -> str:
+    """Lowercase, collapse all whitespace, and drop trailing punctuation."""
+    collapsed = _REASONING_WHITESPACE_RE.sub(" ", reasoning.lower())
+    return collapsed.strip().strip(".!?,;:()[]").strip()
+
+
+def _resolve_effort(reasoning: str, supported: tuple[str, ...]) -> str:
+    """Fold a tag's reasoning label onto the ladder and clamp it to `supported`.
+
+    Clamping picks the highest supported rung at or below the request, so a
+    `Reasoning: 울트라` tag on a model that stops at `high` runs at `high`
+    instead of failing the dispatch.
+
+    NOTE for callers: dispatch_reviewer / dispatch_maintainer /
+    dispatch_worker_revision pass the ROLE_REASONING_OVERRIDE value, not the
+    tag's.  Only the initial Worker dispatch forwards what the tag asked for.
+    """
+    key = _normalize_reasoning(reasoning)
+    wanted = _REASONING_ALIAS.get(key)
+    if wanted is None:
+        wanted = _REASONING_DEFAULT
+        log.warning(
+            "Unrecognized Reasoning label %r; using '%s'. Add it to "
+            "_REASONING_ALIAS if it is a real level.",
+            reasoning, wanted,
+        )
+    allowed = [rung for rung in _REASONING_LADDER if rung in supported]
+    if not allowed:
+        return wanted
+    ceiling = _REASONING_LADDER.index(wanted)
+    for rung in reversed(allowed):
+        if _REASONING_LADDER.index(rung) <= ceiling:
+            return rung
+    return allowed[0]
+
+
+# --- antigravity (agy) -----------------------------------------------------
+# agy bakes the effort into the model id ("gemini-4-argon-high") and rejects
+# --effort for those ids, so the resolved slug has to carry both.
+_AGY_MODEL_EFFORTS: dict[str, tuple[str, ...]] = {
+    "gemini-4-argon":    ("low", "medium", "high"),
+    "gemini-3.8-flash":  ("low", "medium", "high"),
+    "claude-opus-5-5":   ("low", "medium", "high"),
+    "claude-sonnet-5-5": ("low", "medium", "high"),
+    "gpt-oss-120b":      ("medium",),
+}
+
+_AGY_MODEL_ALIAS: dict[str, str] = {
+    # AGENTS.md presets
+    "gemini 4 argon":    "gemini-4-argon",
+    "argon":             "gemini-4-argon",
+    "gemini 3.8 flash":  "gemini-3.8-flash",
+    # Retired names → the closest current tier, so an old tag still dispatches.
+    "gemini 3.1 pro":    "gemini-4-argon",
+    "gemini 3 pro":      "gemini-4-argon",
+    "gemini pro":        "gemini-4-argon",
+    "gemini 3.6 flash":  "gemini-3.8-flash",
+    "gemini 3.7 flash":  "gemini-3.8-flash",
+    "gemini flash":      "gemini-3.8-flash",
+    # Non-Gemini models agy also exposes
+    "claude opus 5.5":   "claude-opus-5-5",
+    "claude sonnet 5.5": "claude-sonnet-5-5",
+    "gpt-oss 120b":      "gpt-oss-120b",
+}
+
+_AGY_ALIAS_SLUGS: dict[str, str] = {
+    re.sub(r"[\s_]+", "-", alias): stem
+    for alias, stem in _AGY_MODEL_ALIAS.items()
+}
+
+_AGY_SLUG_SUFFIX_RE = re.compile(r"^(?P<stem>.+?)-(?:low|medium|high)$")
+
+# Stem used when a tag names no known antigravity model.  MUST be a key of
+# _AGY_MODEL_EFFORTS; AgyModelTableTests asserts that.
+_AGY_FALLBACK_STEM = "gemini-3.8-flash"
+
+
+def _agy_stem(model: str) -> Optional[str]:
+    """Map any spelling of an antigravity model onto a known agy slug stem."""
+    key = re.sub(r"[\s_()]+", "-", model.lower().strip()).strip("-")
+    for candidate in (key, _AGY_SLUG_SUFFIX_RE.sub(r"\g<stem>", key)):
+        if candidate in _AGY_MODEL_EFFORTS:
+            return candidate
+        if candidate in _AGY_ALIAS_SLUGS:
+            return _AGY_ALIAS_SLUGS[candidate]
+    return None
+
 
 def _resolve_agy_model(model: str, reasoning: str) -> str:
-    """Build the full agy model string like 'Gemini 3.6 Flash (High)'."""
-    effort = _AGY_EFFORT_LABEL.get(reasoning.lower().strip(), "High")
-    # All AGENTS.md antigravity models map to Gemini 3.6 Flash
-    return f"Gemini 3.6 Flash ({effort})"
+    """Resolve an AGENTS.md antigravity tag to an `agy --model` slug."""
+    stem = _agy_stem(model)
+    if stem is None:
+        log.warning(
+            "Unknown antigravity model '%s'; falling back to '%s' "
+            "(run `agy models` for the current list)",
+            model, _AGY_FALLBACK_STEM,
+        )
+        stem = _AGY_FALLBACK_STEM
+
+    efforts = _AGY_MODEL_EFFORTS.get(stem)
+    if efforts is None:
+        # An alias points at a stem missing from _AGY_MODEL_EFFORTS, i.e. the
+        # tables were edited inconsistently.  Degrade instead of raising
+        # KeyError inside a dispatch, which would burn a retry attempt.
+        log.error(
+            "Antigravity alias resolved '%s' to unknown stem '%s'; "
+            "falling back to '%s'. Fix _AGY_MODEL_ALIAS/_AGY_MODEL_EFFORTS.",
+            model, stem, _AGY_FALLBACK_STEM,
+        )
+        stem = _AGY_FALLBACK_STEM
+        efforts = _AGY_MODEL_EFFORTS[stem]
+
+    return f"{stem}-{_resolve_effort(reasoning, efforts)}"
+
+
+# --- claude ----------------------------------------------------------------
+# Claude CLI effort levels: low, medium, high, xhigh, max.
+_CLAUDE_EFFORTS: tuple[str, ...] = ("low", "medium", "high", "xhigh", "max")
 
 _CLAUDE_MODEL_MAP: dict[str, str] = {
-    "sonnet 5":     "claude-sonnet-5",
     "opus 5":       "claude-opus-5",
+    "sonnet 5":     "claude-sonnet-5",
     "fable 5":      "claude-fable-5",
-    "haiku 4.5":    "claude-haiku-4-5-20251001",
-    # Already fully-qualified names pass through.
-    "claude-sonnet-5":             "claude-sonnet-5",
+    "haiku 4.5":    "claude-haiku-4-5",
+    # Retired human-readable names → the current model in the same family.
+    # Maintainer tags live in PR comments, which are an immutable record, so a
+    # PR approved months ago still dispatches through these.
+    "opus 4.8":          "claude-opus-5",
+    "opus 4.7":          "claude-opus-5",
+    "opus 4.6":          "claude-opus-5",
+    "opus 4.5":          "claude-opus-5",
+    "opus 4.1":          "claude-opus-5",
+    "opus 4":            "claude-opus-5",
+    "sonnet 4.6":        "claude-sonnet-5",
+    "sonnet 4.5":        "claude-sonnet-5",
+    "sonnet 4":          "claude-sonnet-5",
+    "sonnet 3.7":        "claude-sonnet-5",
+    "claude 3.7 sonnet": "claude-sonnet-5",
+    "sonnet 3.5":        "claude-sonnet-5",
+    "claude 3.5 sonnet": "claude-sonnet-5",
+    "haiku 3.5":         "claude-haiku-4-5",
+    "claude 3.5 haiku":  "claude-haiku-4-5",
+    # Already fully-qualified names pass through — the CLI still accepts the
+    # previous generations by ID.
     "claude-opus-5":               "claude-opus-5",
+    "claude-sonnet-5":             "claude-sonnet-5",
     "claude-fable-5":              "claude-fable-5",
-    "claude-haiku-4-5-20251001":   "claude-haiku-4-5-20251001",
+    "claude-haiku-4-5":            "claude-haiku-4-5",
+    "claude-haiku-4-5-20251001":   "claude-haiku-4-5",
 }
 
-# Claude CLI effort levels: low, medium, high, xhigh, max.
-_CLAUDE_EFFORT_MAP: dict[str, str] = {
-    "high": "high", "높음": "high", "울트라": "high",
-    "매우 높음": "high",
-    "medium": "medium", "중간": "medium",
-    "low": "low", "낮음": "low", "light": "low",
-    "thinking": "high",
-    "엑스트라": "xhigh", "최대": "max", "ultracode": "max",
+# --- codex -----------------------------------------------------------------
+# Reasoning efforts each Codex preset accepts, from the CLI's own model table.
+# Luna stops at `max`; Sol and Terra add the `ultra` rung.
+_CODEX_MODEL_EFFORTS: dict[str, tuple[str, ...]] = {
+    "gpt-5.6-sol":   ("low", "medium", "high", "xhigh", "max", "ultra"),
+    "gpt-5.6-terra": ("low", "medium", "high", "xhigh", "max", "ultra"),
+    "gpt-5.6-luna":  ("low", "medium", "high", "xhigh", "max"),
 }
 
 # Map the human-friendly model names used in AGENTS.md to Codex CLI model IDs.
-# The ChatGPT-authenticated Codex CLI exposes the reasoning variants, but not
-# the bare `gpt-5.6` ID.  Keep the generic aliases on the configured default
+# The ChatGPT-authenticated Codex CLI exposes the named variants, but not the
+# bare `gpt-5.6` ID.  Keep the generic aliases on the configured default
 # variant so a valid Issue/PR tag cannot be turned into a deterministic 400.
 _CODEX_MODEL_MAP: dict[str, str] = {
     "5.6 (sol, terra, luna)": "gpt-5.6-terra",
@@ -1798,9 +1964,33 @@ _CODEX_MODEL_MAP: dict[str, str] = {
     "5.6 sol":                "gpt-5.6-sol",
     "5.6 terra":              "gpt-5.6-terra",
     "5.6 luna":               "gpt-5.6-luna",
+    "sol":                    "gpt-5.6-sol",
+    "terra":                  "gpt-5.6-terra",
+    "luna":                   "gpt-5.6-luna",
+    # Retired presets → the variant Codex itself migrates them to, or the
+    # default variant where Codex offers no direct successor.  Maintainer tags
+    # live in PR comments, which are an immutable record, so a PR approved
+    # months ago still dispatches through these.
+    "5.6 spark":              "gpt-5.6-luna",
     "5.5":                    "gpt-5.6-terra",
     "5.4":                    "gpt-5.6-terra",
-    "5.4 mini":               "gpt-5.6-terra",
+    "5.4 mini":               "gpt-5.6-luna",
+    "5.3":                    "gpt-5.6-terra",
+    "5.2":                    "gpt-5.6-terra",
+    "5.1":                    "gpt-5.6-terra",
+    "gpt-5.5":                "gpt-5.6-terra",
+    "gpt-5.4":                "gpt-5.6-terra",
+    "gpt-5.4-mini":           "gpt-5.6-luna",
+    "gpt-5.3-codex":          "gpt-5.6-terra",
+    "gpt-5.2-codex":          "gpt-5.6-terra",
+    "gpt-5.2":                "gpt-5.6-terra",
+    "gpt-5.1-codex-max":      "gpt-5.6-terra",
+    "gpt-5.1-codex":          "gpt-5.6-terra",
+    "gpt-5.1":                "gpt-5.6-terra",
+    # Already fully-qualified names pass through.
+    "gpt-5.6-sol":            "gpt-5.6-sol",
+    "gpt-5.6-terra":          "gpt-5.6-terra",
+    "gpt-5.6-luna":           "gpt-5.6-luna",
 }
 
 
@@ -1809,9 +1999,10 @@ def build_ai_argv(ai_name: str, model: str, reasoning: str,
     """Build an argv list for a specific AI CLI tool.
 
     Each tool's actual flags (verified via CLI):
-      codex exec -m <model> -C <dir> -s workspace-write
+      codex exec -m <model> -c model_reasoning_effort=<effort> -C <dir>
+        -s workspace-write
         --dangerously-bypass-approvals-and-sandbox <prompt>
-      agy --model "Gemini 3.6 Flash (High)" --print-timeout <dur>
+      agy --model gemini-4-argon-high --print-timeout <dur>
         --dangerously-skip-permissions -p <prompt>
       claude -p --model <model> --effort <level> --dangerously-skip-permissions <prompt>
     """
@@ -1825,12 +2016,28 @@ def build_ai_argv(ai_name: str, model: str, reasoning: str,
                 "Model alias: '%s' → '%s' (codex)",
                 model, resolved_model,
             )
+        effort = _resolve_effort(
+            reasoning,
+            _CODEX_MODEL_EFFORTS.get(resolved_model, _REASONING_LADDER),
+        )
         # codex exec: -C workdir, prompt is positional
         # --dangerously-bypass-approvals-and-sandbox for autonomous mode
         # -s workspace-write to allow file edits
+        # Reasoning effort is a config override, not a flag.  Until it was
+        # passed here, codex ignored the lifecycle's effort entirely and read
+        # model_reasoning_effort out of the operator's ~/.codex/config.toml,
+        # so ROLE_REASONING_OVERRIDE was dead for codex while claude and
+        # antigravity honoured it.  Passing it brings codex in line.
+        #
+        # `reasoning` here is already the role-adjusted value: the Issue/PR
+        # tag governs only the initial Worker dispatch.  On a machine whose
+        # config.toml sets a high effort, this is therefore a REDUCTION for
+        # Reviewer and Maintainer — which is the documented intent of
+        # ROLE_REASONING_OVERRIDE ("Reviewer/Maintainer do not" need it).
         return [
             "codex", "exec",
             "-m", resolved_model,
+            "-c", f"model_reasoning_effort={effort}",
             "-C", cwd,
             "-s", "workspace-write",
             "--dangerously-bypass-approvals-and-sandbox",
@@ -1843,7 +2050,8 @@ def build_ai_argv(ai_name: str, model: str, reasoning: str,
             "Model alias: '%s' (reasoning=%s) → '%s' (antigravity)",
             model, reasoning, resolved_model,
         )
-        # agy does NOT use a separate --effort flag; effort is part of model name.
+        # agy rejects --effort for these models; _resolve_agy_model already
+        # baked the effort into the model slug.
         argv = [
             "agy",
             "--dangerously-skip-permissions",
@@ -1860,9 +2068,7 @@ def build_ai_argv(ai_name: str, model: str, reasoning: str,
                 "Model alias: '%s' → '%s' (claude)",
                 model, resolved_model,
             )
-        effort = _CLAUDE_EFFORT_MAP.get(
-            reasoning.lower().strip(), "medium",
-        )
+        effort = _resolve_effort(reasoning, _CLAUDE_EFFORTS)
         return [
             "claude",
             "-p",
@@ -1875,19 +2081,6 @@ def build_ai_argv(ai_name: str, model: str, reasoning: str,
     else:
         log.error("Unknown AI agent: %s", ai_name)
         return []
-
-
-def _map_reasoning_to_effort(reasoning: str) -> str:
-    """Map AGENTS.md reasoning levels to agy --effort values (low/medium/high)."""
-    mapping = {
-        "high": "high", "높음": "high", "울트라": "high",
-        "매우 높음": "high",
-        "medium": "medium", "중간": "medium",
-        "low": "low", "낮음": "low", "light": "low",
-        "thinking": "high",
-        "엑스트라": "high", "최대": "high", "ultracode": "high",
-    }
-    return mapping.get(reasoning.lower().strip(), "medium")
 
 
 def _format_argv_for_log(argv: list[str]) -> str:

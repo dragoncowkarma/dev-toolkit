@@ -61,9 +61,41 @@ The orchestrator uses these values when dynamically assigning roles.
 
 | AI Agent | Command | Preset Models | Reasoning Levels | Default Preset |
 |----------|---------|---------------|------------------|----------------|
-| **Codex** | `codex` | `5.6 terra`, `5.6 sol`, `5.6 spark` | `낮음`, `중간`, `높음` | `5.6 terra` |
-| **Antigravity** | `agy` | `gemini 3.6 flash`, `gemini 3.1 pro` | `low`, `medium`, `high` | `gemini 3.6 flash` |
-| **Claude** | `claude` | `sonnet 5`, `haiku 3.5` | `낮음`, `중간`, `높음` | `sonnet 5` |
+| **Codex** | `codex` | `5.6 terra`, `5.6 sol`, `5.6 luna` | `낮음`, `중간`, `높음`, `매우 높음`, `최대`, `울트라` | `5.6 terra` |
+| **Antigravity** | `agy` | `gemini 3.8 flash`, `gemini 4 argon` | `low`, `medium`, `high` | `gemini 3.8 flash` |
+| **Claude** | `claude` | `sonnet 5`, `opus 5`, `haiku 4.5` | `낮음`, `중간`, `높음`, `매우 높음`, `최대` | `sonnet 5` |
+
+Last verified: 2026-10-21. Re-verify before editing this table:
+
+```bash
+agy models
+claude --help | grep -A4 -- '--model <model>'
+codex exec -m gpt-5.6-terra -c model_reasoning_effort=low -s read-only 'exit'
+```
+
+Rules for this table:
+
+1. A `Model:` value not listed here MUST resolve through `_CODEX_MODEL_MAP`,
+   `_AGY_MODEL_ALIAS`, or `_CLAUDE_MODEL_MAP` in
+   `.agents/workflows/swarm_orchestrator.py`. Adding a preset here without
+   adding its alias there is incomplete work.
+2. A `Reasoning:` value above a model's ceiling is clamped down, never
+   rejected — `agy` stops at `high`, Claude at `최대`, Codex Luna at `최대`.
+   Only Codex Sol and Terra accept `울트라`. An unrecognized label logs a
+   WARNING and resolves to `중간`.
+3. Retired model names stay in the orchestrator's alias maps so that open
+   Issues and PRs tagged with them keep dispatching.
+4. A tag's `Reasoning:` governs **only the initial Worker dispatch**.
+   `ROLE_REASONING_OVERRIDE` replaces it with `중간` for Reviewer, `낮음` for
+   Maintainer and `중간` for Worker revisions, by design — those roles do not
+   need Worker-level reasoning. Raising a tag's `Reasoning:` will not make a
+   review or a merge deeper; change the override table instead.
+
+Verify what a tag actually dispatches, rather than reading it off the table:
+
+```bash
+python3 .agents/workflows/swarm_orchestrator.py --dry-run --once
+```
 
 ---
 
