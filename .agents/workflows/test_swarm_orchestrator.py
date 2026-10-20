@@ -2,6 +2,7 @@
 
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -541,7 +542,33 @@ class ReasoningLabelTests(unittest.TestCase):
             captured.output,
         )
 
-    def test_clamp_never_returns_an_unsupported_rung(self):
+    def test_clamp_outcomes_are_pinned_not_merely_in_range(self):
+        """Assert the exact rung, not just membership in `supported`.
+
+        `result in supported` is a postcondition _resolve_effort guarantees by
+        construction, so asserting only that cannot fail and proves nothing.
+        """
+        cases = [
+            # label,       supported,                       expected
+            ("울트라",      ("low", "medium", "high"),        "high"),
+            ("울트라",      swarm._CLAUDE_EFFORTS,            "max"),
+            ("울트라",      swarm._CODEX_MODEL_EFFORTS["gpt-5.6-sol"],  "ultra"),
+            ("울트라",      swarm._CODEX_MODEL_EFFORTS["gpt-5.6-luna"], "max"),
+            ("최대",        ("low", "medium", "high"),        "high"),
+            ("매우 높음",   ("low", "medium", "high"),        "high"),
+            ("매우 높음",   swarm._CLAUDE_EFFORTS,            "xhigh"),
+            ("낮음",        ("medium",),                      "medium"),
+            ("높음",        ("medium",),                      "medium"),
+            ("중간",        ("low", "medium", "high"),        "medium"),
+            ("낮음",        ("low", "medium", "high"),        "low"),
+        ]
+        for label, supported, expected in cases:
+            with self.subTest(label=label, supported=supported):
+                self.assertEqual(
+                    expected, swarm._resolve_effort(label, supported),
+                )
+
+    def test_clamp_result_is_always_within_supported(self):
         supported_sets = [
             swarm._CLAUDE_EFFORTS,
             ("medium",),
@@ -736,6 +763,110 @@ class MakerCheckerModelFamilyTests(unittest.TestCase):
                 )
 
 
+# Transcribed verbatim from the installed CLIs on 2026-10-21:
+#   `agy models`         -> slug per line
+#   `codex debug models` -> slug + supported_reasoning_levels + visibility
+# These literals are the only thing standing between a mis-transcribed effort
+# table and a dispatch the CLI rejects, so they are asserted independently of
+# the orchestrator's own tables. Refresh them together, never one alone.
+EXPECTED_AGY_SLUGS = {
+    "gemini-4-argon-low", "gemini-4-argon-medium", "gemini-4-argon-high",
+    "gemini-3.8-flash-low", "gemini-3.8-flash-medium", "gemini-3.8-flash-high",
+    "claude-opus-5-5-low", "claude-opus-5-5-medium", "claude-opus-5-5-high",
+    "claude-sonnet-5-5-low", "claude-sonnet-5-5-medium", "claude-sonnet-5-5-high",
+    "gpt-oss-120b-medium",
+}
+
+EXPECTED_CODEX_PRESETS = {
+    "gpt-5.6-sol":   ("low", "medium", "high", "xhigh", "max", "ultra"),
+    "gpt-5.6-terra": ("low", "medium", "high", "xhigh", "max", "ultra"),
+    "gpt-5.6-luna":  ("low", "medium", "high", "xhigh", "max"),
+}
+
+EXPECTED_CLAUDE_MODELS = {
+    "claude-opus-5", "claude-sonnet-5", "claude-fable-5", "claude-haiku-4-5",
+}
+
+
+class TranscribedInventoryTests(unittest.TestCase):
+    """Guard the hand-transcribed effort tables against silent drift.
+
+    Every other test in this file checks the orchestrator against itself, so a
+    mis-transcribed effort tuple is internally consistent and invisible. These
+    compare the tables to an independent transcription of the CLI output.
+    """
+
+    def test_agy_table_expands_to_exactly_the_published_slugs(self):
+        expanded = {
+            f"{stem}-{effort}"
+            for stem, efforts in swarm._AGY_MODEL_EFFORTS.items()
+            for effort in efforts
+        }
+        self.assertEqual(
+            EXPECTED_AGY_SLUGS, expanded,
+            "_AGY_MODEL_EFFORTS no longer matches `agy models`; re-run it",
+        )
+
+    def test_codex_preset_efforts_match_the_published_catalog(self):
+        self.assertEqual(EXPECTED_CODEX_PRESETS, swarm._CODEX_MODEL_EFFORTS)
+
+    def test_only_sol_and_terra_accept_ultra(self):
+        with_ultra = {
+            slug for slug, efforts in swarm._CODEX_MODEL_EFFORTS.items()
+            if "ultra" in efforts
+        }
+        self.assertEqual({"gpt-5.6-sol", "gpt-5.6-terra"}, with_ultra)
+
+    def test_claude_aliases_cover_exactly_the_current_generation(self):
+        self.assertEqual(
+            EXPECTED_CLAUDE_MODELS, set(swarm._CLAUDE_MODEL_MAP.values()),
+        )
+
+    @unittest.skipUnless(
+        os.environ.get("SWARM_VERIFY_LIVE_MODELS") == "1",
+        "set SWARM_VERIFY_LIVE_MODELS=1 to check the tables against the CLIs",
+    )
+    def test_tables_match_the_live_clis(self):
+        """Opt-in: the command that actually proves the tables are current.
+
+        Run it after any provider announcement:
+          SWARM_VERIFY_LIVE_MODELS=1 python3 -m unittest \
+            test_swarm_orchestrator.TranscribedInventoryTests
+        """
+        agy = subprocess.run(
+            ["agy", "models"], capture_output=True, text=True, timeout=120,
+        )
+        self.assertEqual(0, agy.returncode, agy.stderr)
+        live_agy = {
+            line.split("\t")[0].strip()
+            for line in agy.stdout.splitlines()
+            if "\t" in line
+        }
+        self.assertEqual(
+            EXPECTED_AGY_SLUGS, live_agy,
+            "`agy models` has changed -- update EXPECTED_AGY_SLUGS, "
+            "_AGY_MODEL_EFFORTS and AGENTS.md section 3 together",
+        )
+
+        codex = subprocess.run(
+            ["codex", "debug", "models"],
+            capture_output=True, text=True, timeout=120,
+        )
+        self.assertEqual(0, codex.returncode, codex.stderr)
+        live_codex = {
+            entry["slug"]: tuple(
+                e["effort"] for e in entry.get("supported_reasoning_levels", [])
+            )
+            for entry in json.loads(codex.stdout)["models"]
+            if entry.get("visibility") == "list"
+        }
+        self.assertEqual(
+            EXPECTED_CODEX_PRESETS, live_codex,
+            "`codex debug models` has changed -- update "
+            "EXPECTED_CODEX_PRESETS, _CODEX_MODEL_EFFORTS and AGENTS.md",
+        )
+
+
 class RoleReasoningOverrideCompositionTests(unittest.TestCase):
     """ROLE_REASONING_OVERRIDE is what reaches the CLI, not the tag.
 
@@ -782,7 +913,12 @@ class RoleReasoningOverrideCompositionTests(unittest.TestCase):
                     )
 
     def test_override_efforts_are_supported_by_every_preset_model(self):
-        """A role override must be dispatchable for each AGENTS.md preset."""
+        """A role override must resolve to an effort that preset accepts.
+
+        `assertTrue(effort)` would pass vacuously -- _effort_for always returns
+        a non-empty string -- so check membership in the model's real effort
+        set instead.
+        """
         presets = {
             "codex": ["5.6 sol", "5.6 terra", "5.6 luna"],
             "antigravity": ["gemini 3.8 flash", "gemini 4 argon"],
@@ -792,9 +928,16 @@ class RoleReasoningOverrideCompositionTests(unittest.TestCase):
             for ai, models in presets.items():
                 for model in models:
                     with self.subTest(role=role, ai=ai, model=model):
-                        self.assertTrue(
-                            self._effort_for(ai, model, role, "높음"),
-                        )
+                        effort = self._effort_for(ai, model, role, "높음")
+                        if ai == "codex":
+                            resolved = swarm._CODEX_MODEL_MAP[model]
+                            allowed = swarm._CODEX_MODEL_EFFORTS[resolved]
+                        elif ai == "claude":
+                            allowed = swarm._CLAUDE_EFFORTS
+                        else:
+                            stem = swarm._agy_stem(model)
+                            allowed = swarm._AGY_MODEL_EFFORTS[stem]
+                        self.assertIn(effort, allowed)
 
 
 class LifecycleSignalTests(unittest.TestCase):

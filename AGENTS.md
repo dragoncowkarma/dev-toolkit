@@ -78,6 +78,21 @@ its `supported_reasoning_levels` and its `visibility`, and costs no dispatch.
 Only `visibility: list` entries are selectable presets; `gpt-reserve` and
 `codex-auto-review` are hidden internals and must stay out of the preset table.
 
+The command that actually *proves* the orchestrator's tables still match those
+CLIs — run it after any provider announcement, and after editing this table:
+
+```bash
+cd .agents/workflows && SWARM_VERIFY_LIVE_MODELS=1 python3 -m unittest \
+  test_swarm_orchestrator.TranscribedInventoryTests
+```
+
+It diffs `_AGY_MODEL_EFFORTS` and `_CODEX_MODEL_EFFORTS` against live
+`agy models` / `codex debug models` output. It is skipped by default (CI has no
+CLI credentials), so the same tables are additionally pinned against
+`EXPECTED_AGY_SLUGS` / `EXPECTED_CODEX_PRESETS` literals that CI does enforce.
+Refresh the literals, the orchestrator tables and this section together — never
+one alone.
+
 Rules for this table:
 
 1. A `Model:` value not listed here MUST resolve through `_CODEX_MODEL_MAP`,
