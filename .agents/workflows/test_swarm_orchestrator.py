@@ -3,6 +3,8 @@
 import importlib.util
 import json
 import os
+import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -864,6 +866,43 @@ class TranscribedInventoryTests(unittest.TestCase):
             EXPECTED_CODEX_PRESETS, live_codex,
             "`codex debug models` has changed -- update "
             "EXPECTED_CODEX_PRESETS, _CODEX_MODEL_EFFORTS and AGENTS.md",
+        )
+
+        # Claude has no `models` subcommand, and `claude --help` names none of
+        # its own ids -- only the aliases and one illustrative full name. The
+        # authoritative current generation is the `latest_per_family` table
+        # embedded in the CLI binary. Same command AGENTS.md section 3 gives.
+        claude_bin = shutil.which("claude")
+        self.assertIsNotNone(claude_bin, "claude not on PATH")
+        extracted = subprocess.run(
+            "strings -a \"$(readlink -f \"$(command -v claude)\")\" "
+            "| grep -o 'latest_per_family:{[^}]*claude-[^}]*}'",
+            shell=True, capture_output=True, text=True, timeout=300,
+        )
+        self.assertEqual(0, extracted.returncode, extracted.stderr)
+        live_claude = set(
+            re.findall(r'"(claude-[A-Za-z0-9.-]+)"', extracted.stdout)
+        )
+        self.assertEqual(
+            EXPECTED_CLAUDE_MODELS, live_claude,
+            "the claude CLI's latest_per_family has changed -- update "
+            "EXPECTED_CLAUDE_MODELS, _CLAUDE_MODEL_MAP and AGENTS.md",
+        )
+
+        claude_help = subprocess.run(
+            ["claude", "--help"], capture_output=True, text=True, timeout=120,
+        )
+        self.assertEqual(0, claude_help.returncode, claude_help.stderr)
+        effort_line = re.search(
+            r"--effort <level>.*?\(([^)]*)\)", claude_help.stdout, re.S,
+        )
+        self.assertIsNotNone(effort_line, "could not find --effort in --help")
+        live_efforts = tuple(
+            e.strip() for e in effort_line.group(1).split(",")
+        )
+        self.assertEqual(
+            swarm._CLAUDE_EFFORTS, live_efforts,
+            "`claude --effort` levels have changed -- update _CLAUDE_EFFORTS",
         )
 
 

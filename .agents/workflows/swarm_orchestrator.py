@@ -1754,9 +1754,12 @@ EXECUTION_INTEGRITY_NOTICE = (
 #   `agy models`       : gemini-4-argon-*, gemini-3.8-flash-*, claude-opus-5-5-*,
 #                        claude-sonnet-5-5-*, gpt-oss-120b-medium.
 #                        Gemini 3.6 Flash and Gemini 3.1 Pro are gone.
-#   `claude --model`   : claude-opus-5, claude-sonnet-5, claude-fable-5,
+#   claude             : claude-opus-5, claude-sonnet-5, claude-fable-5,
 #                        claude-haiku-4-5 (plus the opus/sonnet/haiku/fable
-#                        aliases).
+#                        aliases).  NOT from `claude --help`, which names none
+#                        of these -- read from the `latest_per_family` table
+#                        embedded in the CLI binary.  See AGENTS.md section 3
+#                        for the exact command.
 #
 # Re-verify with `agy models`, `claude --help` and a `codex exec` dry dispatch
 # whenever a provider ships a new generation, then update AGENTS.md section 3

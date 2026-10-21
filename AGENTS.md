@@ -70,13 +70,23 @@ Last verified: 2026-10-21. Re-verify before editing this table:
 ```bash
 codex debug models | python3 -m json.tool | grep -E '"slug"|"visibility"|"effort"'
 agy models
-claude --help | grep -A4 -- '--model <model>'
+claude --help | grep -A1 -- '--effort <level>'
+strings -a "$(readlink -f "$(command -v claude)")" \
+  | grep -o 'latest_per_family:{[^}]*claude-[^}]*}'
 ```
 
 Use `codex debug models`, not a trial `codex exec` — it reports every slug with
 its `supported_reasoning_levels` and its `visibility`, and costs no dispatch.
 Only `visibility: list` entries are selectable presets; `gpt-reserve` and
 `codex-auto-review` are hidden internals and must stay out of the preset table.
+
+The Claude row needs two commands because the CLI has no `models` subcommand and
+`claude --help` names **none** of its own model ids — it shows only the aliases
+(`opus`, `sonnet`, `haiku`, `fable`) and one illustrative full name, so grepping
+`--help` for the preset list verifies nothing. `--help` does document the effort
+levels; the model ids come from the `latest_per_family` table embedded in the
+CLI binary, which is the authoritative current generation per family. An invalid
+`--model` does *not* enumerate the valid ones, unlike `agy`.
 
 The command that actually *proves* the orchestrator's tables still match those
 CLIs — run it after any provider announcement, and after editing this table:
