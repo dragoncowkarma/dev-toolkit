@@ -2,6 +2,9 @@
 
 import importlib.util
 import json
+import os
+import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -293,7 +296,7 @@ class ProviderFailureTests(unittest.TestCase):
             pid=1234,
             role="reviewer",
             ai_name="antigravity",
-            model="gemini 3.1 pro",
+            model="gemini 4 argon",
             reasoning="high",
             task_ref="review#33-abc123",
             branch="worker/23-codex-hash",
@@ -337,7 +340,7 @@ class ProviderFailureTests(unittest.TestCase):
             pid=1234,
             role="maintainer",
             ai_name="antigravity",
-            model="gemini 3.1 pro",
+            model="gemini 4 argon",
             reasoning="high",
             task_ref="maintain#39-comment",
             branch="",
@@ -397,11 +400,45 @@ class AiArgvTests(unittest.TestCase):
 
     def test_antigravity_embeds_effort_in_resolved_model(self):
         argv = swarm.build_ai_argv(
-            "antigravity", "gemini 3.1 pro", "높음", self.prompt_file, "/repo",
+            "antigravity", "gemini 4 argon", "높음", self.prompt_file, "/repo",
         )
 
-        self.assertEqual("Gemini 3.6 Flash (High)", argv[argv.index("--model") + 1])
+        self.assertEqual("gemini-4-argon-high", argv[argv.index("--model") + 1])
         self.assertNotIn("--effort", argv)
+
+    def test_antigravity_maps_retired_model_to_current_tier(self):
+        argv = swarm.build_ai_argv(
+            "antigravity", "gemini 3.6 flash", "medium", self.prompt_file, "/repo",
+        )
+
+        self.assertEqual(
+            "gemini-3.8-flash-medium", argv[argv.index("--model") + 1],
+        )
+
+    def test_antigravity_accepts_a_fully_qualified_agy_slug(self):
+        argv = swarm.build_ai_argv(
+            "antigravity", "gemini-4-argon-low", "medium", self.prompt_file, "/repo",
+        )
+
+        self.assertEqual(
+            "gemini-4-argon-medium", argv[argv.index("--model") + 1],
+        )
+
+    def test_antigravity_clamps_effort_to_the_model_ceiling(self):
+        argv = swarm.build_ai_argv(
+            "antigravity", "gemini 4 argon", "울트라", self.prompt_file, "/repo",
+        )
+
+        self.assertEqual("gemini-4-argon-high", argv[argv.index("--model") + 1])
+
+    def test_antigravity_falls_back_to_default_for_unknown_model(self):
+        argv = swarm.build_ai_argv(
+            "antigravity", "gemini 9 nonexistent", "high", self.prompt_file, "/repo",
+        )
+
+        self.assertEqual(
+            "gemini-3.8-flash-high", argv[argv.index("--model") + 1],
+        )
 
     def test_claude_resolves_model_and_effort(self):
         argv = swarm.build_ai_argv(
@@ -411,6 +448,536 @@ class AiArgvTests(unittest.TestCase):
         self.assertEqual("claude-sonnet-5", argv[argv.index("--model") + 1])
         self.assertEqual("medium", argv[argv.index("--effort") + 1])
 
+    def test_claude_resolves_current_haiku_without_a_dated_suffix(self):
+        argv = swarm.build_ai_argv(
+            "claude", "haiku 4.5", "낮음", self.prompt_file, "/repo",
+        )
+
+        self.assertEqual("claude-haiku-4-5", argv[argv.index("--model") + 1])
+        self.assertEqual("low", argv[argv.index("--effort") + 1])
+
+    def test_claude_clamps_effort_to_its_top_rung(self):
+        argv = swarm.build_ai_argv(
+            "claude", "opus 5", "울트라", self.prompt_file, "/repo",
+        )
+
+        self.assertEqual("claude-opus-5", argv[argv.index("--model") + 1])
+        self.assertEqual("max", argv[argv.index("--effort") + 1])
+
+    def test_codex_passes_reasoning_effort_as_a_config_override(self):
+        argv = swarm.build_ai_argv(
+            "codex", "5.6 sol", "울트라", self.prompt_file, "/repo",
+        )
+
+        self.assertEqual(
+            "model_reasoning_effort=ultra", argv[argv.index("-c") + 1],
+        )
+
+    def test_codex_clamps_effort_unsupported_by_the_selected_model(self):
+        argv = swarm.build_ai_argv(
+            "codex", "5.6 luna", "울트라", self.prompt_file, "/repo",
+        )
+
+        self.assertEqual("gpt-5.6-luna", argv[argv.index("-m") + 1])
+        self.assertEqual(
+            "model_reasoning_effort=max", argv[argv.index("-c") + 1],
+        )
+
+    def test_codex_maps_retired_preset_to_its_migration_target(self):
+        argv = swarm.build_ai_argv(
+            "codex", "5.4 mini", "중간", self.prompt_file, "/repo",
+        )
+
+        self.assertEqual("gpt-5.6-luna", argv[argv.index("-m") + 1])
+
+    def test_retired_model_names_from_pr_comments_still_resolve(self):
+        """Maintainer tags live in PR comments, which cannot be rewritten.
+
+        Every retired name observed in the open PR comment history must still
+        resolve to a model the CLI accepts, or the lifecycle deadlocks.
+        """
+        cases = [
+            ("claude", "claude 3.7 sonnet", "claude-sonnet-5"),
+            ("claude", "sonnet 3.7", "claude-sonnet-5"),
+            ("claude", "sonnet 4.6", "claude-sonnet-5"),
+            ("claude", "opus 4.8", "claude-opus-5"),
+            ("claude", "haiku 3.5", "claude-haiku-4-5"),
+            ("codex", "gpt-5.1-codex-max", "gpt-5.6-terra"),
+            ("codex", "gpt-5.2-codex", "gpt-5.6-terra"),
+            ("codex", "5.5", "gpt-5.6-terra"),
+        ]
+        for ai, tagged, expected in cases:
+            with self.subTest(ai=ai, model=tagged):
+                argv = swarm.build_ai_argv(
+                    ai, tagged, "높음", self.prompt_file, "/repo",
+                )
+                flag = "--model" if ai == "claude" else "-m"
+                self.assertEqual(expected, argv[argv.index(flag) + 1])
+
+
+class ReasoningLabelTests(unittest.TestCase):
+    """_resolve_effort must never silently downgrade a real label."""
+
+    def test_multiword_label_survives_stray_whitespace_and_punctuation(self):
+        for spelling in (
+            "매우 높음", "매우높음", "매우  높음", "매우\u00a0높음",
+            " 매우 높음 ", "매우 높음.", "매우 높음!",
+        ):
+            with self.subTest(spelling=spelling):
+                self.assertEqual(
+                    "xhigh",
+                    swarm._resolve_effort(spelling, swarm._CLAUDE_EFFORTS),
+                )
+
+    def test_every_alias_resolves_to_a_rung_on_the_ladder(self):
+        for label, rung in swarm._REASONING_ALIAS.items():
+            with self.subTest(label=label):
+                self.assertIn(rung, swarm._REASONING_LADDER)
+
+    def test_unrecognized_label_warns_instead_of_failing_silently(self):
+        with self.assertLogs(swarm.log, level="WARNING") as captured:
+            effort = swarm._resolve_effort("아주아주높음", swarm._CLAUDE_EFFORTS)
+
+        self.assertEqual(swarm._REASONING_DEFAULT, effort)
+        self.assertTrue(
+            any("Unrecognized Reasoning label" in line for line in captured.output),
+            captured.output,
+        )
+
+    def test_clamp_outcomes_are_pinned_not_merely_in_range(self):
+        """Assert the exact rung, not just membership in `supported`.
+
+        `result in supported` is a postcondition _resolve_effort guarantees by
+        construction, so asserting only that cannot fail and proves nothing.
+        """
+        cases = [
+            # label,       supported,                       expected
+            ("울트라",      ("low", "medium", "high"),        "high"),
+            ("울트라",      swarm._CLAUDE_EFFORTS,            "max"),
+            ("울트라",      swarm._CODEX_MODEL_EFFORTS["gpt-5.6-sol"],  "ultra"),
+            ("울트라",      swarm._CODEX_MODEL_EFFORTS["gpt-5.6-luna"], "max"),
+            ("최대",        ("low", "medium", "high"),        "high"),
+            ("매우 높음",   ("low", "medium", "high"),        "high"),
+            ("매우 높음",   swarm._CLAUDE_EFFORTS,            "xhigh"),
+            ("낮음",        ("medium",),                      "medium"),
+            ("높음",        ("medium",),                      "medium"),
+            ("중간",        ("low", "medium", "high"),        "medium"),
+            ("낮음",        ("low", "medium", "high"),        "low"),
+        ]
+        for label, supported, expected in cases:
+            with self.subTest(label=label, supported=supported):
+                self.assertEqual(
+                    expected, swarm._resolve_effort(label, supported),
+                )
+
+    def test_clamp_result_is_always_within_supported(self):
+        supported_sets = [
+            swarm._CLAUDE_EFFORTS,
+            ("medium",),
+            ("low", "medium", "high"),
+            *swarm._CODEX_MODEL_EFFORTS.values(),
+            *swarm._AGY_MODEL_EFFORTS.values(),
+        ]
+        labels = list(swarm._REASONING_ALIAS) + ["", "   ", "nonsense"]
+        for supported in supported_sets:
+            for label in labels:
+                with self.subTest(supported=supported, label=label):
+                    self.assertIn(
+                        swarm._resolve_effort(label, supported), supported,
+                    )
+
+
+class ModelTableIntegrityTests(unittest.TestCase):
+    """AGENTS.md rule 1: a preset must resolve through the alias maps."""
+
+    def test_agy_aliases_all_point_at_a_known_stem(self):
+        for alias, stem in swarm._AGY_MODEL_ALIAS.items():
+            with self.subTest(alias=alias):
+                self.assertIn(stem, swarm._AGY_MODEL_EFFORTS)
+
+    def test_agy_fallback_stem_is_resolvable(self):
+        self.assertIn(swarm._AGY_FALLBACK_STEM, swarm._AGY_MODEL_EFFORTS)
+
+    def test_agy_never_raises_out_of_a_dispatch(self):
+        """A table edit that orphans a stem must degrade, not KeyError."""
+        swarm._AGY_MODEL_ALIAS["bogus tier"] = "gemini-99-does-not-exist"
+        swarm._AGY_ALIAS_SLUGS["bogus-tier"] = "gemini-99-does-not-exist"
+        try:
+            with self.assertLogs(swarm.log, level="ERROR"):
+                resolved = swarm._resolve_agy_model("bogus tier", "high")
+        finally:
+            del swarm._AGY_MODEL_ALIAS["bogus tier"]
+            del swarm._AGY_ALIAS_SLUGS["bogus-tier"]
+
+        self.assertEqual(f"{swarm._AGY_FALLBACK_STEM}-high", resolved)
+
+    def test_codex_aliases_all_point_at_a_model_with_a_known_effort_set(self):
+        for alias, model_id in swarm._CODEX_MODEL_MAP.items():
+            with self.subTest(alias=alias):
+                self.assertIn(model_id, swarm._CODEX_MODEL_EFFORTS)
+
+    def test_claude_aliases_all_resolve_to_a_fully_qualified_id(self):
+        for alias, model_id in swarm._CLAUDE_MODEL_MAP.items():
+            with self.subTest(alias=alias):
+                self.assertTrue(
+                    model_id.startswith("claude-"),
+                    f"{alias} -> {model_id}",
+                )
+
+    def test_every_agents_md_default_preset_resolves(self):
+        prompt_file = Path(tempfile.mkdtemp()) / "prompt.md"
+        prompt_file.write_text("x", encoding="utf-8")
+        for ai, cfg in swarm.DEFAULT_AI_CONFIG.items():
+            with self.subTest(ai=ai):
+                argv = swarm.build_ai_argv(
+                    ai, cfg["model"], cfg["reasoning"], prompt_file, "/repo",
+                )
+                self.assertTrue(argv, f"{ai} produced no argv")
+                flag = "-m" if ai == "codex" else "--model"
+                resolved = argv[argv.index(flag) + 1]
+                self.assertNotIn(
+                    " ", resolved,
+                    f"{ai} default {cfg['model']!r} did not resolve to a CLI id",
+                )
+
+
+class UnknownModelSafetyTests(unittest.TestCase):
+    """An unrecognized model must be loud, and must never be handed `ultra`."""
+
+    def setUp(self):
+        self.prompt_file = Path(tempfile.mkdtemp()) / "prompt.md"
+        self.prompt_file.write_text("x", encoding="utf-8")
+
+    def test_bare_gpt_5_6_resolves_to_a_real_variant(self):
+        """`codex debug models` lists no bare `gpt-5.6`; the map must cover it."""
+        for tagged in ("gpt-5.6", "5.6", "gpt-5.3", "gpt-5.5-codex",
+                       "gpt-5.6-spark", "5.6 spark"):
+            with self.subTest(model=tagged):
+                argv = swarm.build_ai_argv(
+                    "codex", tagged, "높음", self.prompt_file, "/repo",
+                )
+                self.assertIn(
+                    argv[argv.index("-m") + 1], swarm._CODEX_MODEL_EFFORTS,
+                )
+
+    def test_unknown_codex_model_warns_and_is_denied_ultra(self):
+        with self.assertLogs(swarm.log, level="WARNING") as captured:
+            argv = swarm.build_ai_argv(
+                "codex", "gpt-reserve", "울트라", self.prompt_file, "/repo",
+            )
+
+        self.assertEqual("gpt-reserve", argv[argv.index("-m") + 1])
+        self.assertEqual(
+            "model_reasoning_effort=max", argv[argv.index("-c") + 1],
+            "an unverified model must not be granted the Sol/Terra-only "
+            "`ultra` rung",
+        )
+        self.assertTrue(
+            any("Unrecognized codex model" in line for line in captured.output),
+            captured.output,
+        )
+
+    def test_unknown_claude_model_warns_but_still_passes_through(self):
+        with self.assertLogs(swarm.log, level="WARNING") as captured:
+            argv = swarm.build_ai_argv(
+                "claude", "opus 6", "높음", self.prompt_file, "/repo",
+            )
+
+        self.assertEqual("opus 6", argv[argv.index("--model") + 1])
+        self.assertTrue(
+            any("Unrecognized claude model" in line for line in captured.output),
+            captured.output,
+        )
+
+    def test_known_claude_alias_does_not_warn(self):
+        with self.assertNoLogs(swarm.log, level="WARNING"):
+            swarm.build_ai_argv(
+                "claude", "claude-opus-5", "높음", self.prompt_file, "/repo",
+            )
+
+    def test_codex_fallback_efforts_exclude_ultra(self):
+        self.assertNotIn("ultra", swarm._CODEX_FALLBACK_EFFORTS)
+
+
+class MakerCheckerModelFamilyTests(unittest.TestCase):
+    """agy serves Claude and GPT-OSS; those must not fill an antigravity role.
+
+    validate_distinct_roles() compares only the agent name, so an antigravity
+    role running Claude would let Claude review its own work while the
+    orchestrator believed AGENTS.md 2.4 held.
+    """
+
+    def setUp(self):
+        self.prompt_file = Path(tempfile.mkdtemp()) / "prompt.md"
+        self.prompt_file.write_text("x", encoding="utf-8")
+
+    def test_foreign_family_models_are_redirected_to_the_gemini_tier(self):
+        for tagged in ("claude opus 5.5", "claude sonnet 5.5", "gpt-oss 120b",
+                       "claude-opus-5-5-high", "claude-sonnet-5-5-low"):
+            with self.subTest(model=tagged):
+                with self.assertLogs(swarm.log, level="WARNING"):
+                    resolved = swarm._resolve_agy_model(tagged, "high")
+                self.assertTrue(
+                    resolved.startswith("gemini-"),
+                    f"{tagged} -> {resolved} would break AGENTS.md 2.4",
+                )
+
+    def test_no_antigravity_tag_can_resolve_to_another_ai_family(self):
+        """Exhaustive: no spelling of any agy model escapes the Gemini tier."""
+        spellings = list(swarm._AGY_MODEL_ALIAS)
+        spellings += list(swarm._AGY_MODEL_EFFORTS)
+        spellings += [
+            f"{stem}-{effort}"
+            for stem, efforts in swarm._AGY_MODEL_EFFORTS.items()
+            for effort in efforts
+        ]
+        for tagged in spellings:
+            with self.subTest(model=tagged):
+                resolved = swarm._resolve_agy_model(tagged, "high")
+                stem = resolved.rsplit("-", 1)[0]
+                self.assertNotIn(stem, swarm._AGY_FOREIGN_FAMILY_STEMS)
+                self.assertIn(stem, swarm._AGY_MODEL_EFFORTS)
+
+    def test_rotation_pairings_never_collide_on_model_family(self):
+        """Every DEFAULT_ROTATION triple must use three distinct families."""
+        def family(ai, model):
+            argv = swarm.build_ai_argv(
+                ai, model, "높음", self.prompt_file, "/repo",
+            )
+            flag = "-m" if ai == "codex" else "--model"
+            resolved = argv[argv.index(flag) + 1]
+            if resolved.startswith("gemini"):
+                return "gemini"
+            if resolved.startswith("claude"):
+                return "claude"
+            return "gpt"
+
+        for worker_ai, roles in swarm.DEFAULT_ROTATION.items():
+            triple = [worker_ai, roles["reviewer"], roles["maintainer"]]
+            families = {
+                family(ai, swarm.DEFAULT_AI_CONFIG[ai]["model"])
+                for ai in triple
+            }
+            with self.subTest(worker=worker_ai):
+                self.assertEqual(
+                    3, len(families),
+                    f"{triple} collapse to families {families}",
+                )
+
+
+# Transcribed verbatim from the installed CLIs on 2026-10-21:
+#   `agy models`         -> slug per line
+#   `codex debug models` -> slug + supported_reasoning_levels + visibility
+# These literals are the only thing standing between a mis-transcribed effort
+# table and a dispatch the CLI rejects, so they are asserted independently of
+# the orchestrator's own tables. Refresh them together, never one alone.
+EXPECTED_AGY_SLUGS = {
+    "gemini-4-argon-low", "gemini-4-argon-medium", "gemini-4-argon-high",
+    "gemini-3.8-flash-low", "gemini-3.8-flash-medium", "gemini-3.8-flash-high",
+    "claude-opus-5-5-low", "claude-opus-5-5-medium", "claude-opus-5-5-high",
+    "claude-sonnet-5-5-low", "claude-sonnet-5-5-medium", "claude-sonnet-5-5-high",
+    "gpt-oss-120b-medium",
+}
+
+EXPECTED_CODEX_PRESETS = {
+    "gpt-5.6-sol":   ("low", "medium", "high", "xhigh", "max", "ultra"),
+    "gpt-5.6-terra": ("low", "medium", "high", "xhigh", "max", "ultra"),
+    "gpt-5.6-luna":  ("low", "medium", "high", "xhigh", "max"),
+}
+
+EXPECTED_CLAUDE_MODELS = {
+    "claude-opus-5", "claude-sonnet-5", "claude-fable-5", "claude-haiku-4-5",
+}
+
+
+class TranscribedInventoryTests(unittest.TestCase):
+    """Guard the hand-transcribed effort tables against silent drift.
+
+    Every other test in this file checks the orchestrator against itself, so a
+    mis-transcribed effort tuple is internally consistent and invisible. These
+    compare the tables to an independent transcription of the CLI output.
+    """
+
+    def test_agy_table_expands_to_exactly_the_published_slugs(self):
+        expanded = {
+            f"{stem}-{effort}"
+            for stem, efforts in swarm._AGY_MODEL_EFFORTS.items()
+            for effort in efforts
+        }
+        self.assertEqual(
+            EXPECTED_AGY_SLUGS, expanded,
+            "_AGY_MODEL_EFFORTS no longer matches `agy models`; re-run it",
+        )
+
+    def test_codex_preset_efforts_match_the_published_catalog(self):
+        self.assertEqual(EXPECTED_CODEX_PRESETS, swarm._CODEX_MODEL_EFFORTS)
+
+    def test_only_sol_and_terra_accept_ultra(self):
+        with_ultra = {
+            slug for slug, efforts in swarm._CODEX_MODEL_EFFORTS.items()
+            if "ultra" in efforts
+        }
+        self.assertEqual({"gpt-5.6-sol", "gpt-5.6-terra"}, with_ultra)
+
+    def test_claude_aliases_cover_exactly_the_current_generation(self):
+        self.assertEqual(
+            EXPECTED_CLAUDE_MODELS, set(swarm._CLAUDE_MODEL_MAP.values()),
+        )
+
+    @unittest.skipUnless(
+        os.environ.get("SWARM_VERIFY_LIVE_MODELS") == "1",
+        "set SWARM_VERIFY_LIVE_MODELS=1 to check the tables against the CLIs",
+    )
+    def test_tables_match_the_live_clis(self):
+        """Opt-in: the command that actually proves the tables are current.
+
+        Run it after any provider announcement:
+          SWARM_VERIFY_LIVE_MODELS=1 python3 -m unittest \
+            test_swarm_orchestrator.TranscribedInventoryTests
+        """
+        agy = subprocess.run(
+            ["agy", "models"], capture_output=True, text=True, timeout=120,
+        )
+        self.assertEqual(0, agy.returncode, agy.stderr)
+        live_agy = {
+            line.split("\t")[0].strip()
+            for line in agy.stdout.splitlines()
+            if "\t" in line
+        }
+        self.assertEqual(
+            EXPECTED_AGY_SLUGS, live_agy,
+            "`agy models` has changed -- update EXPECTED_AGY_SLUGS, "
+            "_AGY_MODEL_EFFORTS and AGENTS.md section 3 together",
+        )
+
+        codex = subprocess.run(
+            ["codex", "debug", "models"],
+            capture_output=True, text=True, timeout=120,
+        )
+        self.assertEqual(0, codex.returncode, codex.stderr)
+        live_codex = {
+            entry["slug"]: tuple(
+                e["effort"] for e in entry.get("supported_reasoning_levels", [])
+            )
+            for entry in json.loads(codex.stdout)["models"]
+            if entry.get("visibility") == "list"
+        }
+        self.assertEqual(
+            EXPECTED_CODEX_PRESETS, live_codex,
+            "`codex debug models` has changed -- update "
+            "EXPECTED_CODEX_PRESETS, _CODEX_MODEL_EFFORTS and AGENTS.md",
+        )
+
+        # Claude has no `models` subcommand, and `claude --help` names none of
+        # its own ids -- only the aliases and one illustrative full name. The
+        # authoritative current generation is the `latest_per_family` table
+        # embedded in the CLI binary. Same command AGENTS.md section 3 gives.
+        claude_bin = shutil.which("claude")
+        self.assertIsNotNone(claude_bin, "claude not on PATH")
+        extracted = subprocess.run(
+            "strings -a \"$(readlink -f \"$(command -v claude)\")\" "
+            "| grep -o 'latest_per_family:{[^}]*claude-[^}]*}'",
+            shell=True, capture_output=True, text=True, timeout=300,
+        )
+        self.assertEqual(0, extracted.returncode, extracted.stderr)
+        live_claude = set(
+            re.findall(r'"(claude-[A-Za-z0-9.-]+)"', extracted.stdout)
+        )
+        self.assertEqual(
+            EXPECTED_CLAUDE_MODELS, live_claude,
+            "the claude CLI's latest_per_family has changed -- update "
+            "EXPECTED_CLAUDE_MODELS, _CLAUDE_MODEL_MAP and AGENTS.md",
+        )
+
+        claude_help = subprocess.run(
+            ["claude", "--help"], capture_output=True, text=True, timeout=120,
+        )
+        self.assertEqual(0, claude_help.returncode, claude_help.stderr)
+        effort_line = re.search(
+            r"--effort <level>.*?\(([^)]*)\)", claude_help.stdout, re.S,
+        )
+        self.assertIsNotNone(effort_line, "could not find --effort in --help")
+        live_efforts = tuple(
+            e.strip() for e in effort_line.group(1).split(",")
+        )
+        self.assertEqual(
+            swarm._CLAUDE_EFFORTS, live_efforts,
+            "`claude --effort` levels have changed -- update _CLAUDE_EFFORTS",
+        )
+
+
+class RoleReasoningOverrideCompositionTests(unittest.TestCase):
+    """ROLE_REASONING_OVERRIDE is what reaches the CLI, not the tag.
+
+    build_ai_argv() alone cannot show this, because the dispatchers substitute
+    the reasoning before calling it. Documented as AGENTS.md section 3 rule 4.
+    """
+
+    def setUp(self):
+        self.prompt_file = Path(tempfile.mkdtemp()) / "prompt.md"
+        self.prompt_file.write_text("x", encoding="utf-8")
+
+    def _effort_for(self, ai, model, role, tagged):
+        reasoning = swarm.ROLE_REASONING_OVERRIDE.get(role, {}).get(ai, tagged)
+        argv = swarm.build_ai_argv(
+            ai, model, reasoning, self.prompt_file, "/repo",
+        )
+        if ai == "codex":
+            return argv[argv.index("-c") + 1].split("=", 1)[1]
+        if ai == "claude":
+            return argv[argv.index("--effort") + 1]
+        return argv[argv.index("--model") + 1].rsplit("-", 1)[1]
+
+    def test_tag_reasoning_only_reaches_the_initial_worker(self):
+        expected = {
+            ("codex", "5.6 sol"):            {"worker": "ultra",
+                                              "reviewer": "medium",
+                                              "maintainer": "low",
+                                              "worker_revise": "medium"},
+            ("claude", "opus 5"):            {"worker": "max",
+                                              "reviewer": "medium",
+                                              "maintainer": "low",
+                                              "worker_revise": "medium"},
+            ("antigravity", "gemini 4 argon"): {"worker": "high",
+                                                "reviewer": "medium",
+                                                "maintainer": "low",
+                                                "worker_revise": "medium"},
+        }
+        for (ai, model), per_role in expected.items():
+            for role, effort in per_role.items():
+                with self.subTest(ai=ai, role=role):
+                    self.assertEqual(
+                        effort,
+                        self._effort_for(ai, model, role, "울트라"),
+                    )
+
+    def test_override_efforts_are_supported_by_every_preset_model(self):
+        """A role override must resolve to an effort that preset accepts.
+
+        `assertTrue(effort)` would pass vacuously -- _effort_for always returns
+        a non-empty string -- so check membership in the model's real effort
+        set instead.
+        """
+        presets = {
+            "codex": ["5.6 sol", "5.6 terra", "5.6 luna"],
+            "antigravity": ["gemini 3.8 flash", "gemini 4 argon"],
+            "claude": ["sonnet 5", "opus 5", "haiku 4.5"],
+        }
+        for role in swarm.ROLE_REASONING_OVERRIDE:
+            for ai, models in presets.items():
+                for model in models:
+                    with self.subTest(role=role, ai=ai, model=model):
+                        effort = self._effort_for(ai, model, role, "높음")
+                        if ai == "codex":
+                            resolved = swarm._CODEX_MODEL_MAP[model]
+                            allowed = swarm._CODEX_MODEL_EFFORTS[resolved]
+                        elif ai == "claude":
+                            allowed = swarm._CLAUDE_EFFORTS
+                        else:
+                            stem = swarm._agy_stem(model)
+                            allowed = swarm._AGY_MODEL_EFFORTS[stem]
+                        self.assertIn(effort, allowed)
+
 
 class LifecycleSignalTests(unittest.TestCase):
 
@@ -419,7 +986,7 @@ class LifecycleSignalTests(unittest.TestCase):
             {
                 "id": "review-1",
                 "body": (
-                    "[Reviewer: antigravity | Model: gemini 3.6 flash | "
+                    "[Reviewer: antigravity | Model: gemini 3.8 flash | "
                     "Reasoning: high]\nFix the test."
                 ),
             },
@@ -437,7 +1004,7 @@ class LifecycleSignalTests(unittest.TestCase):
         comments = [{
             "id": "approval-1",
             "body": (
-                "[Reviewer: antigravity | Model: gemini 3.6 flash | "
+                "[Reviewer: antigravity | Model: gemini 3.8 flash | "
                 "Reasoning: high]\n"
                 "[Maintainer: claude | Model: sonnet 5 | Reasoning: 높음]"
             ),
@@ -453,7 +1020,7 @@ class LifecycleSignalTests(unittest.TestCase):
         comments = [{
             "id": "negated-approval-1",
             "body": (
-                "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]\n"
+                "[Reviewer: antigravity | Model: gemini 3.8 flash | Reasoning: high]\n"
                 "Not approved: coverage is missing."
             ),
         }]
@@ -482,7 +1049,7 @@ class LifecycleSignalTests(unittest.TestCase):
                 comments = [{
                     "id": "c-neg-lgtm",
                     "body": (
-                        "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]\n"
+                        "[Reviewer: antigravity | Model: gemini 3.8 flash | Reasoning: high]\n"
                         + phrase
                     ),
                 }]
@@ -681,7 +1248,7 @@ class PollingLifecycleTests(unittest.TestCase):
             "number": 12,
             "title": "[PR] 7 - improve formatter",
             "body": (
-                "[Reviewer: antigravity | Model: gemini 3.6 flash | "
+                "[Reviewer: antigravity | Model: gemini 3.8 flash | "
                 "Reasoning: high]"
             ),
             "headRefName": "worker/7-codex-json",
@@ -741,7 +1308,7 @@ class PollingLifecycleTests(unittest.TestCase):
         feedback = {
             "id": "feedback-42",
             "body": (
-                "[Reviewer: antigravity | Model: gemini 3.6 flash | "
+                "[Reviewer: antigravity | Model: gemini 3.8 flash | "
                 "Reasoning: high]\nFix the stale read."
             ),
         }
@@ -765,7 +1332,7 @@ class PollingLifecycleTests(unittest.TestCase):
             {
                 "id": "feedback-42",
                 "body": (
-                    "[Reviewer: antigravity | Model: gemini 3.6 flash | "
+                    "[Reviewer: antigravity | Model: gemini 3.8 flash | "
                     "Reasoning: high]\nFix the stale read."
                 ),
             },
@@ -789,7 +1356,7 @@ class PollingLifecycleTests(unittest.TestCase):
         approval = {
             "id": "approval-9",
             "body": (
-                "[Reviewer: antigravity | Model: gemini 3.6 flash | "
+                "[Reviewer: antigravity | Model: gemini 3.8 flash | "
                 "Reasoning: high]\n"
                 "[Maintainer: claude | Model: sonnet 5 | Reasoning: 높음]"
             ),
@@ -812,7 +1379,7 @@ class PollingLifecycleTests(unittest.TestCase):
         approval = {
             "id": "approval-9",
             "body": (
-                "[Reviewer: antigravity | Model: gemini 3.6 flash | "
+                "[Reviewer: antigravity | Model: gemini 3.8 flash | "
                 "Reasoning: high]\n"
                 "[Maintainer: claude | Model: sonnet 5 | Reasoning: 높음]"
             ),
@@ -952,7 +1519,7 @@ class PollingLifecycleTests(unittest.TestCase):
             **self.pr,
             "title": "[PR] fix - handle edge case in formatter",
             "body": (
-                "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]"
+                "[Reviewer: antigravity | Model: gemini 3.8 flash | Reasoning: high]"
             ),
             "headRefOid": "sha999",
         }
@@ -975,7 +1542,7 @@ class PollingLifecycleTests(unittest.TestCase):
             "title": "[PR] fix - edge case with maintainer tag",
             "body": (
                 "[Worker: codex | Model: 5.6 sol | Reasoning: 높음]\n"
-                "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]"
+                "[Reviewer: antigravity | Model: gemini 3.8 flash | Reasoning: high]"
             ),
             "headRefName": "fix-branch",
             "headRefOid": "sha555",
@@ -983,7 +1550,7 @@ class PollingLifecycleTests(unittest.TestCase):
         approval_comment = {
             "id": "c-approval-with-maintainer-tag",
             "body": (
-                "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]\n"
+                "[Reviewer: antigravity | Model: gemini 3.8 flash | Reasoning: high]\n"
                 "[Maintainer: claude | Model: sonnet 5 | Reasoning: 높음]\n"
                 "Implementation looks good, ready to merge."
             ),
@@ -1011,7 +1578,7 @@ class PollingLifecycleTests(unittest.TestCase):
             "title": "[PR] fix - edge case without maintainer tag",
             "body": (
                 "[Worker: codex | Model: 5.6 terra | Reasoning: 높음]\n"
-                "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]"
+                "[Reviewer: antigravity | Model: gemini 3.8 flash | Reasoning: high]"
             ),
             "headRefName": "fix-branch",
             "headRefOid": "sha555",
@@ -1019,7 +1586,7 @@ class PollingLifecycleTests(unittest.TestCase):
         approval_comment = {
             "id": "c-approval-no-maintainer-tag",
             "body": (
-                "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]\n"
+                "[Reviewer: antigravity | Model: gemini 3.8 flash | Reasoning: high]\n"
                 "[Approved] Implementation looks good, ready to merge."
             ),
         }
@@ -1040,13 +1607,13 @@ class PollingLifecycleTests(unittest.TestCase):
         self.assertEqual("높음", maintainer_arg.reasoning)
 
     def test_select_maintainer_excludes_reviewer_and_worker(self):
-        reviewer = swarm.RoleAssignment("antigravity", "gemini 3.6 flash", "high")
+        reviewer = swarm.RoleAssignment("antigravity", "gemini 3.8 flash", "high")
         worker = swarm.RoleAssignment("codex", "5.6 terra", "높음")
         maintainer = swarm.select_maintainer_for_issueless_pr(reviewer, worker)
         self.assertEqual("claude", maintainer.ai)
 
     def test_select_maintainer_excludes_only_reviewer_when_no_worker(self):
-        reviewer = swarm.RoleAssignment("antigravity", "gemini 3.6 flash", "high")
+        reviewer = swarm.RoleAssignment("antigravity", "gemini 3.8 flash", "high")
         maintainer = swarm.select_maintainer_for_issueless_pr(reviewer, None)
         self.assertEqual("codex", maintainer.ai)
 
@@ -1055,7 +1622,7 @@ class PollingLifecycleTests(unittest.TestCase):
         comments = [{
             "id": "c-approved-no-maintainer",
             "body": (
-                "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]\n"
+                "[Reviewer: antigravity | Model: gemini 3.8 flash | Reasoning: high]\n"
                 "[Approved] Looks great to me, LGTM!"
             ),
         }]
@@ -1070,7 +1637,7 @@ class PollingLifecycleTests(unittest.TestCase):
             "title": "[PR] standalone feature",
             "body": (
                 "[Worker: codex | Model: 5.6 terra | Reasoning: 높음]\n"
-                "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]"
+                "[Reviewer: antigravity | Model: gemini 3.8 flash | Reasoning: high]"
             ),
             "headRefName": "feat-branch",
             "headRefOid": "sha888",
@@ -1078,7 +1645,7 @@ class PollingLifecycleTests(unittest.TestCase):
         feedback_comment = {
             "id": "c-feedback-1",
             "body": (
-                "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]\n"
+                "[Reviewer: antigravity | Model: gemini 3.8 flash | Reasoning: high]\n"
                 "Please fix the edge case in parser."
             ),
         }
@@ -1121,14 +1688,14 @@ class PollingLifecycleTests(unittest.TestCase):
         issue_backed_pr = {
             "number": 20,
             "title": "[PR] 12 - Add feature",
-            "body": "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]",
+            "body": "[Reviewer: antigravity | Model: gemini 3.8 flash | Reasoning: high]",
             "headRefName": "worker/12-codex-feat",
             "headRefOid": "sha123",
         }
         approval_comment = {
             "id": "c-approved-no-maintainer-tag",
             "body": (
-                "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]\n"
+                "[Reviewer: antigravity | Model: gemini 3.8 flash | Reasoning: high]\n"
                 "[Approved] Looks great to me, LGTM!"
             ),
         }
@@ -1150,7 +1717,7 @@ class PollingLifecycleTests(unittest.TestCase):
             "title": "[PR] standalone feature",
             "body": (
                 "[Worker: codex | Model: 5.6 terra | Reasoning: 높음]\n"
-                "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]"
+                "[Reviewer: antigravity | Model: gemini 3.8 flash | Reasoning: high]"
             ),
             "headRefName": "feat-branch",
             "headRefOid": "sha999",
@@ -1158,7 +1725,7 @@ class PollingLifecycleTests(unittest.TestCase):
         approval_comment = {
             "id": "c-approved-issueless",
             "body": (
-                "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]\n"
+                "[Reviewer: antigravity | Model: gemini 3.8 flash | Reasoning: high]\n"
                 "[Approved] LGTM!"
             ),
         }
@@ -1183,7 +1750,7 @@ class PollingLifecycleTests(unittest.TestCase):
             "title": "[PR] 12 - Add feature",
             "body": (
                 "[Worker: codex | Model: 5.6 terra | Reasoning: 높음]\n"
-                "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]"
+                "[Reviewer: antigravity | Model: gemini 3.8 flash | Reasoning: high]"
             ),
             "headRefName": "worker/12-codex-feat",
             "headRefOid": "sha123",
@@ -1191,7 +1758,7 @@ class PollingLifecycleTests(unittest.TestCase):
         negative_comment = {
             "id": "c-not-lgtm-issue-backed",
             "body": (
-                "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]\n"
+                "[Reviewer: antigravity | Model: gemini 3.8 flash | Reasoning: high]\n"
                 "Not LGTM: regression remains."
             ),
         }
@@ -1215,7 +1782,7 @@ class PollingLifecycleTests(unittest.TestCase):
             "title": "[PR] standalone feature",
             "body": (
                 "[Worker: codex | Model: 5.6 terra | Reasoning: 높음]\n"
-                "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]"
+                "[Reviewer: antigravity | Model: gemini 3.8 flash | Reasoning: high]"
             ),
             "headRefName": "feat-branch",
             "headRefOid": "sha999",
@@ -1223,7 +1790,7 @@ class PollingLifecycleTests(unittest.TestCase):
         negative_comment = {
             "id": "c-not-lgtm-issueless",
             "body": (
-                "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]\n"
+                "[Reviewer: antigravity | Model: gemini 3.8 flash | Reasoning: high]\n"
                 "Not LGTM: regression remains."
             ),
         }
@@ -1246,7 +1813,7 @@ class PollingLifecycleTests(unittest.TestCase):
             "title": "[PR] standalone feature",
             "body": (
                 "[Worker: codex | Model: 5.6 terra | Reasoning: 높음]\n"
-                "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]"
+                "[Reviewer: antigravity | Model: gemini 3.8 flash | Reasoning: high]"
             ),
             "headRefName": "feat-branch",
             "headRefOid": "sha100",
@@ -1254,7 +1821,7 @@ class PollingLifecycleTests(unittest.TestCase):
         conditional_comment = {
             "id": "c-conditional-issueless",
             "body": (
-                "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]\n"
+                "[Reviewer: antigravity | Model: gemini 3.8 flash | Reasoning: high]\n"
                 "Changes are still required; LGTM after the regression test is added."
             ),
         }
@@ -1277,7 +1844,7 @@ class PollingLifecycleTests(unittest.TestCase):
             "title": "[PR] standalone feature",
             "body": (
                 "[Worker: codex | Model: 5.6 terra | Reasoning: 높음]\n"
-                "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]"
+                "[Reviewer: antigravity | Model: gemini 3.8 flash | Reasoning: high]"
             ),
             "headRefName": "feat-branch",
             "headRefOid": "sha101",
@@ -1285,7 +1852,7 @@ class PollingLifecycleTests(unittest.TestCase):
         approval_comment = {
             "id": "c-approval-issueless",
             "body": (
-                "[Reviewer: antigravity | Model: gemini 3.6 flash | Reasoning: high]\n"
+                "[Reviewer: antigravity | Model: gemini 3.8 flash | Reasoning: high]\n"
                 "[Approved] Looks great to me, LGTM!"
             ),
         }
@@ -2152,7 +2719,7 @@ class RuntimeLifecycleTests(unittest.TestCase):
             pid=1234,
             role="worker",
             ai_name="antigravity",
-            model="gemini 3.1 pro",
+            model="gemini 4 argon",
             reasoning="high",
             task_ref="issue#303:initial",
             branch="worker/303-branch",
