@@ -62,6 +62,20 @@ describe('inspectJsonLd', () => {
     );
   });
 
+  it('rejects arrays that contain JSON primitives', () => {
+    expect(inspectJsonLd('["Article"]').error).toBe(
+      'A JSON-LD document must be an object or an array of objects.'
+    );
+  });
+
+  it('reports an error for an empty JSON-LD script tag', () => {
+    expect(inspectJsonLd('<script type="application/ld+json"> </script>')).toMatchObject({
+      document: null,
+      error: 'The JSON-LD script tag is empty.',
+      strippedScriptTags: true,
+    });
+  });
+
   it('reports common structural issues', () => {
     const result = inspectJsonLd(JSON.stringify({
       '@context': 42,

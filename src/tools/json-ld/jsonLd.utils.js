@@ -1,5 +1,9 @@
 const JSON_LD_SCRIPT_PATTERN = /<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi;
-const JSON_LD_TYPE_PATTERN = /\btype\s*=\s*(?:"application\/ld\+json"|'application\/ld\+json'|application\/ld\+json(?=\s|$))/i;
+const JSON_LD_TYPE_PATTERN = new RegExp(
+  String.raw`\btype\s*=\s*(?:"application\/ld\+json"|'application\/ld\+json'|` +
+    String.raw`application\/ld\+json(?=\s|$))`,
+  'i',
+);
 
 function isRecord(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -58,7 +62,9 @@ export function extractJsonLdContent(input) {
 
 function inspectEntity(value, path, entities, issues) {
   if (Array.isArray(value)) {
-    value.forEach((item, index) => inspectEntity(item, `${path}[${index}]`, entities, issues));
+    value.forEach((item, index) => {
+      inspectEntity(item, `${path}[${index}]`, entities, issues);
+    });
     return;
   }
 
@@ -118,7 +124,11 @@ export function inspectJsonLd(input) {
     strippedScriptTags,
   };
 
-  if (content === '') return result;
+  if (content === '') {
+    return strippedScriptTags
+      ? { ...result, error: 'The JSON-LD script tag is empty.' }
+      : result;
+  }
 
   let document;
   try {
@@ -127,7 +137,7 @@ export function inspectJsonLd(input) {
     return { ...result, error: `Invalid JSON: ${error.message}` };
   }
 
-  if (!isRecord(document) && !Array.isArray(document)) {
+  if (!isRecord(document) && !(Array.isArray(document) && document.every(isRecord))) {
     return { ...result, error: 'A JSON-LD document must be an object or an array of objects.' };
   }
 
@@ -137,7 +147,8 @@ export function inspectJsonLd(input) {
     result.issues.push({
       severity: 'warning',
       path: '$',
-      message: 'No top-level @context was found. JSON-LD usually needs one to define its vocabulary.',
+      message: 'No top-level @context was found. JSON-LD usually needs one to define its ' +
+        'vocabulary.',
     });
   }
   if (result.entities.length === 0) {

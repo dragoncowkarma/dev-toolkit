@@ -1,13 +1,19 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it } from 'vitest';
 import JsonLdTool from './JsonLdTool.jsx';
+
+afterEach(() => {
+  cleanup();
+});
 
 describe('JsonLdTool', () => {
   it('inspects embedded Schema.org JSON-LD and renders its hierarchy', () => {
     render(<JsonLdTool />);
     fireEvent.change(screen.getByLabelText('JSON-LD document'), {
       target: {
-        value: '<script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","author":{"@type":"Person"}}</script>',
+        value: '<script type="application/ld+json">' +
+          '{"@context":"https://schema.org","@type":"Article",' +
+          '"author":{"@type":"Person"}}</script>',
       },
     });
 

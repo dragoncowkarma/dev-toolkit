@@ -28,10 +28,17 @@ function JsonTree({ label, value, depth = 0 }) {
   return (
     <li className="json-ld-tree__item" style={{ '--tree-depth': depth }}>
       <span className="json-ld-tree__key">{label}</span>
-      <span className="json-ld-tree__value">{Array.isArray(value) ? '[ ]' : '{ }'}</span>
+      <span className="json-ld-tree__value">
+        {Array.isArray(value) ? '[ ]' : '{ }'}
+      </span>
       <ul className="json-ld-tree">
         {entries.map(([key, child]) => (
-          <JsonTree key={key} label={Array.isArray(value) ? `[${key}]` : key} value={child} depth={depth + 1} />
+          <JsonTree
+            key={key}
+            label={Array.isArray(value) ? `[${key}]` : key}
+            value={child}
+            depth={depth + 1}
+          />
         ))}
       </ul>
     </li>
@@ -57,7 +64,12 @@ export default function JsonLdTool() {
           <h2>Validate JSON-LD markup</h2>
           <p>Paste JSON-LD or a script tag. Your data stays in this browser.</p>
         </div>
-        <button type="button" className="json-ld-tool__clear" onClick={() => setInput('')} disabled={!hasInput}>
+        <button
+          type="button"
+          className="json-ld-tool__clear"
+          onClick={() => setInput('')}
+          disabled={!hasInput}
+        >
           Clear
         </button>
       </div>
@@ -101,20 +113,28 @@ export default function JsonLdTool() {
           </div>
 
           {inspection.issues.length > 0 && (
-            <div className="json-ld-tool__issues" role="status" aria-label="Structural checks">
+            <div className="json-ld-tool__issues" role="region" aria-label="Structural checks">
               <strong>Structural checks</strong>
               <ul>
                 {inspection.issues.map((issue) => (
-                  <li key={`${issue.path}-${issue.message}`}><code>{issue.path}</code> — {issue.message}</li>
+                  <li key={`${issue.path}-${issue.message}`}>
+                    <code>{issue.path}</code> — {issue.message}
+                  </li>
                 ))}
               </ul>
             </div>
           )}
 
-          <section className="json-ld-tool__hierarchy" aria-labelledby="json-ld-hierarchy-title">
+          <section
+            className="json-ld-tool__hierarchy"
+            aria-labelledby="json-ld-hierarchy-title"
+          >
             <h3 id="json-ld-hierarchy-title">Parsed hierarchy</h3>
             <ul className="json-ld-tree">
-              <JsonTree label={Array.isArray(inspection.document) ? 'Document array' : 'Document'} value={inspection.document} />
+              <JsonTree
+                label={Array.isArray(inspection.document) ? 'Document array' : 'Document'}
+                value={inspection.document}
+              />
             </ul>
           </section>
         </>
