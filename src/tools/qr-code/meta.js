@@ -1,7 +1,7 @@
 export default {
   id: 'qr-code',
-  name: 'QR Code Generator',
-  description: 'Generate scannable QR codes from text or URLs entirely in your browser.',
+  name: 'QR Code Generator & Scanner',
+  description: 'Generate and decode QR codes from text, URLs, and local images entirely in your browser.',
   icon: '▦',
   category: 'Generator',
 };

@@ -7,6 +7,44 @@
   gap: 1.5rem;
 }
 
+.qr-code-tool .qr-mode-toggle {
+  align-self: center;
+  display: inline-flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.qr-code-tool .qr-mode-btn {
+  padding: 0.5rem 1rem;
+  color: var(--color-text-muted);
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  background: transparent;
+  border: 0;
+  border-radius: calc(var(--radius) - 4px);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.qr-code-tool .qr-mode-btn.active {
+  color: #fff;
+  background: var(--color-primary);
+}
+
+.qr-code-tool .qr-mode-btn:not(.active):hover {
+  color: var(--color-text);
+}
+
+.qr-code-tool .qr-mode-btn:focus-visible,
+.qr-code-tool .qr-paste-target:focus-visible {
+  outline: 2px solid var(--color-primary-light);
+  outline-offset: 3px;
+}
+
 .qr-code-tool .qr-code-controls {
   display: flex;
   flex-direction: column;
@@ -81,6 +119,59 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   padding: 1.5rem;
+}
+
+.qr-code-tool .qr-decode-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.5rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.qr-code-tool .qr-image-input {
+  width: 100%;
+  padding: 0.7rem;
+  color: var(--color-text);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  font-family: inherit;
+}
+
+.qr-code-tool .qr-paste-target {
+  padding: 1.25rem;
+  color: var(--color-text-muted);
+  text-align: center;
+  background: var(--color-bg);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius);
+  cursor: text;
+}
+
+.qr-code-tool .qr-paste-target:hover {
+  border-color: var(--color-primary);
+}
+
+.qr-code-tool .qr-decoded-result {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.qr-code-tool .qr-decoded-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.qr-code-tool .qr-decoded-text {
+  min-height: 180px;
+  background: var(--color-bg);
+  cursor: text;
 }
 
 .qr-code-tool .qr-canvas-wrap {

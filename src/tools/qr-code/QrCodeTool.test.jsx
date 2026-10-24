@@ -1,6 +1,12 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as qrCodeUtils from './qrCode.utils.js';
 import QrCodeTool from './QrCodeTool.jsx';
+
+vi.mock('./qrCode.utils.js', async (importOriginal) => {
+  const actual = await importOriginal();
+  return { ...actual, decodeQrFile: vi.fn(actual.decodeQrFile) };
+});
 
 function mockCanvas() {
   const context = {
@@ -15,8 +21,18 @@ function mockCanvas() {
   return context;
 }
 
+function selectFile(input, file) {
+  Object.defineProperty(input, 'files', { value: [file], configurable: true });
+  fireEvent.change(input);
+}
+
+function selectDecodeMode() {
+  fireEvent.click(screen.getByRole('button', { name: 'Decode image' }));
+}
+
 beforeEach(() => {
   mockCanvas();
+  qrCodeUtils.decodeQrFile.mockReset();
 });
 
 afterEach(() => {
@@ -159,5 +175,69 @@ describe('QrCodeTool download control', () => {
 
     URL.createObjectURL = originalCreateObjectURL;
     URL.revokeObjectURL = originalRevokeObjectURL;
+  });
+});
+
+describe('QrCodeTool image decoding', () => {
+  it('decodes an uploaded image and copies the decoded text with a polite status', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    qrCodeUtils.decodeQrFile.mockResolvedValueOnce('decoded from upload');
+
+    render(<QrCodeTool />);
+    selectDecodeMode();
+
+    const fileInput = screen.getByLabelText('Upload a QR code image');
+    expect(fileInput).toHaveAttribute('accept', 'image/*');
+    const file = new File(['image'], 'qr.png', { type: 'image/png' });
+    await act(async () => selectFile(fileInput, file));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Decoded QR text')).toHaveValue('decoded from upload');
+    });
+    expect(qrCodeUtils.decodeQrFile).toHaveBeenCalledWith(file);
+    expect(screen.getByRole('status')).toHaveAttribute('aria-live', 'polite');
+    expect(screen.getByRole('status')).toHaveTextContent('QR code decoded successfully.');
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy decoded text to clipboard' }));
+    });
+
+    expect(writeText).toHaveBeenCalledWith('decoded from upload');
+    expect(screen.getByRole('status')).toHaveTextContent('Decoded text copied to clipboard.');
+  });
+
+  it('decodes an image pasted into the scanner', async () => {
+    qrCodeUtils.decodeQrFile.mockResolvedValueOnce('decoded from clipboard');
+    const file = new File(['image'], 'clipboard.png', { type: 'image/png' });
+
+    render(<QrCodeTool />);
+    selectDecodeMode();
+
+    fireEvent.paste(screen.getByLabelText('Paste a QR code image'), {
+      clipboardData: {
+        items: [{ kind: 'file', type: 'image/png', getAsFile: () => file }],
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Decoded QR text')).toHaveValue('decoded from clipboard');
+    });
+    expect(qrCodeUtils.decodeQrFile).toHaveBeenCalledWith(file);
+  });
+
+  it('shows an accessible error when an image cannot be decoded', async () => {
+    qrCodeUtils.decodeQrFile.mockRejectedValueOnce(
+      new Error('No QR code could be found in this image.'),
+    );
+
+    render(<QrCodeTool />);
+    selectDecodeMode();
+    const file = new File(['image'], 'not-a-qr.png', { type: 'image/png' });
+    await act(async () => selectFile(screen.getByLabelText('Upload a QR code image'), file));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('No QR code could be found');
+    expect(screen.getByLabelText('Decoded QR text')).toHaveValue('');
+    expect(screen.getByRole('button', { name: 'Copy decoded text to clipboard' })).toBeDisabled();
   });
 });
