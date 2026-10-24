@@ -2804,5 +2804,194 @@ class RuntimeLifecycleTests(unittest.TestCase):
         sleep.assert_not_called()
 
 
+class ModelAvailabilityTests(unittest.TestCase):
+    """Tests for AVAILABLE_MODELS registry and validate_model_availability()."""
+
+    def setUp(self):
+        self.prompt_file = Path(tempfile.mkdtemp()) / "prompt.md"
+        self.prompt_file.write_text("x", encoding="utf-8")
+
+    def test_available_models_covers_all_agents(self):
+        self.assertIn("antigravity", swarm.AVAILABLE_MODELS)
+        self.assertIn("claude", swarm.AVAILABLE_MODELS)
+        self.assertIn("codex", swarm.AVAILABLE_MODELS)
+
+        # All published agy slugs are in AVAILABLE_MODELS
+        self.assertTrue(
+            EXPECTED_AGY_SLUGS.issubset(set(swarm.AVAILABLE_MODELS["antigravity"]))
+        )
+        # Presets are also in AVAILABLE_MODELS
+        self.assertIn("gemini 3.8 flash", swarm.AVAILABLE_MODELS["antigravity"])
+        self.assertIn("gemini 4 argon", swarm.AVAILABLE_MODELS["antigravity"])
+
+        # Codex presets and CLI models
+        for codex_model in EXPECTED_CODEX_PRESETS:
+            self.assertIn(codex_model, swarm.AVAILABLE_MODELS["codex"])
+        self.assertIn("5.6 terra", swarm.AVAILABLE_MODELS["codex"])
+        self.assertIn("5.6 sol", swarm.AVAILABLE_MODELS["codex"])
+        self.assertIn("5.6 luna", swarm.AVAILABLE_MODELS["codex"])
+
+        # Claude models and presets
+        for claude_model in EXPECTED_CLAUDE_MODELS:
+            self.assertIn(claude_model, swarm.AVAILABLE_MODELS["claude"])
+        self.assertIn("sonnet 5", swarm.AVAILABLE_MODELS["claude"])
+        self.assertIn("opus 5", swarm.AVAILABLE_MODELS["claude"])
+        self.assertIn("haiku 4.5", swarm.AVAILABLE_MODELS["claude"])
+
+    def test_valid_preset_models_pass_validation_unchanged(self):
+        test_cases = [
+            ("codex", "5.6 terra", "높음"),
+            ("codex", "5.6 sol", "중간"),
+            ("codex", "5.6 luna", "낮음"),
+            ("codex", "gpt-5.6-terra", "높음"),
+            ("antigravity", "gemini 3.8 flash", "high"),
+            ("antigravity", "gemini 4 argon", "medium"),
+            ("antigravity", "gemini-3.8-flash-high", "high"),
+            ("antigravity", "gemini-4-argon-low", "low"),
+            ("claude", "sonnet 5", "높음"),
+            ("claude", "opus 5", "중간"),
+            ("claude", "haiku 4.5", "낮음"),
+            ("claude", "claude-sonnet-5", "high"),
+        ]
+        for ai, model, reasoning in test_cases:
+            with self.subTest(ai=ai, model=model):
+                valid_m, valid_r = swarm.validate_model_availability(ai, model, reasoning)
+                self.assertEqual(model, valid_m)
+                self.assertEqual(reasoning, valid_r)
+
+    def test_resolvable_alias_models_pass_validation(self):
+        aliases = [
+            ("codex", "5.6", "높음"),
+            ("codex", "5.6 (sol)", "높음"),
+            ("codex", "5.5", "중간"),
+            ("codex", "5.4", "낮음"),
+            ("codex", "gpt-5.1-codex", "high"),
+            ("claude", "sonnet 3.7", "높음"),
+            ("claude", "claude 3.7 sonnet", "high"),
+            ("claude", "claude-3-7-sonnet", "high"),
+            ("claude", "claude 3.5 sonnet", "medium"),
+            ("claude", "haiku 3.5", "low"),
+            ("antigravity", "gemini 3.6 flash", "high"),
+            ("antigravity", "gemini 3.1 pro", "medium"),
+        ]
+        for ai, model, reasoning in aliases:
+            with self.subTest(ai=ai, model=model):
+                valid_m, valid_r = swarm.validate_model_availability(ai, model, reasoning)
+                self.assertEqual(model, valid_m)
+                self.assertEqual(reasoning, valid_r)
+
+    def test_invalid_codex_model_warns_and_falls_back_to_default(self):
+        with self.assertLogs(swarm.log, level="WARNING") as captured:
+            model, reasoning = swarm.validate_model_availability(
+                "codex", "nonexistent-codex-model", "중간"
+            )
+        self.assertEqual("5.6 terra", model)
+        self.assertEqual("높음", reasoning)
+        self.assertTrue(any("is not available for codex" in line for line in captured.output))
+
+    def test_invalid_claude_model_warns_and_falls_back_to_default(self):
+        with self.assertLogs(swarm.log, level="WARNING") as captured:
+            model, reasoning = swarm.validate_model_availability(
+                "claude", "claude-fake-99", "low"
+            )
+        self.assertEqual("sonnet 5", model)
+        self.assertEqual("높음", reasoning)
+        self.assertTrue(any("is not available for claude" in line for line in captured.output))
+
+    def test_invalid_antigravity_model_warns_and_falls_back_to_default(self):
+        with self.assertLogs(swarm.log, level="WARNING") as captured:
+            model, reasoning = swarm.validate_model_availability(
+                "antigravity", "gemini-99-bogus", "low"
+            )
+        self.assertEqual("gemini 3.8 flash", model)
+        self.assertEqual("high", reasoning)
+        self.assertTrue(any("is not available for antigravity" in line for line in captured.output))
+
+    def test_antigravity_foreign_family_redirects_to_gemini(self):
+        with self.assertLogs(swarm.log, level="WARNING") as captured:
+            model, reasoning = swarm.validate_model_availability(
+                "antigravity", "claude opus 5.5", "high"
+            )
+        self.assertEqual("gemini 3.8 flash", model)
+        self.assertEqual("high", reasoning)
+        self.assertTrue(any("is not available for antigravity" in line for line in captured.output))
+
+    def test_dispatch_worker_validates_and_replaces_invalid_model(self):
+        issue = swarm.TaskIssue(
+            number=99,
+            title="[Task] Test - invalid model",
+            body="Task body",
+            worker=swarm.RoleAssignment("codex", "gpt-completely-fake", "높음"),
+        )
+        with (
+            patch.object(swarm, "create_worktree", return_value=Path("/tmp/99")),
+            patch.object(swarm, "write_prompt_file", return_value=self.prompt_file),
+            patch.object(swarm, "build_ai_argv", return_value=["codex", "exec"]) as build_argv,
+        ):
+            with self.assertLogs(swarm.log, level="WARNING"):
+                swarm.dispatch_worker(issue, dry_run=True)
+
+        called_model = build_argv.call_args[0][1]
+        self.assertEqual("5.6 terra", called_model)
+
+    def test_dispatch_reviewer_validates_and_replaces_invalid_model(self):
+        pr = swarm.TaskPR(
+            number=100,
+            title="[PR] 99 - Test",
+            body="PR body",
+            head_branch="worker/99-test",
+            reviewer=swarm.RoleAssignment("claude", "claude-hallucinated-model", "높음"),
+        )
+        with (
+            patch.object(swarm, "write_prompt_file", return_value=self.prompt_file),
+            patch.object(swarm, "gh", return_value="diff"),
+            patch.object(swarm, "build_ai_argv", return_value=["claude"]) as build_argv,
+        ):
+            with self.assertLogs(swarm.log, level="WARNING"):
+                swarm.dispatch_reviewer(pr, worker=None, dry_run=True)
+
+        called_model = build_argv.call_args[0][1]
+        self.assertEqual("sonnet 5", called_model)
+
+    def test_dispatch_maintainer_validates_and_replaces_invalid_model(self):
+        pr = swarm.TaskPR(
+            number=101,
+            title="[PR] 100 - Test",
+            body="",
+            head_branch="worker/100-test",
+        )
+        maintainer = swarm.RoleAssignment("codex", "gpt-fake-maintainer", "높음")
+        with (
+            patch.object(swarm, "write_prompt_file", return_value=self.prompt_file),
+            patch.object(swarm, "build_ai_argv", return_value=["codex", "exec"]) as build_argv,
+        ):
+            with self.assertLogs(swarm.log, level="WARNING"):
+                swarm.dispatch_maintainer(pr, issue=None, maintainer=maintainer, dry_run=True)
+
+        called_model = build_argv.call_args[0][1]
+        self.assertEqual("5.6 terra", called_model)
+
+    def test_dispatch_worker_revision_validates_and_replaces_invalid_model(self):
+        pr = swarm.TaskPR(
+            number=102,
+            title="[PR] 101 - Test",
+            body="",
+            head_branch="worker/101-test",
+        )
+        worker = swarm.RoleAssignment("antigravity", "gemini-fake-revision", "high")
+        with (
+            patch.object(swarm, "create_worktree", return_value=Path("/tmp/102")),
+            patch.object(swarm, "write_prompt_file", return_value=self.prompt_file),
+            patch.object(swarm, "build_ai_argv", return_value=["agy"]) as build_argv,
+        ):
+            with self.assertLogs(swarm.log, level="WARNING"):
+                swarm.dispatch_worker_revision(
+                    pr, issue=None, feedback_text="Fix it", dry_run=True, worker=worker,
+                )
+
+        called_model = build_argv.call_args[0][1]
+        self.assertEqual("gemini 3.8 flash", called_model)
+
+
 if __name__ == "__main__":
     unittest.main()

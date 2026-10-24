@@ -114,9 +114,13 @@ Rules for this table:
    Only Codex Sol and Terra accept `울트라`. An unrecognized label logs a
    WARNING and resolves to `중간`.
 3. Retired model names stay in the orchestrator's alias maps so that open
-   Issues and PRs tagged with them keep dispatching. An unrecognized model is
-   passed through to the CLI with a WARNING rather than rewritten, and is
-   granted only the efforts every model supports — never `울트라`.
+   Issues and PRs tagged with them keep dispatching. Before dispatch,
+   `validate_model_availability()` validates metadata tags against
+   `AVAILABLE_MODELS` and falls back to the agent default preset with a
+   WARNING when unrecognized, preventing invalid or hallucinated model names
+   from exhausting dispatch retry budgets. An unrecognized model passed directly
+   to `build_ai_argv()` passes through with a WARNING and is granted only the
+   efforts every model supports — never `울트라`.
 4. `agy` also serves Claude and GPT-OSS models. They are **not** valid for an
    `antigravity` role — `validate_distinct_roles()` compares only the agent
    name, so `[Reviewer: antigravity | Model: claude opus 5.5]` would let Claude
