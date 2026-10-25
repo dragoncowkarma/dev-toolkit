@@ -1,0 +1,164 @@
+.json-ld-tool {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+}
+
+.json-ld-tool__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.json-ld-tool__eyebrow,
+.json-ld-tool__label,
+.json-ld-summary__item span {
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.json-ld-tool h2,
+.json-ld-tool h3 {
+  line-height: 1.2;
+}
+
+.json-ld-tool__header p:not(.json-ld-tool__eyebrow) {
+  color: var(--color-text-muted);
+  margin-top: 0.5rem;
+}
+
+.json-ld-tool__clear {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  padding: 0.5rem 1rem;
+}
+
+.json-ld-tool__clear:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.json-ld-tool__input {
+  display: block;
+  width: 100%;
+  min-height: 250px;
+  margin-top: 0.5rem;
+  padding: 1rem;
+  resize: vertical;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.json-ld-tool__input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.json-ld-tool__message,
+.json-ld-tool__issues,
+.json-ld-tool__hierarchy {
+  margin-top: 1rem;
+  border-radius: var(--radius);
+  padding: 1rem;
+}
+
+.json-ld-tool__message--success {
+  border: 1px solid color-mix(in srgb, var(--color-success) 35%, transparent);
+  background: color-mix(in srgb, var(--color-success) 10%, transparent);
+  color: var(--color-success);
+}
+
+.json-ld-tool__message--error {
+  border: 1px solid var(--color-error-border);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+}
+
+.json-ld-summary {
+  display: grid;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.json-ld-summary__item,
+.json-ld-tool__issues,
+.json-ld-tool__hierarchy {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.json-ld-summary__item {
+  min-width: 0;
+  border-radius: var(--radius);
+  padding: 0.9rem 1rem;
+}
+
+.json-ld-summary__item strong {
+  display: block;
+  overflow-wrap: anywhere;
+  margin-top: 0.25rem;
+}
+
+.json-ld-tool__issues ul {
+  padding-left: 1.25rem;
+  margin-top: 0.5rem;
+}
+
+.json-ld-tool__issues li + li {
+  margin-top: 0.35rem;
+}
+
+.json-ld-tool__issues code {
+  color: var(--color-accent);
+}
+
+.json-ld-tool__hierarchy h3 {
+  margin-bottom: 0.75rem;
+}
+
+.json-ld-tree {
+  list-style: none;
+}
+
+.json-ld-tree .json-ld-tree {
+  margin-top: 0.35rem;
+}
+
+.json-ld-tree__item {
+  padding-left: calc(var(--tree-depth, 0) * 0.75rem);
+  overflow-wrap: anywhere;
+}
+
+.json-ld-tree__key {
+  color: var(--color-primary-light);
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+}
+
+.json-ld-tree__value {
+  color: var(--color-text-muted);
+  margin-left: 0.5rem;
+}
+
+@media (min-width: 768px) {
+  .json-ld-tool {
+    padding: 0 2rem 3rem;
+  }
+
+  .json-ld-summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
