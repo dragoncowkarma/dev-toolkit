@@ -704,7 +704,9 @@ export function decodeQrFile(file) {
       }
     };
     image.onerror = () => {
-      finish(() => reject(new QrDecodeError('Could not read this image. Please try another file.')));
+      finish(() =>
+        reject(new QrDecodeError('Could not read this image. Please try another file.')),
+      );
     };
     image.src = objectUrl;
   });

@@ -136,7 +136,9 @@ export default function QrCodeTool() {
     const imageFile = imageItem?.getAsFile();
     if (!imageFile) {
       clearDecodeResult();
-      setDecodeError('Clipboard does not contain an image. Paste an image that contains a QR code.');
+      setDecodeError(
+        'Clipboard does not contain an image. Paste an image that contains a QR code.',
+      );
       return;
     }
     event.preventDefault();
