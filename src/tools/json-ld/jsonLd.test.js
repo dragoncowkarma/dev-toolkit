@@ -179,9 +179,54 @@ describe('inspectJsonLd', () => {
           name: 'Ada Lovelace',
         },
       ],
+      mainEntity: { '@id': 'https://example.com/#ada' },
     }));
 
     expect(result.error).toBe('');
     expect(result.issues).toEqual([]);
+  });
+
+  it('flags only unresolved @id references inside mixed reference arrays', () => {
+    const result = inspectJsonLd(JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'Article',
+      '@id': 'https://example.com/article',
+      author: [
+        { '@id': 'https://example.com/#missing' },
+        { '@type': 'Person', '@id': 'https://example.com/#ada', name: 'Ada' },
+        { '@id': 'https://example.com/#ada' },
+        { '@id': 'https://example.com/#missing' },
+      ],
+    }));
+
+    expect(result.issues).toEqual([
+      {
+        severity: 'warning',
+        path: '$.author[0]',
+        message: 'Unresolved @id reference "https://example.com/#missing" does not match ' +
+          'any entity in this document.',
+      },
+      {
+        severity: 'warning',
+        path: '$.author[3]',
+        message: 'Unresolved @id reference "https://example.com/#missing" does not match ' +
+          'any entity in this document.',
+      },
+    ]);
+  });
+
+  it('treats top-level bare @id objects in an array document as entity definitions', () => {
+    const result = inspectJsonLd(JSON.stringify([
+      { '@context': 'https://schema.org', '@id': 'https://example.com/#node' },
+      { '@id': 'https://example.com/#node' },
+    ]));
+
+    expect(result.issues).toEqual([
+      {
+        severity: 'warning',
+        path: '$[1]',
+        message: 'Duplicate @id "https://example.com/#node" is already defined at $[0].',
+      },
+    ]);
   });
 });
