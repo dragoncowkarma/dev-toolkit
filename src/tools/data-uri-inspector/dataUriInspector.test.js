@@ -53,6 +53,12 @@ describe('parseDataUri — percent-encoded decoding', () => {
   it('throws for a percent sign truncated at the end of the payload', () => {
     expect(() => parseDataUri('data:text/plain,abc%')).toThrow(/Invalid percent-encoding/);
   });
+
+  it('preserves leading and trailing literal payload spaces byte-exactly', () => {
+    const result = parseDataUri('data:, hello ');
+    expect(new TextDecoder().decode(result.bytes)).toBe(' hello ');
+    expect(buildCanonicalDataUri(result)).toBe('data:text/plain;charset=US-ASCII,%20hello%20');
+  });
 });
 
 describe('parseDataUri — base64 decoding', () => {
@@ -75,6 +81,22 @@ describe('parseDataUri — base64 decoding', () => {
 
   it('throws for base64 payload with an invalid length', () => {
     expect(() => parseDataUri('data:text/plain;base64,abc')).toThrow(/Invalid base64/);
+  });
+
+  it('recognizes the ";base64" marker case-insensitively', () => {
+    const uppercase = parseDataUri('data:text/plain;BASE64,SGVsbG8=');
+    expect(uppercase.isBase64).toBe(true);
+    expect(new TextDecoder().decode(uppercase.bytes)).toBe('Hello');
+
+    const mixedCase = parseDataUri('data:text/plain;Base64,SGVsbG8=');
+    expect(mixedCase.isBase64).toBe(true);
+    expect(new TextDecoder().decode(mixedCase.bytes)).toBe('Hello');
+  });
+
+  it('still treats a "base64=" parameter as a regular parameter, not the marker', () => {
+    const result = parseDataUri('data:text/plain;base64=foo,hi');
+    expect(result.isBase64).toBe(false);
+    expect(result.params).toEqual([{ name: 'base64', value: 'foo' }]);
   });
 });
 

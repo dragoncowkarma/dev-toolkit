@@ -69,7 +69,7 @@ function parseHeader(header) {
   const params = [];
   let isBase64 = false;
   for (const segment of remaining) {
-    if (segment === 'base64') {
+    if (segment.toLowerCase() === 'base64') {
       if (isBase64) {
         throw new Error('Duplicate ";base64" marker in the data URL header.');
       }
@@ -214,15 +214,14 @@ export function parseDataUri(url) {
   if (typeof url !== 'string') {
     throw new TypeError('Input must be a string.');
   }
-  const trimmed = url.trim();
-  if (trimmed === '') {
+  if (url.trim() === '') {
     throw new Error('Enter a data URL to inspect.');
   }
-  if (!/^data:/i.test(trimmed)) {
+  if (!/^data:/i.test(url)) {
     throw new Error('A data URL must start with "data:".');
   }
 
-  const rest = trimmed.slice(5);
+  const rest = url.slice(5);
   const commaIndex = rest.indexOf(',');
   if (commaIndex === -1) {
     throw new Error('Missing "," delimiter between the header and the payload.');
