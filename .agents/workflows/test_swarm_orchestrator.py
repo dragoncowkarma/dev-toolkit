@@ -2881,15 +2881,56 @@ class ModelAvailabilityTests(unittest.TestCase):
                 self.assertEqual(reasoning, valid_r)
 
     def test_unlisted_custom_models_pass_validation(self):
-        # Genuinely unlisted or custom provider models must pass through unchanged
+        # Genuinely unlisted or custom provider models pass through when explicitly carved out
+        # 1. Known hidden internal models
         self.assertEqual(
             ("gpt-reserve", "울트라"),
             swarm.validate_model_availability("codex", "gpt-reserve", "울트라"),
         )
         self.assertEqual(
-            ("opus 6", "높음"),
-            swarm.validate_model_availability("claude", "opus 6", "높음"),
+            ("codex-auto-review", "중간"),
+            swarm.validate_model_availability("codex", "codex-auto-review", "중간"),
         )
+        # 2. Explicit prefix markers (custom: or unlisted:)
+        self.assertEqual(
+            ("opus 6", "높음"),
+            swarm.validate_model_availability("claude", "custom:opus 6", "높음"),
+        )
+        self.assertEqual(
+            ("my-custom-model", "high"),
+            swarm.validate_model_availability("codex", "unlisted:my-custom-model", "high"),
+        )
+        # 3. SWARM_ALLOWED_CUSTOM_MODELS environment variable allowlist
+        with patch.dict(os.environ, {"SWARM_ALLOWED_CUSTOM_MODELS": "claude-experimental,gpt-custom"}):
+            self.assertEqual(
+                ("claude-experimental", "high"),
+                swarm.validate_model_availability("claude", "claude-experimental", "high"),
+            )
+            self.assertEqual(
+                ("gpt-custom", "높음"),
+                swarm.validate_model_availability("codex", "gpt-custom", "높음"),
+            )
+
+    def test_hallucinated_next_version_models_warn_and_fall_back_to_defaults(self):
+        # Plausible hallucinated names (e.g. claude-opus-6, gpt-5.7-nova) without explicit
+        # custom designation must be caught by default and fall back to agent presets.
+        with self.assertLogs(swarm.log, level="WARNING") as captured:
+            model, reasoning = swarm.validate_model_availability("claude", "claude-opus-6", "high")
+        self.assertEqual("sonnet 5", model)
+        self.assertEqual("높음", reasoning)
+        self.assertTrue(any("Model 'claude-opus-6'" in line for line in captured.output))
+
+        with self.assertLogs(swarm.log, level="WARNING") as captured:
+            model, reasoning = swarm.validate_model_availability("codex", "gpt-5.7-nova", "high")
+        self.assertEqual("5.6 terra", model)
+        self.assertEqual("높음", reasoning)
+        self.assertTrue(any("Model 'gpt-5.7-nova'" in line for line in captured.output))
+
+        with self.assertLogs(swarm.log, level="WARNING") as captured:
+            model, reasoning = swarm.validate_model_availability("claude", "opus 6", "높음")
+        self.assertEqual("sonnet 5", model)
+        self.assertEqual("높음", reasoning)
+        self.assertTrue(any("Model 'opus 6'" in line for line in captured.output))
 
     def test_cross_family_model_warns_and_falls_back_to_default(self):
         with self.assertLogs(swarm.log, level="WARNING"):

@@ -115,12 +115,14 @@ Rules for this table:
    WARNING and resolves to `중간`.
 3. Retired model names stay in the orchestrator's alias maps so that open
    Issues and PRs tagged with them keep dispatching. Before dispatch,
-   `validate_model_availability()` checks metadata tags, rewriting known
-   hallucinated or incompatible model names to the agent default preset with a
-   WARNING to prevent retry budget exhaustion. Genuinely custom or unlisted
-   models (such as `gpt-reserve` or preview variants) pass through to
-   `build_ai_argv()` with a WARNING and are granted only the efforts every model
-   supports — never `울트라`.
+   `validate_model_availability()` checks metadata tags against known models
+   and alias maps, rewriting invalid or hallucinated model names to the agent
+   default preset with a WARNING to prevent retry budget exhaustion. Genuinely
+   custom or unlisted models (such as `gpt-reserve`, `codex-auto-review`,
+   models prefixed with `custom:`, or those allowed via
+   `SWARM_ALLOWED_CUSTOM_MODELS`) pass through to `build_ai_argv()` with a
+   WARNING and are granted only the efforts every model supports — never
+   `울트라`.
 4. `agy` also serves Claude and GPT-OSS models. They are **not** valid for an
    `antigravity` role — `validate_distinct_roles()` compares only the agent
    name, so `[Reviewer: antigravity | Model: claude opus 5.5]` would let Claude

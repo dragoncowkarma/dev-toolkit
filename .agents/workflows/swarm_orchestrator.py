@@ -182,28 +182,6 @@ DEFAULT_AI_CONFIG: dict[str, dict[str, str]] = {
     "claude":      {"model": "sonnet 5",         "reasoning": "높음"},
 }
 
-# Registry of currently valid models and preset identifiers per AI agent.
-# Must stay in sync with installed CLIs and AGENTS.md Section 3.
-AVAILABLE_MODELS: dict[str, list[str]] = {
-    "antigravity": [
-        "gemini-4-argon-low", "gemini-4-argon-medium", "gemini-4-argon-high",
-        "gemini-3.8-flash-low", "gemini-3.8-flash-medium", "gemini-3.8-flash-high",
-        "claude-opus-5-5-low", "claude-opus-5-5-medium", "claude-opus-5-5-high",
-        "claude-sonnet-5-5-low", "claude-sonnet-5-5-medium", "claude-sonnet-5-5-high",
-        "gpt-oss-120b-medium",
-        "gemini 4 argon", "gemini 3.8 flash",
-        "gemini-4-argon", "gemini-3.8-flash",
-    ],
-    "claude": [
-        "claude-opus-5", "claude-sonnet-5", "claude-fable-5", "claude-haiku-4-5",
-        "opus 5", "sonnet 5", "fable 5", "haiku 4.5",
-    ],
-    "codex": [
-        "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
-        "5.6 sol", "5.6 terra", "5.6 luna",
-    ],
-}
-
 # Role-specific reasoning overrides (lower = fewer thinking tokens).
 # Worker needs high reasoning for implementation; Reviewer/Maintainer do not.
 ROLE_REASONING_OVERRIDE: dict[str, dict[str, str]] = {
@@ -2060,51 +2038,94 @@ _CODEX_MODEL_MAP: dict[str, str] = {
 }
 
 
-# Substrings indicating placeholder or hallucinated model names.
-_HALLUCINATION_KEYWORDS: tuple[str, ...] = (
-    "fake", "bogus", "hallucinat", "nonexistent", "dummy", "mock", "placeholder",
-)
+# Registry of currently valid models and preset identifiers per AI agent.
+# Derived directly from authoritative CLI model and preset tables.
+AVAILABLE_MODELS: dict[str, list[str]] = {
+    "antigravity": [
+        f"{stem}-{effort}"
+        for stem, efforts in _AGY_MODEL_EFFORTS.items()
+        for effort in efforts
+    ] + [
+        "gemini 4 argon", "gemini 3.8 flash",
+        "gemini-4-argon", "gemini-3.8-flash",
+    ],
+    "claude": list(dict.fromkeys(
+        list(_CLAUDE_MODEL_MAP.values()) + [
+            "opus 5", "sonnet 5", "fable 5", "haiku 4.5",
+        ]
+    )),
+    "codex": list(dict.fromkeys(
+        list(_CODEX_MODEL_EFFORTS.keys()) + [
+            "5.6 sol", "5.6 terra", "5.6 luna",
+        ]
+    )),
+}
+
+# Known hidden internal or provider-specific models not listed in public presets.
+_KNOWN_CUSTOM_MODELS: dict[str, set[str]] = {
+    "codex": {"gpt-reserve", "codex-auto-review"},
+    "claude": set(),
+    "antigravity": set(),
+}
 
 
-def _is_known_hallucination(ai: str, model_clean: str) -> bool:
-    """Check if model_clean matches known hallucinated, foreign, or invalid patterns."""
+def _is_explicit_custom_model(ai: str, model_clean: str) -> tuple[bool, str]:
+    """Check if model_clean is explicitly designated as a custom/unlisted model.
+
+    Returns (is_custom, resolved_model_name).
+    Supports:
+    1. Explicit prefix: 'custom:<model>' or 'unlisted:<model>'
+    2. Known hidden internal models: e.g. 'gpt-reserve', 'codex-auto-review' for codex
+    3. Environment variable allowlist: SWARM_ALLOWED_CUSTOM_MODELS (comma-separated)
+    """
     model_lower = model_clean.lower()
-    if any(kw in model_lower for kw in _HALLUCINATION_KEYWORDS):
-        return True
+    for prefix in ("custom:", "unlisted:"):
+        if model_lower.startswith(prefix):
+            stripped = model_clean[len(prefix):].strip()
+            if stripped:
+                return True, stripped
+
+    if model_lower in _KNOWN_CUSTOM_MODELS.get(ai, set()):
+        return True, model_clean
+
+    env_allowlist = os.environ.get("SWARM_ALLOWED_CUSTOM_MODELS", "")
+    if env_allowlist:
+        allowed = {m.strip().lower() for m in env_allowlist.split(",") if m.strip()}
+        if model_lower in allowed:
+            return True, model_clean
+
+    return False, model_clean
+
+
+def _is_known_good_model(ai: str, model_clean: str) -> bool:
+    """Check if model_clean is a known valid model or resolvable alias for the AI agent."""
+    model_lower = model_clean.lower()
+    available = AVAILABLE_MODELS.get(ai, [])
 
     if ai == "antigravity":
+        # Antigravity models must resolve to a valid non-foreign stem
         stem = _agy_stem(model_clean)
-        if stem is None or stem in _AGY_FOREIGN_FAMILY_STEMS:
-            return True
-        return False
+        return stem is not None and stem not in _AGY_FOREIGN_FAMILY_STEMS
 
     elif ai == "codex":
-        # Cross-family hallucinations: claude/gemini family names tagged for codex
-        if any(model_lower.startswith(prefix) for prefix in (
-            "claude", "sonnet", "opus", "haiku", "fable", "gemini",
-        )):
+        if any(model_lower == m.lower() for m in available):
             return True
-        # Legacy/unsupported major OpenAI model families that are not in alias maps
-        if any(model_lower.startswith(prefix) for prefix in (
-            "gpt-1", "gpt-2", "gpt-3", "gpt-4", "chatgpt", "davinci", "text-",
-        )):
+        if model_lower in _CODEX_MODEL_MAP:
+            return True
+        if model_lower in _CODEX_MODEL_EFFORTS:
             return True
         return False
 
     elif ai == "claude":
-        # Cross-family hallucinations: codex/gemini family names tagged for claude
-        if any(model_lower.startswith(prefix) for prefix in (
-            "gpt-", "codex", "5.6", "6.1", "chatgpt", "gemini",
-        )):
+        if any(model_lower == m.lower() for m in available):
             return True
-        # Legacy/unsupported Claude families not in alias maps
-        if any(model_lower.startswith(prefix) for prefix in (
-            "claude-1", "claude-2",
-        )):
+        if model_lower in _CLAUDE_MODEL_MAP:
+            return True
+        if model_lower in set(_CLAUDE_MODEL_MAP.values()):
             return True
         return False
 
-    return False
+    return True
 
 
 def validate_model_availability(
@@ -2114,63 +2135,42 @@ def validate_model_availability(
 ) -> tuple[str, str]:
     """Validate model availability for an AI agent and return (model, reasoning).
 
-    Known hallucinated, foreign, or invalid model identifiers fall back to the
-    agent's default model and reasoning from DEFAULT_AI_CONFIG with a WARNING log,
+    Any model not found in the agent's known-good models or alias maps is treated
+    as invalid by default and falls back to DEFAULT_AI_CONFIG with a WARNING log,
     preventing retry budget exhaustion.
 
-    Genuinely custom or unlisted models (such as hidden internal models like
-    'gpt-reserve' or preview variants) pass through to build_ai_argv() with a
-    WARNING per AGENTS.md Section 3 Rule 3.
+    Genuinely custom or unlisted models pass through to build_ai_argv() when
+    explicitly carved out via:
+    1. Known hidden internal models (e.g. 'gpt-reserve', 'codex-auto-review' for codex).
+    2. Explicit custom model marker prefix ('custom:<model>' or 'unlisted:<model>').
+    3. The SWARM_ALLOWED_CUSTOM_MODELS environment variable allowlist.
     """
     ai = ai_name.lower().strip()
-    available = AVAILABLE_MODELS.get(ai)
-    if available is None:
+    if ai not in DEFAULT_AI_CONFIG:
         return model, reasoning
 
     model_clean = model.strip()
-    model_lower = model_clean.lower()
 
-    is_valid = False
-    if ai == "antigravity":
-        if any(model_lower == m.lower() for m in available):
-            is_valid = True
-        else:
-            stem = _agy_stem(model_clean)
-            if stem is not None and stem not in _AGY_FOREIGN_FAMILY_STEMS:
-                is_valid = True
-    elif ai == "codex":
-        if any(model_lower == m.lower() for m in available):
-            is_valid = True
-        elif model_lower in _CODEX_MODEL_MAP:
-            is_valid = True
-        elif model_lower in _CODEX_MODEL_EFFORTS:
-            is_valid = True
-    elif ai == "claude":
-        if any(model_lower == m.lower() for m in available):
-            is_valid = True
-        elif model_lower in _CLAUDE_MODEL_MAP:
-            is_valid = True
-        elif model_lower in set(_CLAUDE_MODEL_MAP.values()):
-            is_valid = True
-    else:
-        is_valid = True
-
-    if is_valid:
+    if _is_known_good_model(ai, model_clean):
         return model, reasoning
 
-    if _is_known_hallucination(ai, model_clean):
-        cfg = DEFAULT_AI_CONFIG.get(ai, {})
-        default_model = cfg.get("model", model)
-        default_reasoning = cfg.get("reasoning", reasoning)
-        log.warning(
-            "Model '%s' (reasoning=%s) is not available for %s; "
-            "falling back to default '%s' (reasoning=%s).",
-            model, reasoning, ai_name, default_model, default_reasoning,
+    is_custom, custom_model = _is_explicit_custom_model(ai, model_clean)
+    if is_custom:
+        log.info(
+            "Custom/unlisted model allowed for %s: '%s' (reasoning=%s).",
+            ai_name, custom_model, reasoning,
         )
-        return default_model, default_reasoning
+        return custom_model, reasoning
 
-    # Unlisted or custom model: pass through to build_ai_argv() per AGENTS.md §3 Rule 3
-    return model, reasoning
+    cfg = DEFAULT_AI_CONFIG[ai]
+    default_model = cfg.get("model", model)
+    default_reasoning = cfg.get("reasoning", reasoning)
+    log.warning(
+        "Model '%s' (reasoning=%s) is not available for %s; "
+        "falling back to default '%s' (reasoning=%s).",
+        model, reasoning, ai_name, default_model, default_reasoning,
+    )
+    return default_model, default_reasoning
 
 
 def build_ai_argv(ai_name: str, model: str, reasoning: str,
