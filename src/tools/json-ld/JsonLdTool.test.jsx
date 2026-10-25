@@ -40,4 +40,32 @@ describe('JsonLdTool', () => {
     expect(input).toHaveValue('');
     expect(screen.queryByLabelText('JSON-LD summary')).not.toBeInTheDocument();
   });
+
+  it('renders structural warnings for duplicate and unresolved @id values', () => {
+    render(<JsonLdTool />);
+    fireEvent.change(screen.getByLabelText('JSON-LD document'), {
+      target: {
+        value: JSON.stringify({
+          '@context': 'https://schema.org',
+          '@type': 'Article',
+          '@id': 'https://example.com/#article',
+          author: {
+            '@type': 'Person',
+            '@id': 'https://example.com/#article',
+            name: 'Ada',
+          },
+          publisher: { '@id': 'https://example.com/#missing-org' },
+        }),
+      },
+    });
+
+    const checks = screen.getByRole('region', { name: 'Structural checks' });
+    expect(checks).toHaveTextContent(
+      '$.author — Duplicate @id "https://example.com/#article" is already defined at $.'
+    );
+    expect(checks).toHaveTextContent(
+      '$.publisher — Unresolved @id reference "https://example.com/#missing-org" does not match ' +
+        'any entity in this document.'
+    );
+  });
 });
