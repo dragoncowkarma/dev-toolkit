@@ -2880,6 +2880,32 @@ class ModelAvailabilityTests(unittest.TestCase):
                 self.assertEqual(model, valid_m)
                 self.assertEqual(reasoning, valid_r)
 
+    def test_unlisted_custom_models_pass_validation(self):
+        # Genuinely unlisted or custom provider models must pass through unchanged
+        self.assertEqual(
+            ("gpt-reserve", "울트라"),
+            swarm.validate_model_availability("codex", "gpt-reserve", "울트라"),
+        )
+        self.assertEqual(
+            ("opus 6", "높음"),
+            swarm.validate_model_availability("claude", "opus 6", "높음"),
+        )
+
+    def test_cross_family_model_warns_and_falls_back_to_default(self):
+        with self.assertLogs(swarm.log, level="WARNING"):
+            model, reasoning = swarm.validate_model_availability(
+                "codex", "claude-sonnet-5", "높음"
+            )
+        self.assertEqual("5.6 terra", model)
+        self.assertEqual("높음", reasoning)
+
+        with self.assertLogs(swarm.log, level="WARNING"):
+            model, reasoning = swarm.validate_model_availability(
+                "claude", "gpt-5.6-terra", "high"
+            )
+        self.assertEqual("sonnet 5", model)
+        self.assertEqual("높음", reasoning)
+
     def test_invalid_codex_model_warns_and_falls_back_to_default(self):
         with self.assertLogs(swarm.log, level="WARNING") as captured:
             model, reasoning = swarm.validate_model_availability(
@@ -2991,6 +3017,23 @@ class ModelAvailabilityTests(unittest.TestCase):
 
         called_model = build_argv.call_args[0][1]
         self.assertEqual("gemini 3.8 flash", called_model)
+
+    def test_dispatch_worker_passes_unlisted_model_to_build_ai_argv(self):
+        issue = swarm.TaskIssue(
+            number=99,
+            title="[Task] Test - custom unlisted model",
+            body="Task body",
+            worker=swarm.RoleAssignment("codex", "gpt-reserve", "울트라"),
+        )
+        with (
+            patch.object(swarm, "create_worktree", return_value=Path("/tmp/99")),
+            patch.object(swarm, "write_prompt_file", return_value=self.prompt_file),
+            patch.object(swarm, "build_ai_argv", return_value=["codex", "exec"]) as build_argv,
+        ):
+            swarm.dispatch_worker(issue, dry_run=True)
+
+        called_model = build_argv.call_args[0][1]
+        self.assertEqual("gpt-reserve", called_model)
 
 
 if __name__ == "__main__":

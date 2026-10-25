@@ -204,12 +204,6 @@ AVAILABLE_MODELS: dict[str, list[str]] = {
     ],
 }
 
-AVAILABLE_EFFORTS: dict[str, list[str]] = {
-    "antigravity": ["low", "medium", "high"],
-    "claude": ["low", "medium", "high", "xhigh", "max"],
-    "codex": ["low", "medium", "high", "xhigh", "max", "ultra"],
-}
-
 # Role-specific reasoning overrides (lower = fewer thinking tokens).
 # Worker needs high reasoning for implementation; Reviewer/Maintainer do not.
 ROLE_REASONING_OVERRIDE: dict[str, dict[str, str]] = {
@@ -2066,6 +2060,53 @@ _CODEX_MODEL_MAP: dict[str, str] = {
 }
 
 
+# Substrings indicating placeholder or hallucinated model names.
+_HALLUCINATION_KEYWORDS: tuple[str, ...] = (
+    "fake", "bogus", "hallucinat", "nonexistent", "dummy", "mock", "placeholder",
+)
+
+
+def _is_known_hallucination(ai: str, model_clean: str) -> bool:
+    """Check if model_clean matches known hallucinated, foreign, or invalid patterns."""
+    model_lower = model_clean.lower()
+    if any(kw in model_lower for kw in _HALLUCINATION_KEYWORDS):
+        return True
+
+    if ai == "antigravity":
+        stem = _agy_stem(model_clean)
+        if stem is None or stem in _AGY_FOREIGN_FAMILY_STEMS:
+            return True
+        return False
+
+    elif ai == "codex":
+        # Cross-family hallucinations: claude/gemini family names tagged for codex
+        if any(model_lower.startswith(prefix) for prefix in (
+            "claude", "sonnet", "opus", "haiku", "fable", "gemini",
+        )):
+            return True
+        # Legacy/unsupported major OpenAI model families that are not in alias maps
+        if any(model_lower.startswith(prefix) for prefix in (
+            "gpt-1", "gpt-2", "gpt-3", "gpt-4", "chatgpt", "davinci", "text-",
+        )):
+            return True
+        return False
+
+    elif ai == "claude":
+        # Cross-family hallucinations: codex/gemini family names tagged for claude
+        if any(model_lower.startswith(prefix) for prefix in (
+            "gpt-", "codex", "5.6", "6.1", "chatgpt", "gemini",
+        )):
+            return True
+        # Legacy/unsupported Claude families not in alias maps
+        if any(model_lower.startswith(prefix) for prefix in (
+            "claude-1", "claude-2",
+        )):
+            return True
+        return False
+
+    return False
+
+
 def validate_model_availability(
     ai_name: str,
     model: str,
@@ -2073,9 +2114,13 @@ def validate_model_availability(
 ) -> tuple[str, str]:
     """Validate model availability for an AI agent and return (model, reasoning).
 
-    When the specified model is not in the available list for the agent
-    (or resolvable through known aliases), falls back to the agent's default
-    model from DEFAULT_AI_CONFIG and logs a WARNING.
+    Known hallucinated, foreign, or invalid model identifiers fall back to the
+    agent's default model and reasoning from DEFAULT_AI_CONFIG with a WARNING log,
+    preventing retry budget exhaustion.
+
+    Genuinely custom or unlisted models (such as hidden internal models like
+    'gpt-reserve' or preview variants) pass through to build_ai_argv() with a
+    WARNING per AGENTS.md Section 3 Rule 3.
     """
     ai = ai_name.lower().strip()
     available = AVAILABLE_MODELS.get(ai)
@@ -2113,15 +2158,19 @@ def validate_model_availability(
     if is_valid:
         return model, reasoning
 
-    cfg = DEFAULT_AI_CONFIG.get(ai, {})
-    default_model = cfg.get("model", model)
-    default_reasoning = cfg.get("reasoning", reasoning)
-    log.warning(
-        "Model '%s' (reasoning=%s) is not available for %s; "
-        "falling back to default '%s' (reasoning=%s).",
-        model, reasoning, ai_name, default_model, default_reasoning,
-    )
-    return default_model, default_reasoning
+    if _is_known_hallucination(ai, model_clean):
+        cfg = DEFAULT_AI_CONFIG.get(ai, {})
+        default_model = cfg.get("model", model)
+        default_reasoning = cfg.get("reasoning", reasoning)
+        log.warning(
+            "Model '%s' (reasoning=%s) is not available for %s; "
+            "falling back to default '%s' (reasoning=%s).",
+            model, reasoning, ai_name, default_model, default_reasoning,
+        )
+        return default_model, default_reasoning
+
+    # Unlisted or custom model: pass through to build_ai_argv() per AGENTS.md §3 Rule 3
+    return model, reasoning
 
 
 def build_ai_argv(ai_name: str, model: str, reasoning: str,
