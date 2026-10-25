@@ -135,7 +135,7 @@ describe('HarTool Copy as cURL', () => {
 
     await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
     const command = writeText.mock.calls[0][0];
-    expect(command).toContain('-X POST');
+    expect(command).toContain("-X 'POST'");
     expect(command).toContain("'https://api.example.test/users'");
     expect(command).toContain("-H 'Authorization: redacted'");
     expect(command).toContain(`--data-raw '{"name":"Ada"}'`);
