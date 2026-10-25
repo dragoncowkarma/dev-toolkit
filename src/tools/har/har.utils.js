@@ -240,12 +240,19 @@ export function toCurlCommand(entry) {
   const url = String(request.url ?? '');
   const headers = Array.isArray(request.headers) ? request.headers : [];
   const postData = request.postData;
-  const parts = ['curl', `-X ${method}`, toShellSingleQuoted(url)];
+  const parts = ['curl', `-X ${toShellSingleQuoted(method)}`, toShellSingleQuoted(url)];
 
   headers.forEach((header) => {
     if (!header?.name) return;
     parts.push(`-H ${toShellSingleQuoted(`${header.name}: ${header.value ?? ''}`)}`);
   });
+
+  const hasContentTypeHeader = headers.some(
+    (header) => header?.name && header.name.toLowerCase() === 'content-type'
+  );
+  if (!hasContentTypeHeader && postData?.mimeType) {
+    parts.push(`-H ${toShellSingleQuoted(`Content-Type: ${postData.mimeType}`)}`);
+  }
 
   if (postData?.text) {
     parts.push(`--data-raw ${toShellSingleQuoted(postData.text)}`);

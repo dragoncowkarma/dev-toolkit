@@ -129,7 +129,7 @@ describe('toCurlCommand', () => {
     });
 
     expect(command).toContain('curl');
-    expect(command).toContain('-X GET');
+    expect(command).toContain("-X 'GET'");
     expect(command).toContain("'https://example.test/app.js'");
     expect(command).toContain("-H 'Accept: text/javascript'");
     expect(command).not.toContain('--data-raw');
@@ -145,7 +145,7 @@ describe('toCurlCommand', () => {
       },
     });
 
-    expect(command).toContain('-X POST');
+    expect(command).toContain("-X 'POST'");
     expect(command).toContain("-H 'Content-Type: application/json'");
     expect(command).toContain(`--data-raw '{"id":1}'`);
   });
@@ -155,8 +155,50 @@ describe('toCurlCommand', () => {
       request: { method: 'DELETE', url: 'https://api.example.test/items/1', headers: [] },
     });
 
-    expect(command).toContain('-X DELETE');
+    expect(command).toContain("-X 'DELETE'");
     expect(command).not.toContain('--data-raw');
+  });
+
+  it('adds a Content-Type header from postData.mimeType when none is present', () => {
+    const command = toCurlCommand({
+      request: {
+        method: 'POST',
+        url: 'https://api.example.test/items',
+        headers: [],
+        postData: { mimeType: 'application/json', text: '{}' },
+      },
+    });
+
+    expect(command).toContain("-H 'Content-Type: application/json'");
+    expect(command).toContain(`--data-raw '{}'`);
+  });
+
+  it('does not duplicate Content-Type when already present among headers', () => {
+    const command = toCurlCommand({
+      request: {
+        method: 'POST',
+        url: 'https://api.example.test/items',
+        headers: [{ name: 'content-type', value: 'application/json; charset=utf-8' }],
+        postData: { mimeType: 'application/json', text: '{}' },
+      },
+    });
+
+    const matches = command.match(/-H '[Cc]ontent-[Tt]ype:/g) ?? [];
+    expect(matches).toHaveLength(1);
+    expect(command).toContain("-H 'content-type: application/json; charset=utf-8'");
+  });
+
+  it('quotes the method so an untrusted method value cannot break out of the command', () => {
+    const command = toCurlCommand({
+      request: {
+        method: 'POST; rm -rf /',
+        url: 'https://api.example.test/items',
+        headers: [],
+      },
+    });
+
+    expect(command).toContain(`-X 'POST; RM -RF /'`);
+    expect(command).not.toMatch(/-X POST; rm -rf \//i);
   });
 
   it('escapes single quotes in header values and the body', () => {
