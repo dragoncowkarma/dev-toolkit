@@ -1953,10 +1953,16 @@ _CLAUDE_MODEL_MAP: dict[str, str] = {
     "sonnet 4":          "claude-sonnet-5",
     "sonnet 3.7":        "claude-sonnet-5",
     "claude 3.7 sonnet": "claude-sonnet-5",
+    "claude-3-7-sonnet": "claude-sonnet-5",
+    "claude-3.7-sonnet": "claude-sonnet-5",
     "sonnet 3.5":        "claude-sonnet-5",
     "claude 3.5 sonnet": "claude-sonnet-5",
+    "claude-3-5-sonnet": "claude-sonnet-5",
+    "claude-3.5-sonnet": "claude-sonnet-5",
     "haiku 3.5":         "claude-haiku-4-5",
     "claude 3.5 haiku":  "claude-haiku-4-5",
+    "claude-3-5-haiku":  "claude-haiku-4-5",
+    "claude-3.5-haiku":  "claude-haiku-4-5",
     # Already fully-qualified names pass through — the CLI still accepts the
     # previous generations by ID.
     "claude-opus-5":               "claude-opus-5",
@@ -2023,12 +2029,148 @@ _CODEX_MODEL_MAP: dict[str, str] = {
     "gpt-5.2":                "gpt-5.6-terra",
     "gpt-5.1-codex-max":      "gpt-5.6-terra",
     "gpt-5.1-codex":          "gpt-5.6-terra",
+    "gpt-5-1-codex":          "gpt-5.6-terra",
     "gpt-5.1":                "gpt-5.6-terra",
     # Already fully-qualified names pass through.
     "gpt-5.6-sol":            "gpt-5.6-sol",
     "gpt-5.6-terra":          "gpt-5.6-terra",
     "gpt-5.6-luna":           "gpt-5.6-luna",
 }
+
+
+# Registry of currently valid models and preset identifiers per AI agent.
+# Derived directly from authoritative CLI model and preset tables.
+AVAILABLE_MODELS: dict[str, list[str]] = {
+    "antigravity": [
+        f"{stem}-{effort}"
+        for stem, efforts in _AGY_MODEL_EFFORTS.items()
+        for effort in efforts
+    ] + [
+        "gemini 4 argon", "gemini 3.8 flash",
+        "gemini-4-argon", "gemini-3.8-flash",
+    ],
+    "claude": list(dict.fromkeys(
+        list(_CLAUDE_MODEL_MAP.values()) + [
+            "opus 5", "sonnet 5", "fable 5", "haiku 4.5",
+        ]
+    )),
+    "codex": list(dict.fromkeys(
+        list(_CODEX_MODEL_EFFORTS.keys()) + [
+            "5.6 sol", "5.6 terra", "5.6 luna",
+        ]
+    )),
+}
+
+# Known hidden internal or provider-specific models not listed in public presets.
+_KNOWN_CUSTOM_MODELS: dict[str, set[str]] = {
+    "codex": {"gpt-reserve", "codex-auto-review"},
+    "claude": set(),
+    "antigravity": set(),
+}
+
+
+def _is_explicit_custom_model(ai: str, model_clean: str) -> tuple[bool, str]:
+    """Check if model_clean is explicitly designated as a custom/unlisted model.
+
+    Returns (is_custom, resolved_model_name).
+    Supports:
+    1. Explicit prefix: 'custom:<model>' or 'unlisted:<model>'
+    2. Known hidden internal models: e.g. 'gpt-reserve', 'codex-auto-review' for codex
+    3. Environment variable allowlist: SWARM_ALLOWED_CUSTOM_MODELS (comma-separated)
+    """
+    model_lower = model_clean.lower()
+    for prefix in ("custom:", "unlisted:"):
+        if model_lower.startswith(prefix):
+            stripped = model_clean[len(prefix):].strip()
+            if stripped:
+                return True, stripped
+
+    if model_lower in _KNOWN_CUSTOM_MODELS.get(ai, set()):
+        return True, model_clean
+
+    env_allowlist = os.environ.get("SWARM_ALLOWED_CUSTOM_MODELS", "")
+    if env_allowlist:
+        allowed = {m.strip().lower() for m in env_allowlist.split(",") if m.strip()}
+        if model_lower in allowed:
+            return True, model_clean
+
+    return False, model_clean
+
+
+def _is_known_good_model(ai: str, model_clean: str) -> bool:
+    """Check if model_clean is a known valid model or resolvable alias for the AI agent."""
+    model_lower = model_clean.lower()
+    available = AVAILABLE_MODELS.get(ai, [])
+
+    if ai == "antigravity":
+        # Antigravity models must resolve to a valid non-foreign stem
+        stem = _agy_stem(model_clean)
+        return stem is not None and stem not in _AGY_FOREIGN_FAMILY_STEMS
+
+    elif ai == "codex":
+        if any(model_lower == m.lower() for m in available):
+            return True
+        if model_lower in _CODEX_MODEL_MAP:
+            return True
+        if model_lower in _CODEX_MODEL_EFFORTS:
+            return True
+        return False
+
+    elif ai == "claude":
+        if any(model_lower == m.lower() for m in available):
+            return True
+        if model_lower in _CLAUDE_MODEL_MAP:
+            return True
+        if model_lower in set(_CLAUDE_MODEL_MAP.values()):
+            return True
+        return False
+
+    return True
+
+
+def validate_model_availability(
+    ai_name: str,
+    model: str,
+    reasoning: str = "",
+) -> tuple[str, str]:
+    """Validate model availability for an AI agent and return (model, reasoning).
+
+    Any model not found in the agent's known-good models or alias maps is treated
+    as invalid by default and falls back to DEFAULT_AI_CONFIG with a WARNING log,
+    preventing retry budget exhaustion.
+
+    Genuinely custom or unlisted models pass through to build_ai_argv() when
+    explicitly carved out via:
+    1. Known hidden internal models (e.g. 'gpt-reserve', 'codex-auto-review' for codex).
+    2. Explicit custom model marker prefix ('custom:<model>' or 'unlisted:<model>').
+    3. The SWARM_ALLOWED_CUSTOM_MODELS environment variable allowlist.
+    """
+    ai = ai_name.lower().strip()
+    if ai not in DEFAULT_AI_CONFIG:
+        return model, reasoning
+
+    model_clean = model.strip()
+
+    if _is_known_good_model(ai, model_clean):
+        return model, reasoning
+
+    is_custom, custom_model = _is_explicit_custom_model(ai, model_clean)
+    if is_custom:
+        log.info(
+            "Custom/unlisted model allowed for %s: '%s' (reasoning=%s).",
+            ai_name, custom_model, reasoning,
+        )
+        return custom_model, reasoning
+
+    cfg = DEFAULT_AI_CONFIG[ai]
+    default_model = cfg.get("model", model)
+    default_reasoning = cfg.get("reasoning", reasoning)
+    log.warning(
+        "Model '%s' (reasoning=%s) is not available for %s; "
+        "falling back to default '%s' (reasoning=%s).",
+        model, reasoning, ai_name, default_model, default_reasoning,
+    )
+    return default_model, default_reasoning
 
 
 def build_ai_argv(ai_name: str, model: str, reasoning: str,
@@ -2190,7 +2332,12 @@ def dispatch_worker(
 
     task_ref = task_ref or f"issue#{issue.number}:initial"
     prompt_file = write_prompt_file(prompt, "worker", task_ref)
-    argv = build_ai_argv(worker.ai, worker.model, worker.reasoning, prompt_file, str(worktree_path))
+    valid_model, valid_reasoning = validate_model_availability(
+        worker.ai, worker.model, worker.reasoning,
+    )
+    argv = build_ai_argv(
+        worker.ai, valid_model, valid_reasoning, prompt_file, str(worktree_path),
+    )
 
     if dry_run:
         log.info("[DRY RUN] Would execute: %s", _format_argv_for_log(argv))
@@ -2215,8 +2362,8 @@ def dispatch_worker(
             proc=proc,
             role="worker",
             ai_name=worker.ai,
-            model=worker.model,
-            reasoning=worker.reasoning,
+            model=valid_model,
+            reasoning=valid_reasoning,
             task_ref=task_ref,
             branch=branch_name,
             command=_format_argv_for_log(argv),
@@ -2264,6 +2411,10 @@ def dispatch_reviewer(
             + "\n\n... [diff truncated, use `gh pr diff` for full diff]"
         )
 
+    valid_model, valid_reasoning = validate_model_availability(
+        reviewer.ai, reviewer.model, reviewer.reasoning,
+    )
+
     prompt = (
         f"You are the Reviewer for PR #{pr.number}: {pr.title}.\n"
         f"Read .agents/rules/review_checklist.md for review rules.\n"
@@ -2273,8 +2424,8 @@ def dispatch_reviewer(
         f"Review the code quality and leave review comments.\n\n"
         f"When your review is complete, you MUST post exactly ONE final summary comment "
         f"on the PR containing your [Reviewer: ...] metadata tag. The tag format is:\n"
-        f"  [Reviewer: {reviewer.ai} | Model: {reviewer.model} | "
-        f"Reasoning: {reviewer.reasoning}]\n\n"
+        f"  [Reviewer: {reviewer.ai} | Model: {valid_model} | "
+        f"Reasoning: {valid_reasoning}]\n\n"
         f"If the PR is approved and ready to merge, your final comment MUST also include:\n"
         f"  [Maintainer: <ai_name> | Model: <model> | Reasoning: <level>]\n"
         f"Choose the Maintainer using .agents/rules/role_assignment.md. It MUST differ "
@@ -2292,10 +2443,10 @@ def dispatch_reviewer(
     prompt_file = write_prompt_file(prompt, "reviewer", task_ref)
     effective_reasoning = ROLE_REASONING_OVERRIDE.get(
         "reviewer", {},
-    ).get(reviewer.ai, reviewer.reasoning)
+    ).get(reviewer.ai, valid_reasoning)
     argv = build_ai_argv(
         reviewer.ai,
-        reviewer.model,
+        valid_model,
         effective_reasoning,
         prompt_file,
         str(REPO_ROOT),
@@ -2322,8 +2473,8 @@ def dispatch_reviewer(
             proc=proc,
             role="reviewer",
             ai_name=reviewer.ai,
-            model=reviewer.model,
-            reasoning=reviewer.reasoning,
+            model=valid_model,
+            reasoning=valid_reasoning,
             task_ref=task_ref,
             branch=pr.head_branch,
             command=_format_argv_for_log(argv),
@@ -2371,6 +2522,10 @@ def dispatch_maintainer(
             f"7. Do not implement the follow-up Issue yourself. The orchestrator will "
             f"dispatch its Worker in the next polling cycle.\n"
         )
+    valid_model, valid_reasoning = validate_model_availability(
+        maintainer.ai, maintainer.model, maintainer.reasoning,
+    )
+
     prompt = (
         f"You are AI3, the Maintainer and post-merge Analyst for PR #{pr.number} "
         f"{issue_context}"
@@ -2384,8 +2539,8 @@ def dispatch_maintainer(
         f"review; only re-verify the current merge state and CI after marking the PR ready.\n"
         f"   Merge PR #{pr.number} after these checks. A successful merge closes the PR.\n"
         f"4. Comment on the PR with your exact metadata:\n"
-        f"   [Maintainer: {maintainer.ai} | Model: {maintainer.model} | "
-        f"Reasoning: {maintainer.reasoning}]\n"
+        f"   [Maintainer: {maintainer.ai} | Model: {valid_model} | "
+        f"Reasoning: {valid_reasoning}]\n"
         f"   Include the merge rationale and verification evidence.\n"
         f"   If you cannot merge, do not request or perform a retry. Instead, "
         f"post the metadata above plus an exact '[Maintainer Blocked]' line, "
@@ -2401,10 +2556,10 @@ def dispatch_maintainer(
     prompt_file = write_prompt_file(prompt, "maintainer", task_ref)
     effective_reasoning = ROLE_REASONING_OVERRIDE.get(
         "maintainer", {},
-    ).get(maintainer.ai, maintainer.reasoning)
+    ).get(maintainer.ai, valid_reasoning)
     argv = build_ai_argv(
         maintainer.ai,
-        maintainer.model,
+        valid_model,
         effective_reasoning,
         prompt_file,
         str(REPO_ROOT),
@@ -2431,8 +2586,8 @@ def dispatch_maintainer(
             proc=proc,
             role="maintainer",
             ai_name=maintainer.ai,
-            model=maintainer.model,
-            reasoning=maintainer.reasoning,
+            model=valid_model,
+            reasoning=valid_reasoning,
             task_ref=task_ref,
             branch="",
             command=_format_argv_for_log(argv),
@@ -2501,10 +2656,15 @@ def dispatch_worker_revision(
     if not task_ref:
         task_ref = f"revise#{pr.number}"
     prompt_file = write_prompt_file(prompt, "worker-revise", task_ref)
+    valid_model, valid_reasoning = validate_model_availability(
+        worker.ai, worker.model, worker.reasoning,
+    )
     effective_reasoning = ROLE_REASONING_OVERRIDE.get(
         "worker_revise", {},
-    ).get(worker.ai, worker.reasoning)
-    argv = build_ai_argv(worker.ai, worker.model, effective_reasoning, prompt_file, str(worktree_path))
+    ).get(worker.ai, valid_reasoning)
+    argv = build_ai_argv(
+        worker.ai, valid_model, effective_reasoning, prompt_file, str(worktree_path),
+    )
 
     if dry_run:
         log.info("[DRY RUN] Would execute worker revision: %s", _format_argv_for_log(argv))
@@ -2528,8 +2688,8 @@ def dispatch_worker_revision(
             proc=proc,
             role="worker_revise",
             ai_name=worker.ai,
-            model=worker.model,
-            reasoning=worker.reasoning,
+            model=valid_model,
+            reasoning=valid_reasoning,
             task_ref=task_ref,
             branch=branch_name,
             command=_format_argv_for_log(argv),
