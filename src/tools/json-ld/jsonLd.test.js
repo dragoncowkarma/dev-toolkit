@@ -229,4 +229,70 @@ describe('inspectJsonLd', () => {
       },
     ]);
   });
+
+  it('treats bare @id items in a nested @graph as entity definitions that resolve links', () => {
+    const result = inspectJsonLd(JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'WebPage',
+      mainEntity: { '@id': 'https://example.com/#node-a' },
+      hasPart: {
+        '@id': 'https://example.com/#sub-graph',
+        '@graph': [
+          { '@id': 'https://example.com/#node-a' },
+          {
+            '@type': 'Article',
+            '@id': 'https://example.com/#article',
+            about: { '@id': 'https://example.com/#node-a' },
+            author: { '@id': 'https://example.com/#missing' },
+          },
+        ],
+      },
+    }));
+
+    expect(result.entities).toEqual([
+      expect.objectContaining({ path: '$', types: ['WebPage'] }),
+      expect.objectContaining({ path: '$.hasPart', id: 'https://example.com/#sub-graph' }),
+      expect.objectContaining({ path: '$.hasPart.@graph[0]', id: 'https://example.com/#node-a' }),
+      expect.objectContaining({
+        path: '$.hasPart.@graph[1]',
+        types: ['Article'],
+        id: 'https://example.com/#article',
+      }),
+    ]);
+    expect(result.issues).toEqual([
+      {
+        severity: 'warning',
+        path: '$.hasPart.@graph[1].author',
+        message: 'Unresolved @id reference "https://example.com/#missing" does not match ' +
+          'any entity in this document.',
+      },
+    ]);
+  });
+
+  it('detects duplicate @id definitions across nested @graph containers', () => {
+    const result = inspectJsonLd(JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'Dataset',
+      distribution: {
+        '@graph': [
+          { '@id': 'https://example.com/#node-a' },
+        ],
+      },
+      hasPart: {
+        '@graph': [
+          { '@id': 'https://example.com/#node-a' },
+        ],
+      },
+    }));
+
+    expect(result.issues).toEqual([
+      {
+        severity: 'warning',
+        path: '$.hasPart.@graph[0]',
+        message:
+          'Duplicate @id "https://example.com/#node-a" is already defined at ' +
+          '$.distribution.@graph[0].',
+      },
+    ]);
+  });
 });
