@@ -6,6 +6,7 @@ import {
   getOverview,
   getTimelineBounds,
   parseHar,
+  toCurlCommand,
 } from './har.utils.js';
 
 const sampleHar = {
@@ -114,5 +115,103 @@ describe('HAR overview and filters', () => {
   it('formats compact display values', () => {
     expect(formatBytes(1536)).toBe('1.5 KB');
     expect(formatDuration(1250)).toBe('1.25 s');
+  });
+});
+
+describe('toCurlCommand', () => {
+  it('builds a GET command with headers', () => {
+    const command = toCurlCommand({
+      request: {
+        method: 'GET',
+        url: 'https://example.test/app.js',
+        headers: [{ name: 'Accept', value: 'text/javascript' }],
+      },
+    });
+
+    expect(command).toContain('curl');
+    expect(command).toContain("-X 'GET'");
+    expect(command).toContain("'https://example.test/app.js'");
+    expect(command).toContain("-H 'Accept: text/javascript'");
+    expect(command).not.toContain('--data-raw');
+  });
+
+  it('builds a POST command with a JSON body', () => {
+    const command = toCurlCommand({
+      request: {
+        method: 'POST',
+        url: 'https://api.example.test/items',
+        headers: [{ name: 'Content-Type', value: 'application/json' }],
+        postData: { mimeType: 'application/json', text: '{"id":1}' },
+      },
+    });
+
+    expect(command).toContain("-X 'POST'");
+    expect(command).toContain("-H 'Content-Type: application/json'");
+    expect(command).toContain(`--data-raw '{"id":1}'`);
+  });
+
+  it('omits --data-raw when there is no request body', () => {
+    const command = toCurlCommand({
+      request: { method: 'DELETE', url: 'https://api.example.test/items/1', headers: [] },
+    });
+
+    expect(command).toContain("-X 'DELETE'");
+    expect(command).not.toContain('--data-raw');
+  });
+
+  it('adds a Content-Type header from postData.mimeType when none is present', () => {
+    const command = toCurlCommand({
+      request: {
+        method: 'POST',
+        url: 'https://api.example.test/items',
+        headers: [],
+        postData: { mimeType: 'application/json', text: '{}' },
+      },
+    });
+
+    expect(command).toContain("-H 'Content-Type: application/json'");
+    expect(command).toContain(`--data-raw '{}'`);
+  });
+
+  it('does not duplicate Content-Type when already present among headers', () => {
+    const command = toCurlCommand({
+      request: {
+        method: 'POST',
+        url: 'https://api.example.test/items',
+        headers: [{ name: 'content-type', value: 'application/json; charset=utf-8' }],
+        postData: { mimeType: 'application/json', text: '{}' },
+      },
+    });
+
+    const matches = command.match(/-H '[Cc]ontent-[Tt]ype:/g) ?? [];
+    expect(matches).toHaveLength(1);
+    expect(command).toContain("-H 'content-type: application/json; charset=utf-8'");
+  });
+
+  it('quotes the method so an untrusted method value cannot break out of the command', () => {
+    const command = toCurlCommand({
+      request: {
+        method: 'POST; rm -rf /',
+        url: 'https://api.example.test/items',
+        headers: [],
+      },
+    });
+
+    expect(command).toContain(`-X 'POST; RM -RF /'`);
+    expect(command).not.toMatch(/-X POST; rm -rf \//i);
+  });
+
+  it('escapes single quotes in header values and the body', () => {
+    const command = toCurlCommand({
+      request: {
+        method: 'POST',
+        url: 'https://api.example.test/items',
+        headers: [{ name: 'X-Note', value: "it's fine" }],
+        postData: { mimeType: 'text/plain', text: "O'Brien" },
+      },
+    });
+
+    expect(command).toContain(`-H 'X-Note: it'\\''s fine'`);
+    expect(command).toContain(`--data-raw 'O'\\''Brien'`);
   });
 });
