@@ -1883,15 +1883,44 @@ _AGY_FOREIGN_FAMILY_STEMS: frozenset = frozenset({
 })
 
 
+def _agy_normalize_slug(model: str) -> str:
+    """Fold any spelling of an antigravity tag onto agy's hyphenated slug form.
+
+    Shared by alias resolution (_agy_stem) and registry lookups
+    (_agy_registry_stems) so "gemini 4 argon", "gemini-4-argon", and
+    effort-qualified forms like "gemini 4 argon high" all normalize the same
+    way before either is consulted.
+    """
+    return re.sub(r"[\s_()]+", "-", model.lower().strip()).strip("-")
+
+
 def _agy_stem(model: str) -> Optional[str]:
     """Map any spelling of an antigravity model onto a known agy slug stem."""
-    key = re.sub(r"[\s_()]+", "-", model.lower().strip()).strip("-")
+    key = _agy_normalize_slug(model)
     for candidate in (key, _AGY_SLUG_SUFFIX_RE.sub(r"\g<stem>", key)):
         if candidate in _AGY_MODEL_EFFORTS:
             return candidate
         if candidate in _AGY_ALIAS_SLUGS:
             return _AGY_ALIAS_SLUGS[candidate]
     return None
+
+
+def _agy_registry_stems() -> frozenset[str]:
+    """Stems AVAILABLE_MODELS["antigravity"] documents as dispatchable.
+
+    This is the live decision source for _is_known_good_model: it re-reads
+    AVAILABLE_MODELS on every call (nothing is cached at import time), so
+    editing the registry — not just _AGY_MODEL_EFFORTS — changes which
+    Antigravity tags validate as known-good. Stems belonging to another swarm
+    AI's family are excluded even though AVAILABLE_MODELS lists their
+    effort-qualified slugs for documentation (agy really does serve them);
+    see _AGY_FOREIGN_FAMILY_STEMS and AGENTS.md 2.4.
+    """
+    stems = {
+        _AGY_SLUG_SUFFIX_RE.sub(r"\g<stem>", _agy_normalize_slug(entry))
+        for entry in AVAILABLE_MODELS.get("antigravity", [])
+    }
+    return frozenset(stems - _AGY_FOREIGN_FAMILY_STEMS)
 
 
 def _resolve_agy_model(model: str, reasoning: str) -> str:
@@ -2103,9 +2132,11 @@ def _is_known_good_model(ai: str, model_clean: str) -> bool:
     available = AVAILABLE_MODELS.get(ai, [])
 
     if ai == "antigravity":
-        # Antigravity models must resolve to a valid non-foreign stem
+        # Normalize/alias via _agy_stem, then gate on AVAILABLE_MODELS itself
+        # (_agy_registry_stems) rather than on _AGY_MODEL_EFFORTS directly, so
+        # the derived registry is the live decision source, not decoration.
         stem = _agy_stem(model_clean)
-        return stem is not None and stem not in _AGY_FOREIGN_FAMILY_STEMS
+        return stem is not None and stem in _agy_registry_stems()
 
     elif ai == "codex":
         if any(model_lower == m.lower() for m in available):

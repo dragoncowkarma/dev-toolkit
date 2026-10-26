@@ -3077,5 +3077,103 @@ class ModelAvailabilityTests(unittest.TestCase):
         self.assertEqual("gpt-reserve", called_model)
 
 
+class AntigravityRegistryConsolidationTests(unittest.TestCase):
+    """Issue #342: the Antigravity branch of _is_known_good_model must read
+    AVAILABLE_MODELS["antigravity"] as its live decision source, not just
+    _agy_stem() + _AGY_FOREIGN_FAMILY_STEMS, so the derived registry documents
+    the exact set it also enforces.
+    """
+
+    def test_every_published_non_foreign_slug_is_known_good(self):
+        """Every effort-qualified Gemini slug and bare preset validates."""
+        for entry in swarm.AVAILABLE_MODELS["antigravity"]:
+            stem = swarm._agy_stem(entry)
+            if stem in swarm._AGY_FOREIGN_FAMILY_STEMS:
+                continue
+            with self.subTest(model=entry):
+                self.assertTrue(swarm._is_known_good_model("antigravity", entry))
+
+    def test_effort_qualified_and_preset_forms_pass_full_validation(self):
+        """validate_model_availability() must not rewrite any supported form."""
+        supported = [
+            "gemini 4 argon", "gemini 3.8 flash",
+            "gemini-4-argon", "gemini-3.8-flash",
+            "gemini-4-argon-low", "gemini-4-argon-medium", "gemini-4-argon-high",
+            "gemini-3.8-flash-low", "gemini-3.8-flash-medium", "gemini-3.8-flash-high",
+        ]
+        for model in supported:
+            with self.subTest(model=model):
+                valid_m, valid_r = swarm.validate_model_availability(
+                    "antigravity", model, "high",
+                )
+                self.assertEqual(model, valid_m)
+                self.assertEqual("high", valid_r)
+
+    def test_foreign_family_slugs_are_not_known_good(self):
+        """Foreign-family slugs are real AVAILABLE_MODELS entries (agy really
+        serves them) but must never validate as a known-good Antigravity
+        model, or a [Reviewer: antigravity | Model: claude opus 5.5] tag would
+        let Claude review its own work (AGENTS.md 2.4)."""
+        for entry in swarm.AVAILABLE_MODELS["antigravity"]:
+            stem = swarm._agy_stem(entry)
+            if stem not in swarm._AGY_FOREIGN_FAMILY_STEMS:
+                continue
+            with self.subTest(model=entry):
+                self.assertFalse(swarm._is_known_good_model("antigravity", entry))
+
+        for tagged in ("claude opus 5.5", "claude sonnet 5.5", "gpt-oss 120b",
+                       "claude-opus-5-5-high", "claude-sonnet-5-5-low",
+                       "gpt-oss-120b-medium"):
+            with self.subTest(model=tagged):
+                self.assertFalse(swarm._is_known_good_model("antigravity", tagged))
+                # Safe fallback/redirect still holds even though the slug is
+                # technically listed in AVAILABLE_MODELS for documentation.
+                with self.assertLogs(swarm.log, level="WARNING"):
+                    resolved = swarm._resolve_agy_model(tagged, "high")
+                self.assertTrue(resolved.startswith("gemini-"))
+
+    def test_unknown_antigravity_names_are_rejected(self):
+        for bogus in ("gemini-99-bogus", "nonexistent-model", ""):
+            with self.subTest(model=bogus):
+                self.assertFalse(swarm._is_known_good_model("antigravity", bogus))
+
+    def test_registry_edits_move_known_good_validation(self):
+        """Removing a stem from AVAILABLE_MODELS — without touching
+        _AGY_MODEL_EFFORTS — must flip known-good validation for it. This is
+        what proves the branch reads the registry live instead of bypassing
+        it via _agy_stem()/_AGY_MODEL_EFFORTS directly."""
+        self.assertTrue(swarm._is_known_good_model("antigravity", "gemini-4-argon-high"))
+
+        original = swarm.AVAILABLE_MODELS["antigravity"]
+        try:
+            swarm.AVAILABLE_MODELS["antigravity"] = [
+                entry for entry in original
+                if swarm._agy_stem(entry) != "gemini-4-argon"
+            ]
+            self.assertFalse(
+                swarm._is_known_good_model("antigravity", "gemini-4-argon-high"),
+                "stem is still in _AGY_MODEL_EFFORTS, so this only fails if "
+                "the validator actually consults AVAILABLE_MODELS",
+            )
+            # _AGY_MODEL_EFFORTS is untouched, so alias resolution for other
+            # purposes (e.g. _resolve_agy_model dispatch) keeps working.
+            self.assertIn("gemini-4-argon", swarm._AGY_MODEL_EFFORTS)
+        finally:
+            swarm.AVAILABLE_MODELS["antigravity"] = original
+
+        self.assertTrue(swarm._is_known_good_model("antigravity", "gemini-4-argon-high"))
+
+    def test_codex_and_claude_known_good_checks_are_unaffected(self):
+        """The consolidation is scoped to antigravity; codex/claude keep
+        validating straight off AVAILABLE_MODELS + their own alias maps."""
+        self.assertTrue(swarm._is_known_good_model("codex", "5.6 terra"))
+        self.assertTrue(swarm._is_known_good_model("codex", "gpt-5.6-terra"))
+        self.assertFalse(swarm._is_known_good_model("codex", "gpt-5.7-nova"))
+
+        self.assertTrue(swarm._is_known_good_model("claude", "sonnet 5"))
+        self.assertTrue(swarm._is_known_good_model("claude", "claude-sonnet-5"))
+        self.assertFalse(swarm._is_known_good_model("claude", "claude-opus-6"))
+
+
 if __name__ == "__main__":
     unittest.main()
