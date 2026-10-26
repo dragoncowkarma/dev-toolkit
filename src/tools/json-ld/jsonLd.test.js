@@ -99,4 +99,134 @@ describe('inspectJsonLd', () => {
       'No JSON-LD entity metadata (@context, @type, or @id) was found.'
     );
   });
+
+  it('warns when sibling entities define duplicate @id values', () => {
+    const result = inspectJsonLd(JSON.stringify([
+      {
+        '@context': 'https://schema.org',
+        '@type': 'Person',
+        '@id': 'https://example.com/#ada',
+        name: 'Ada Lovelace',
+      },
+      {
+        '@context': 'https://schema.org',
+        '@type': 'Person',
+        '@id': 'https://example.com/#ada',
+        name: 'Countess of Lovelace',
+      },
+    ]));
+
+    expect(result.issues).toEqual([
+      {
+        severity: 'warning',
+        path: '$[1]',
+        message: 'Duplicate @id "https://example.com/#ada" is already defined at $[0].',
+      },
+    ]);
+  });
+
+  it('warns when nested entities define duplicate @id values', () => {
+    const result = inspectJsonLd(JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'Article',
+      '@id': 'https://example.com/#shared-id',
+      author: {
+        '@type': 'Person',
+        '@id': 'https://example.com/#shared-id',
+        name: 'Ada',
+      },
+    }));
+
+    expect(result.issues).toEqual([
+      {
+        severity: 'warning',
+        path: '$.author',
+        message: 'Duplicate @id "https://example.com/#shared-id" is already defined at $.',
+      },
+    ]);
+  });
+
+  it('warns when a nested @id reference does not resolve to any entity', () => {
+    const result = inspectJsonLd(JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'Article',
+      '@id': 'https://example.com/article',
+      author: { '@id': 'https://example.com/#missing-author' },
+    }));
+
+    expect(result.issues).toEqual([
+      {
+        severity: 'warning',
+        path: '$.author',
+        message: 'Unresolved @id reference "https://example.com/#missing-author" does not match ' +
+          'any entity in this document.',
+      },
+    ]);
+  });
+
+  it('produces no @id warnings when entity @id values are unique and references resolve', () => {
+    const result = inspectJsonLd(JSON.stringify({
+      '@context': 'https://schema.org',
+      '@graph': [
+        {
+          '@type': 'Article',
+          '@id': 'https://example.com/article',
+          author: { '@id': 'https://example.com/#ada' },
+        },
+        {
+          '@type': 'Person',
+          '@id': 'https://example.com/#ada',
+          name: 'Ada Lovelace',
+        },
+      ],
+      mainEntity: { '@id': 'https://example.com/#ada' },
+    }));
+
+    expect(result.error).toBe('');
+    expect(result.issues).toEqual([]);
+  });
+
+  it('flags only unresolved @id references inside mixed reference arrays', () => {
+    const result = inspectJsonLd(JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'Article',
+      '@id': 'https://example.com/article',
+      author: [
+        { '@id': 'https://example.com/#missing' },
+        { '@type': 'Person', '@id': 'https://example.com/#ada', name: 'Ada' },
+        { '@id': 'https://example.com/#ada' },
+        { '@id': 'https://example.com/#missing' },
+      ],
+    }));
+
+    expect(result.issues).toEqual([
+      {
+        severity: 'warning',
+        path: '$.author[0]',
+        message: 'Unresolved @id reference "https://example.com/#missing" does not match ' +
+          'any entity in this document.',
+      },
+      {
+        severity: 'warning',
+        path: '$.author[3]',
+        message: 'Unresolved @id reference "https://example.com/#missing" does not match ' +
+          'any entity in this document.',
+      },
+    ]);
+  });
+
+  it('treats top-level bare @id objects in an array document as entity definitions', () => {
+    const result = inspectJsonLd(JSON.stringify([
+      { '@context': 'https://schema.org', '@id': 'https://example.com/#node' },
+      { '@id': 'https://example.com/#node' },
+    ]));
+
+    expect(result.issues).toEqual([
+      {
+        severity: 'warning',
+        path: '$[1]',
+        message: 'Duplicate @id "https://example.com/#node" is already defined at $[0].',
+      },
+    ]);
+  });
 });

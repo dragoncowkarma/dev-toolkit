@@ -60,20 +60,29 @@ export function extractJsonLdContent(input) {
   };
 }
 
-function inspectEntity(value, path, entities, issues) {
+function isIdReference(value, isNested) {
+  if (!isNested || !isRecord(value) || !('@id' in value)) return false;
+  return Object.keys(value).every((key) => key === '@id');
+}
+
+function inspectEntity(value, path, entities, issues, references = [], isNested = false) {
   if (Array.isArray(value)) {
     value.forEach((item, index) => {
-      inspectEntity(item, `${path}[${index}]`, entities, issues);
+      inspectEntity(item, `${path}[${index}]`, entities, issues, references, isNested);
     });
     return;
   }
 
   if (!isRecord(value)) return;
 
+  const isReference = isIdReference(value, isNested);
   const types = normalizeTypes(value['@type']);
-  const isEntity = '@context' in value || '@type' in value || '@id' in value;
+  const isEntity = !isReference && ('@context' in value || '@type' in value || '@id' in value);
   if (isEntity) {
     entities.push({ path, types, id: value['@id'], context: value['@context'] });
+  }
+  if (isReference && typeof value['@id'] === 'string' && value['@id'].trim() !== '') {
+    references.push({ path, id: value['@id'] });
   }
 
   if ('@context' in value &&
@@ -101,7 +110,39 @@ function inspectEntity(value, path, entities, issues) {
 
   Object.entries(value).forEach(([key, child]) => {
     if (key !== '@context' && key !== '@type' && key !== '@id') {
-      inspectEntity(child, formatPath(path, key), entities, issues);
+      const childIsNested = isNested || key !== '@graph';
+      inspectEntity(child, formatPath(path, key), entities, issues, references, childIsNested);
+    }
+  });
+}
+
+function checkIdGraph(entities, references, issues) {
+  const firstSeenById = new Map();
+
+  entities.forEach((entity) => {
+    if (typeof entity.id !== 'string' || entity.id.trim() === '') return;
+
+    const firstPath = firstSeenById.get(entity.id);
+    if (firstPath !== undefined) {
+      issues.push({
+        severity: 'warning',
+        path: entity.path,
+        message: `Duplicate @id "${entity.id}" is already defined at ${firstPath}.`,
+      });
+      return;
+    }
+
+    firstSeenById.set(entity.id, entity.path);
+  });
+
+  references.forEach((reference) => {
+    if (!firstSeenById.has(reference.id)) {
+      issues.push({
+        severity: 'warning',
+        path: reference.path,
+        message: `Unresolved @id reference "${reference.id}" does not match any entity in ` +
+          'this document.',
+      });
     }
   });
 }
@@ -141,7 +182,9 @@ export function inspectJsonLd(input) {
     return { ...result, error: 'A JSON-LD document must be an object or an array of objects.' };
   }
 
-  inspectEntity(document, '$', result.entities, result.issues);
+  const references = [];
+  inspectEntity(document, '$', result.entities, result.issues, references);
+  checkIdGraph(result.entities, references, result.issues);
   const rootItems = Array.isArray(document) ? document : [document];
   if (!rootItems.some((item) => isRecord(item) && '@context' in item)) {
     result.issues.push({
@@ -151,7 +194,7 @@ export function inspectJsonLd(input) {
         'vocabulary.',
     });
   }
-  if (result.entities.length === 0) {
+  if (result.entities.length === 0 && references.length === 0) {
     result.issues.push({
       severity: 'warning',
       path: '$',
