@@ -81,6 +81,19 @@ describe('parseStructuredData', () => {
       error: 'Structured data parameter has an unterminated value.',
     });
   });
+
+  it('does not accept malformed nil structured-data markers', () => {
+    expect(parseStructuredData('-invalid')).toMatchObject({
+      error: 'RFC 5424 structured data must be "-" or start with "[".',
+    });
+  });
+
+  it('allows whitespace before a structured-data closing bracket', () => {
+    expect(parseStructuredData('[meta key="value" ]')).toMatchObject({
+      structuredData: [{ id: 'meta', parameters: { key: 'value' } }],
+      error: null,
+    });
+  });
 });
 
 describe('parseSyslogBatch', () => {

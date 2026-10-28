@@ -90,8 +90,8 @@ export default function SyslogParserTool() {
               {result.structuredData.length > 0 && (
                 <section className="syslog-result__structured-data" aria-label="Structured data">
                   <h3>Structured Data</h3>
-                  {result.structuredData.map((element) => (
-                    <div className="structured-data-card" key={element.id}>
+                  {result.structuredData.map((element, index) => (
+                    <div className="structured-data-card" key={`${element.id}-${index}`}>
                       <strong>{element.id}</strong>
                       {Object.entries(element.parameters).map(([key, value]) => (
                         <span key={key}>{key}: {value}</span>

@@ -54,7 +54,7 @@ function normalizeNil(value) {
  */
 export function parseStructuredData(text) {
   const source = text.trimStart();
-  if (source.startsWith('-')) {
+  if (/^-(?:\s+|$)/.test(source)) {
     return { structuredData: [], message: source.slice(1).trimStart(), error: null };
   }
   if (!source.startsWith('[')) {
@@ -69,7 +69,7 @@ export function parseStructuredData(text) {
   let cursor = 0;
   while (source[cursor] === '[') {
     cursor += 1;
-    const idMatch = source.slice(cursor).match(/^([^\s=\]\"]+)/);
+    const idMatch = source.slice(cursor).match(/^([^\s=\]"]+)/);
     if (!idMatch) {
       return { structuredData, message: '', error: 'Structured data element is missing its ID.' };
     }
@@ -86,6 +86,7 @@ export function parseStructuredData(text) {
         };
       }
       while (/\s/.test(source[cursor])) cursor += 1;
+      if (cursor >= source.length || source[cursor] === ']') break;
       const nameMatch = source.slice(cursor).match(/^([^\s=\]"]+)="/);
       if (!nameMatch) {
         return {

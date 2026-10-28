@@ -1,19 +1,203 @@
-.syslog-parser-tool { max-width: 1000px; margin: 0 auto; padding: 0 1.25rem 2rem; color: var(--color-text); }
-.syslog-parser-tool__toolbar, .syslog-result header, .syslog-parser-tool__actions { display: flex; align-items: center; gap: 0.75rem; }
-.syslog-parser-tool__toolbar { justify-content: space-between; flex-wrap: wrap; margin-bottom: 1rem; }
-.syslog-parser-tool h2, .syslog-parser-tool p { margin: 0; }
-.syslog-parser-tool__toolbar p { color: var(--color-text-muted); margin-top: 0.25rem; }
-.syslog-parser-tool button { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); color: var(--color-text); cursor: pointer; font: inherit; padding: 0.5rem 0.8rem; }
-.syslog-parser-tool button:hover:not(:disabled) { border-color: var(--color-primary); color: var(--color-primary-light); }
-.syslog-parser-tool button:disabled { cursor: not-allowed; opacity: 0.55; }
-.syslog-parser-tool > label { color: var(--color-text-muted); display: block; font-size: 0.8rem; font-weight: 600; letter-spacing: 0.05em; margin-bottom: 0.5rem; text-transform: uppercase; }
-.syslog-parser-tool textarea { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); box-sizing: border-box; color: var(--color-text); font: 0.9rem/1.5 'SF Mono', 'Fira Code', Consolas, monospace; min-height: 180px; padding: 1rem; resize: vertical; width: 100%; }
-.syslog-parser-tool textarea:focus { border-color: var(--color-primary); outline: none; }
-.syslog-parser-tool__results { display: grid; gap: 1rem; margin-top: 1rem; }
-.syslog-result { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); overflow: hidden; }
-.syslog-result header { background: var(--color-bg); justify-content: space-between; padding: 0.75rem 1rem; }
-.syslog-result__validity, .severity-badge { border-radius: 999px; font-size: 0.8rem; font-weight: 600; padding: 0.25rem 0.55rem; }
-.syslog-result__validity.is-valid { background: #155e3d; color: #d1fae5; }.syslog-result__validity.is-invalid { background: var(--color-error-bg); color: var(--color-error-light); }.severity-badge { background: var(--color-primary); color: #fff; }
-.syslog-result__notices, .syslog-result__structured-data, .syslog-result__message { padding: 0 1rem; }.syslog-result__notices { padding-top: 0.75rem; }.syslog-result__notices p { font-size: 0.875rem; margin: 0.25rem 0; }.is-error { color: var(--color-error-light); }.is-warning { color: #eab308; }
-.syslog-result__grid { display: grid; gap: 0.75rem; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin: 0; padding: 1rem; }.syslog-result__grid div { min-width: 0; }.syslog-result__grid dt { color: var(--color-text-muted); font-size: 0.75rem; font-weight: 600; text-transform: uppercase; }.syslog-result__grid dd { margin: 0.25rem 0 0; overflow-wrap: anywhere; }.syslog-result__structured-data h3 { font-size: 0.9rem; margin: 0.25rem 0 0.5rem; }.structured-data-card { border-left: 3px solid var(--color-primary); display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; margin-bottom: 0.5rem; padding: 0.5rem 0.75rem; }.structured-data-card span { color: var(--color-text-muted); font-family: monospace; font-size: 0.85rem; }.syslog-result__message { padding-bottom: 1rem; }.syslog-result__message p { margin-top: 0.35rem; overflow-wrap: anywhere; white-space: pre-wrap; }
-@media (min-width: 768px) { .syslog-parser-tool { padding: 0 2rem 3rem; } }
+.syslog-parser-tool {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  color: var(--color-text);
+}
+
+.syslog-parser-tool__toolbar,
+.syslog-result header,
+.syslog-parser-tool__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.syslog-parser-tool__toolbar {
+  justify-content: space-between;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.syslog-parser-tool h2,
+.syslog-parser-tool p {
+  margin: 0;
+}
+
+.syslog-parser-tool__toolbar p {
+  margin-top: 0.25rem;
+  color: var(--color-text-muted);
+}
+
+.syslog-parser-tool button {
+  padding: 0.5rem 0.8rem;
+  font: inherit;
+  color: var(--color-text);
+  cursor: pointer;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.syslog-parser-tool button:hover:not(:disabled) {
+  color: var(--color-primary-light);
+  border-color: var(--color-primary);
+}
+
+.syslog-parser-tool button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.syslog-parser-tool > label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.syslog-parser-tool textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 180px;
+  padding: 1rem;
+  font: 0.9rem/1.5 'SF Mono', 'Fira Code', Consolas, monospace;
+  color: var(--color-text);
+  resize: vertical;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.syslog-parser-tool textarea:focus {
+  border-color: var(--color-primary);
+  outline: none;
+}
+
+.syslog-parser-tool__results {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.syslog-result {
+  overflow: hidden;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.syslog-result header {
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  background: var(--color-bg);
+}
+
+.syslog-result__validity,
+.syslog-parser-tool .severity-badge {
+  padding: 0.25rem 0.55rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border-radius: 999px;
+}
+
+.syslog-result__validity.is-valid {
+  color: var(--color-text);
+  background: var(--color-success);
+}
+
+.syslog-result__validity.is-invalid {
+  color: var(--color-error-light);
+  background: var(--color-error-bg);
+}
+
+.syslog-parser-tool .severity-badge {
+  color: var(--color-text);
+  background: var(--color-primary);
+}
+
+.syslog-result__notices,
+.syslog-result__structured-data,
+.syslog-result__message {
+  padding: 0 1rem;
+}
+
+.syslog-result__notices {
+  padding-top: 0.75rem;
+}
+
+.syslog-result__notices p {
+  margin: 0.25rem 0;
+  font-size: 0.875rem;
+}
+
+.syslog-parser-tool .is-error {
+  color: var(--color-error-light);
+}
+
+.syslog-parser-tool .is-warning {
+  color: var(--color-warning);
+}
+
+.syslog-result__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+  padding: 1rem;
+}
+
+.syslog-result__grid div {
+  min-width: 0;
+}
+
+.syslog-result__grid dt {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+}
+
+.syslog-result__grid dd {
+  margin: 0.25rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+.syslog-result__structured-data h3 {
+  margin: 0.25rem 0 0.5rem;
+  font-size: 0.9rem;
+}
+
+.syslog-parser-tool .structured-data-card {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid var(--color-primary);
+}
+
+.syslog-parser-tool .structured-data-card span {
+  font-family: monospace;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.syslog-result__message {
+  padding-bottom: 1rem;
+}
+
+.syslog-result__message p {
+  margin-top: 0.35rem;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+@media (min-width: 768px) {
+  .syslog-parser-tool {
+    padding: 0 2rem 3rem;
+  }
+}

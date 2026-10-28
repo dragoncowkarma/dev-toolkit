@@ -1,6 +1,8 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it } from 'vitest';
 import SyslogParserTool from './SyslogParserTool.jsx';
+
+afterEach(cleanup);
 
 describe('SyslogParserTool', () => {
   it('loads samples and renders parsed message details', () => {
@@ -19,7 +21,7 @@ describe('SyslogParserTool', () => {
     const input = screen.getByLabelText('Syslog messages');
     fireEvent.change(input, { target: { value: '<13>Oct 29 12:31:00 host app[7]: hello' } });
 
-    expect(screen.getByText('sshd')).not.toBeInTheDocument();
+    expect(screen.queryByText('sshd')).not.toBeInTheDocument();
     expect(screen.getByText('hello')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
     expect(input).toHaveValue('');
