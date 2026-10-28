@@ -281,3 +281,60 @@ export function formatDuration(duration) {
   return duration >= 1000 ? `${(duration / 1000).toFixed(2)} s` :
     `${Math.round(duration)} ms`;
 }
+
+/**
+ * Converts a captured HAR request into a JavaScript fetch() call.
+ * @param {object} entry
+ * @returns {string}
+ */
+export function toFetchSnippet(entry) {
+  const request = entry?.request ?? {};
+  const method = String(request.method ?? 'GET').toUpperCase();
+  const url = String(request.url ?? '');
+  const postData = request.postData ?? {};
+  const headers = Array.isArray(request.headers)
+    ? request.headers.filter((header) => header?.name)
+    : [];
+  const body = typeof postData.text === 'string' ? postData.text : null;
+
+  if (body !== null && postData.mimeType && !hasHeader(headers, 'content-type')) {
+    headers.push({ name: 'Content-Type', value: String(postData.mimeType) });
+  }
+
+  if (method === 'GET' && headers.length === 0 && body === null) {
+    return `fetch(${JSON.stringify(url)})`;
+  }
+
+  const options = [];
+  options.push(`method: ${JSON.stringify(method)}`);
+
+  if (headers.length > 0) {
+    options.push(`headers: ${formatHeaders(headers)}`);
+  }
+
+  if (body !== null) {
+    options.push(`body: ${formatRequestBody(body)}`);
+  }
+
+  return `fetch(${JSON.stringify(url)}, {\n  ${options.join(',\n  ')}\n})`;
+}
+
+function hasHeader(headers, name) {
+  return headers.some((header) => String(header?.name ?? '').toLowerCase() === name);
+}
+
+function formatHeaders(headers) {
+  const properties = headers.map(({ name, value }) => (
+    `${JSON.stringify(String(name ?? ''))}: ${JSON.stringify(String(value ?? ''))}`
+  ));
+
+  return `{\n    ${properties.join(',\n    ')}\n  }`;
+}
+
+function formatRequestBody(body) {
+  try {
+    return `JSON.stringify(${JSON.stringify(JSON.parse(body), null, 2)})`;
+  } catch {
+    return JSON.stringify(body);
+  }
+}
