@@ -1,97 +1,64 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 import Base62Tool from './Base62Tool.jsx';
+import * as base62Utils from './base62.utils.js';
 
-afterEach(() => {
-  cleanup();
-  vi.useRealTimers();
-  vi.restoreAllMocks();
+vi.mock('./base62.utils.js', async (importOriginal) => {
+  const actual = await importOriginal();
+  return { ...actual, fileToBytes: vi.fn(actual.fileToBytes) };
 });
 
-describe('Base62Tool conversion', () => {
-  it('encodes a decimal input and swaps the editable representation', () => {
+function selectFile(input, file) {
+  Object.defineProperty(input, 'files', { value: [file], configurable: true });
+  fireEvent.change(input);
+}
+
+describe('Base62Tool', () => {
+  it('encodes text and exposes accessible conversion errors', async () => {
     render(<Base62Tool />);
+    fireEvent.change(screen.getByLabelText('Text'), { target: { value: 'hello' } });
+    await waitFor(() => expect(screen.getByLabelText('Base62')).not.toHaveValue(''));
 
-    fireEvent.change(screen.getByLabelText('Decimal input'), { target: { value: '62' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Decode' }));
+    fireEvent.change(screen.getByLabelText('Base62'), { target: { value: 'invalid+' } });
 
-    expect(screen.getByLabelText('Base62 result')).toHaveValue('10');
-    expect(screen.getByRole('button', { name: 'Copy' })).not.toBeDisabled();
-
-    fireEvent.click(screen.getByRole('button', { name: '⇄ Swap' }));
-
-    expect(screen.getByLabelText('Decimal result')).toHaveValue('62');
-    expect(screen.getByLabelText('Base62 input')).toHaveValue('10');
-    expect(screen.getByLabelText('Decimal result')).toHaveAttribute('readonly');
-
-    fireEvent.change(screen.getByLabelText('Base62 input'), { target: { value: 'Z' } });
-
-    expect(screen.getByLabelText('Decimal result')).toHaveValue('61');
+    const error = await screen.findByRole('alert');
+    expect(error).toHaveTextContent('Invalid Base62 character');
+    expect(screen.getByLabelText('Base62')).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByLabelText('Base62')).toHaveAttribute('aria-describedby', 'base62-error');
   });
 
-  it('allows decoding Base62 before entering a decimal value', () => {
+  it('keeps decoded binary bytes available for download', async () => {
     render(<Base62Tool />);
 
-    fireEvent.click(screen.getByRole('button', { name: '⇄ Swap' }));
-    const base62Input = screen.getByLabelText('Base62 input');
+    fireEvent.click(screen.getByRole('button', { name: 'Decode' }));
+    fireEvent.change(screen.getByLabelText('Base62'), { target: { value: '47' } });
 
-    expect(base62Input).not.toHaveAttribute('readonly');
-    fireEvent.change(base62Input, { target: { value: 'Z' } });
-
-    expect(screen.getByLabelText('Decimal result')).toHaveValue('61');
+    expect(await screen.findByRole('alert')).toHaveTextContent('binary');
+    expect(screen.getByRole('button', { name: 'Download bytes' })).toBeInTheDocument();
   });
 
-  it('shows linked accessible validation feedback for invalid decimal input', () => {
+  it('ignores a file read that resolves after Clear', async () => {
+    let resolveRead;
+    base62Utils.fileToBytes.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveRead = resolve;
+      })
+    );
     render(<Base62Tool />);
 
-    const decimalInput = screen.getByLabelText('Decimal input');
-    fireEvent.change(decimalInput, { target: { value: '-1' } });
-
-    expect(screen.getByRole('alert')).toHaveTextContent('Negative numbers cannot be encoded');
-    expect(decimalInput).toHaveAttribute('aria-invalid', 'true');
-    expect(decimalInput).toHaveAttribute('aria-describedby', 'base62-decimal-error');
-    expect(screen.getByLabelText('Base62 result')).toHaveValue('');
-  });
-
-  it('shows linked accessible validation feedback for invalid Base62 input', () => {
-    render(<Base62Tool />);
-
-    fireEvent.change(screen.getByLabelText('Decimal input'), { target: { value: '1' } });
-    fireEvent.click(screen.getByRole('button', { name: '⇄ Swap' }));
-    const base62Input = screen.getByLabelText('Base62 input');
-    fireEvent.change(base62Input, { target: { value: '1!' } });
-
-    expect(screen.getByRole('alert')).toHaveTextContent('Invalid Base62 character "!"');
-    expect(base62Input).toHaveAttribute('aria-invalid', 'true');
-    expect(base62Input).toHaveAttribute('aria-describedby', 'base62-base62-error');
-    expect(screen.getByLabelText('Decimal result')).toHaveValue('');
-  });
-});
-
-describe('Base62Tool actions', () => {
-  it('announces copied feedback through a polite live region', async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.assign(navigator, { clipboard: { writeText } });
-    render(<Base62Tool />);
-
-    fireEvent.change(screen.getByLabelText('Decimal input'), { target: { value: '62' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
-
-    expect(await screen.findByRole('status')).toHaveAttribute('aria-live', 'polite');
-    expect(writeText).toHaveBeenCalledWith('10');
-  });
-
-  it('clears values and validation feedback', () => {
-    render(<Base62Tool />);
-
-    const decimalInput = screen.getByLabelText('Decimal input');
-    fireEvent.change(decimalInput, { target: { value: '1.5' } });
-    expect(screen.getByRole('alert')).toBeInTheDocument();
-
+    selectFile(
+      screen.getByLabelText('Encode a file as Base62'),
+      new File(['hello'], 'old.txt', { type: 'text/plain' })
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
 
-    expect(screen.getByLabelText('Decimal input')).toHaveValue('');
-    expect(screen.getByLabelText('Base62 result')).toHaveValue('');
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Copy' })).toBeDisabled();
+    await act(async () => {
+      resolveRead(new Uint8Array([104, 101, 108, 108, 111]));
+      await Promise.resolve();
+    });
+
+    expect(screen.getByLabelText('Text')).toHaveValue('');
+    expect(screen.getByLabelText('Base62')).toHaveValue('');
   });
 });
