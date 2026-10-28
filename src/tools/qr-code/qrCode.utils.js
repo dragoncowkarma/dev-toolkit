@@ -1,3 +1,5 @@
+import jsQR from 'jsqr';
+
 /**
  * Pure-JS QR Code (ISO/IEC 18004) encoder.
  *
@@ -610,4 +612,102 @@ export function drawQrToCanvas(canvas, matrix, options = {}) {
       }
     }
   }
+}
+
+/** Thrown when an image cannot be decoded as a QR code. */
+export class QrDecodeError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'QrDecodeError';
+  }
+}
+
+/**
+ * Decodes QR content from pixels that have already been read from a canvas.
+ *
+ * @param {{ data: Uint8ClampedArray, width: number, height: number }} imageData
+ *   RGBA pixel data from a local image.
+ * @returns {string} The QR code's decoded text.
+ * @throws {QrDecodeError} When pixels are unreadable or contain no QR code.
+ */
+export function decodeQrImageData(imageData) {
+  const { data, width, height } = imageData ?? {};
+  const hasValidDimensions = Number.isInteger(width) && width > 0 &&
+    Number.isInteger(height) && height > 0;
+  const hasRgbaData = data instanceof Uint8ClampedArray && data.length === width * height * 4;
+
+  if (!hasValidDimensions || !hasRgbaData) {
+    throw new QrDecodeError('Could not read image data. Please choose a valid image file.');
+  }
+
+  try {
+    const result = jsQR(data, width, height, { inversionAttempts: 'attemptBoth' });
+    if (!result?.data) {
+      throw new QrDecodeError('No QR code could be found in this image.');
+    }
+    return result.data;
+  } catch (error) {
+    if (error instanceof QrDecodeError) throw error;
+    throw new QrDecodeError('Could not decode this image. It may be corrupted or unreadable.');
+  }
+}
+
+/**
+ * Loads an image file into a local canvas and decodes its QR code without
+ * uploading the image or its contents.
+ *
+ * @param {File|Blob} file - An image selected from disk or the clipboard.
+ * @returns {Promise<string>} The decoded QR code text.
+ * @throws {QrDecodeError} When the image cannot be loaded or decoded.
+ */
+export function decodeQrFile(file) {
+  if (!file || typeof file.type !== 'string' || !file.type.startsWith('image/')) {
+    return Promise.reject(new QrDecodeError('Please choose an image file to decode.'));
+  }
+
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const image = new Image();
+    let settled = false;
+
+    function finish(callback) {
+      if (settled) return;
+      settled = true;
+      URL.revokeObjectURL(objectUrl);
+      callback();
+    }
+
+    image.onload = () => {
+      try {
+        const width = image.naturalWidth || image.width;
+        const height = image.naturalHeight || image.height;
+        if (!width || !height) {
+          throw new QrDecodeError('Could not read image data. Please choose a valid image file.');
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext('2d', { willReadFrequently: true });
+        if (!context) {
+          throw new QrDecodeError('Could not read image data. Please try another image.');
+        }
+        context.drawImage(image, 0, 0, width, height);
+        const imageData = context.getImageData(0, 0, width, height);
+        const decodedText = decodeQrImageData(imageData);
+        finish(() => resolve(decodedText));
+      } catch (error) {
+        const decodeError = error instanceof QrDecodeError
+          ? error
+          : new QrDecodeError('Could not decode this image. It may be corrupted or unreadable.');
+        finish(() => reject(decodeError));
+      }
+    };
+    image.onerror = () => {
+      finish(() =>
+        reject(new QrDecodeError('Could not read this image. Please try another file.')),
+      );
+    };
+    image.src = objectUrl;
+  });
 }
