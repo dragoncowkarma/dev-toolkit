@@ -2,7 +2,9 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import SyslogParserTool from './SyslogParserTool.jsx';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+});
 
 describe('SyslogParserTool', () => {
   it('loads samples and renders parsed message details', () => {
