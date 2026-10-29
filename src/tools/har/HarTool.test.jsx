@@ -159,3 +159,23 @@ describe('HarTool Copy as cURL', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Failed to copy to clipboard.');
   });
 });
+
+describe('HarTool Copy as fetch', () => {
+  it('copies a fetch snippet for the selected request', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    render(<HarTool />);
+
+    fireEvent.change(screen.getByLabelText('Paste raw HAR JSON'), { target: { value: harText } });
+    fireEvent.click(screen.getByRole('button', { name: 'Analyze HAR' }));
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy as fetch' }));
+    });
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    expect(writeText).toHaveBeenCalledWith(expect.stringContaining('fetch('));
+    expect(screen.getByRole('status')).toHaveTextContent('Copied fetch snippet');
+  });
+});
