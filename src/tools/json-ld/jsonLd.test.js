@@ -295,4 +295,71 @@ describe('inspectJsonLd', () => {
       },
     ]);
   });
+
+  it('treats bare @id items in a nested @included as entity definitions that resolve links', () => {
+    const result = inspectJsonLd(JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'WebPage',
+      mainEntity: { '@id': 'https://example.com/#included-node' },
+      hasPart: {
+        '@id': 'https://example.com/#section',
+        '@included': [
+          { '@id': 'https://example.com/#included-node' },
+          {
+            '@type': 'Article',
+            '@id': 'https://example.com/#article',
+            about: { '@id': 'https://example.com/#included-node' },
+            author: { '@id': 'https://example.com/#missing' },
+          },
+        ],
+      },
+    }));
+
+    expect(result.entities).toEqual([
+      expect.objectContaining({ path: '$', types: ['WebPage'] }),
+      expect.objectContaining({ path: '$.hasPart', id: 'https://example.com/#section' }),
+      expect.objectContaining({
+        path: '$.hasPart.@included[0]',
+        id: 'https://example.com/#included-node',
+      }),
+      expect.objectContaining({
+        path: '$.hasPart.@included[1]',
+        types: ['Article'],
+        id: 'https://example.com/#article',
+      }),
+    ]);
+    expect(result.issues).toEqual([
+      {
+        severity: 'warning',
+        path: '$.hasPart.@included[1].author',
+        message: 'Unresolved @id reference "https://example.com/#missing" does not match ' +
+          'any entity in this document.',
+      },
+    ]);
+  });
+
+  it('detects duplicate @id definitions involving @included containers', () => {
+    const result = inspectJsonLd(JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'Dataset',
+      '@included': [
+        { '@id': 'https://example.com/#included-node' },
+      ],
+      hasPart: {
+        '@included': [
+          { '@id': 'https://example.com/#included-node' },
+        ],
+      },
+    }));
+
+    expect(result.issues).toEqual([
+      {
+        severity: 'warning',
+        path: '$.hasPart.@included[0]',
+        message:
+          'Duplicate @id "https://example.com/#included-node" is already defined at ' +
+          '$.@included[0].',
+      },
+    ]);
+  });
 });

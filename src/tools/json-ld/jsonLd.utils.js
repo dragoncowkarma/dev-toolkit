@@ -110,7 +110,7 @@ function inspectEntity(value, path, entities, issues, references = [], isNested 
 
   Object.entries(value).forEach(([key, child]) => {
     if (key !== '@context' && key !== '@type' && key !== '@id') {
-      const childIsNested = key !== '@graph';
+      const childIsNested = key !== '@graph' && key !== '@included';
       inspectEntity(child, formatPath(path, key), entities, issues, references, childIsNested);
     }
   });
