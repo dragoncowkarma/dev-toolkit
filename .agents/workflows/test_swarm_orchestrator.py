@@ -10,6 +10,7 @@ import sys
 import tempfile
 import time
 import unittest
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -362,6 +363,369 @@ class ProviderFailureTests(unittest.TestCase):
         self.assertIn("Individual quota reached", tracked.failure_reason)
         self.assertIsNotNone(tracked.retry_after)
         self.assertEqual("provider", tracked.defer_scope)
+
+
+@contextmanager
+def local_timezone(name):
+    """Run with the process-local timezone set to `name` (POSIX tzset)."""
+    original = os.environ.get("TZ")
+    os.environ["TZ"] = name
+    time.tzset()
+    try:
+        yield
+    finally:
+        if original is None:
+            os.environ.pop("TZ", None)
+        else:
+            os.environ["TZ"] = original
+        time.tzset()
+
+
+# Verbatim tail of .agents/logs/20261030_081709_worker_codex_issue-352-initial.log
+CODEX_USAGE_LIMIT = (
+    "ERROR: You’ve hit your usage limit. Upgrade to Pro "
+    "(https://chatgpt.com/explore/pro), visit "
+    "https://chatgpt.com/settings/usage to purchase more credits or try "
+    "again at 1:17 PM."
+)
+# 08:17:09 / 08:27:37 KST on 2026-10-30, the run that hit the limit.
+CODEX_STARTED_AT = "2026-10-29T23:17:09+00:00"
+CODEX_ENDED_AT = "2026-10-29T23:27:37+00:00"
+
+
+@unittest.skipUnless(hasattr(time, "tzset"), "needs POSIX time.tzset")
+class TryAgainAtCooldownTests(unittest.TestCase):
+    """Codex `try again at <local time>` resets (Issue #355)."""
+
+    def retry_after(self, output, started_at=CODEX_STARTED_AT,
+                    ended_at=CODEX_ENDED_AT):
+        return swarm.ProcessTracker._provider_retry_after(
+            output, ended_at, started_at
+        )
+
+    def test_twelve_hour_reset_beats_24h_spend_limit_fallback(self):
+        with local_timezone("Asia/Seoul"):
+            retry_after = self.retry_after(CODEX_USAGE_LIMIT)
+
+        # 13:17 KST + 60s buffer, not 2026-10-30T23:27:37 (ended_at + 24h).
+        self.assertEqual("2026-10-30T04:18:00+00:00", retry_after)
+
+    def test_usage_limit_without_reset_time_keeps_24h_fallback(self):
+        with local_timezone("Asia/Seoul"):
+            retry_after = self.retry_after("You've hit your usage limit.")
+
+        self.assertEqual("2026-10-30T23:27:37+00:00", retry_after)
+
+    def test_twenty_four_hour_reset_time(self):
+        with local_timezone("Asia/Seoul"):
+            retry_after = self.retry_after(
+                "You've hit your usage limit. Try again at 13:17."
+            )
+
+        self.assertEqual("2026-10-30T04:18:00+00:00", retry_after)
+
+    def test_meridiem_variants(self):
+        cases = {
+            "try again at 1:17pm": "2026-10-30T04:18:00+00:00",
+            "try again at 1:17 p.m.": "2026-10-30T04:18:00+00:00",
+            "try again at 12:05 PM": "2026-10-30T03:06:00+00:00",
+            "try again at 12:05 AM": "2026-10-30T15:06:00+00:00",
+        }
+        with local_timezone("Asia/Seoul"):
+            for message, expected in cases.items():
+                with self.subTest(message=message):
+                    self.assertEqual(
+                        expected,
+                        self.retry_after(f"hit your usage limit. {message}"),
+                    )
+
+    def test_reset_time_is_read_in_local_timezone(self):
+        with local_timezone("UTC"):
+            utc_retry = self.retry_after(CODEX_USAGE_LIMIT)
+        with local_timezone("America/New_York"):
+            new_york_retry = self.retry_after(CODEX_USAGE_LIMIT)
+
+        # Start is 23:17Z on 10-29: 1:17 PM UTC has passed, so it rolls over.
+        self.assertEqual("2026-10-30T13:18:00+00:00", utc_retry)
+        # Start is 19:17 EDT on 10-29: 1:17 PM EDT on 10-30 is 17:17Z.
+        self.assertEqual("2026-10-30T17:18:00+00:00", new_york_retry)
+
+    def test_time_before_start_rolls_over_past_midnight(self):
+        with local_timezone("Asia/Seoul"):
+            retry_after = self.retry_after(
+                "hit your usage limit. try again at 1:05 AM.",
+                started_at="2026-10-30T14:20:00+00:00",  # 23:20 KST
+                ended_at="2026-10-30T14:30:00+00:00",
+            )
+
+        # 01:05 KST on 10-31, not 01:05 KST on 10-30 (already past).
+        self.assertEqual("2026-10-30T16:06:00+00:00", retry_after)
+
+    def test_reset_in_start_minute_does_not_roll_over(self):
+        with local_timezone("Asia/Seoul"):
+            retry_after = self.retry_after(
+                CODEX_USAGE_LIMIT,
+                started_at="2026-10-30T04:17:30+00:00",  # 13:17:30 KST
+                ended_at="2026-10-30T04:17:45+00:00",
+            )
+
+        # Codex prints 13:17:50 as "1:17 PM"; that is today, not tomorrow.
+        self.assertEqual("2026-10-30T04:18:00+00:00", retry_after)
+
+    def test_dated_reset_uses_printed_date(self):
+        with local_timezone("Asia/Seoul"):
+            retry_after = self.retry_after(
+                "You've hit your usage limit. Upgrade to Pro or try again at "
+                "Nov 3rd, 2026 2:32 PM."
+            )
+
+        self.assertEqual("2026-11-03T05:33:00+00:00", retry_after)
+
+    def test_dated_reset_uses_offset_of_reset_date_across_dst(self):
+        with local_timezone("America/New_York"):
+            retry_after = self.retry_after(
+                "hit your usage limit. try again at Nov 2nd, 2026 9:00 AM.",
+                started_at="2026-10-31T12:00:00+00:00",  # EDT, UTC-4
+                ended_at="2026-10-31T12:05:00+00:00",
+            )
+
+        # DST ends Nov 1, so 09:00 on Nov 2 is EST (UTC-5), not today's -4.
+        self.assertEqual("2026-11-02T14:01:00+00:00", retry_after)
+
+    def test_reset_in_repeated_dst_hour_uses_second_occurrence(self):
+        with local_timezone("America/New_York"):
+            retry_after = self.retry_after(
+                "hit your usage limit. try again at 1:40 AM.",
+                started_at="2026-11-01T06:10:00+00:00",  # 01:10 EST (2nd 1 AM)
+                ended_at="2026-11-01T06:20:00+00:00",
+            )
+
+        # 01:40 EST, not 01:40 EDT (before the start) rolled over to Nov 2.
+        self.assertEqual("2026-11-01T06:41:00+00:00", retry_after)
+
+    def test_last_reset_time_in_output_wins(self):
+        with local_timezone("Asia/Seoul"):
+            retry_after = self.retry_after(
+                "hit your usage limit. try again at 11:00 AM.\n"
+                "hit your usage limit. try again at 1:17 PM."
+            )
+
+        self.assertEqual("2026-10-30T04:18:00+00:00", retry_after)
+
+    def test_invalid_reset_time_falls_back(self):
+        with local_timezone("Asia/Seoul"):
+            for message in (
+                "try again at 13:17 PM",
+                "try again at 0:30 AM",
+                "try again at 24:00",
+                "try again at 9:75",
+                "try again at Feb 30th, 2026 1:00 PM",
+            ):
+                with self.subTest(message=message):
+                    self.assertEqual(
+                        "2026-10-30T23:27:37+00:00",
+                        self.retry_after(f"hit your usage limit. {message}"),
+                    )
+
+    def test_reset_time_without_provider_limit_is_not_deferred(self):
+        self.assertIsNone(self.retry_after("Please try again at 1:17 PM."))
+
+    def test_finalize_anchors_reset_time_to_process_start(self):
+        temp_dir = Path(tempfile.mkdtemp())
+        log_file = temp_dir / "process.log"
+        log_file.write_text(CODEX_USAGE_LIMIT + "\n", encoding="utf-8")
+        started = datetime.now(timezone.utc) - timedelta(minutes=10)
+        tracked = swarm.TrackedProcess(
+            pid=1234, role="worker", ai_name="codex", model="5.6 terra",
+            reasoning="높음", task_ref="issue#352:initial", branch="",
+            command="codex exec", cwd="/repo", log_file=str(log_file),
+            started_at=started.isoformat(),
+        )
+
+        with (
+            local_timezone("Asia/Seoul"),
+            patch.object(swarm.ProcessTracker, "_try_again_at",
+                         wraps=swarm.ProcessTracker._try_again_at) as resolve,
+            self.assertLogs(swarm.log, "WARNING") as logs,
+        ):
+            make_tracker([])._finalize_record(tracked, 1)
+            described = swarm.ProcessTracker._describe_timestamp(
+                tracked.retry_after
+            )
+
+        self.assertEqual(swarm.ProcessStatus.DEFERRED, tracked.status)
+        self.assertEqual("provider", tracked.defer_scope)
+        self.assertEqual(started, resolve.call_args.args[1])
+        self.assertIn("KST", described)
+        self.assertIn(f"retry after {described}", logs.output[0])
+
+
+class TimestampNormalizationTests(unittest.TestCase):
+    """Stored timestamps are compared in UTC whatever their form (Issue #355)."""
+
+    def test_naive_retry_after_is_local_time_not_a_type_error(self):
+        future = (datetime.now() + timedelta(minutes=30)).isoformat()
+        past = (datetime.now() - timedelta(minutes=30)).isoformat()
+
+        for retry_after, active in ((future, True), (past, False)):
+            with self.subTest(retry_after=retry_after):
+                cooldown = record(
+                    "issue#352:initial", "worker", swarm.ProcessStatus.DEFERRED,
+                    retry_after=retry_after, defer_scope="provider",
+                )
+                tracker = make_tracker([cooldown])
+
+                self.assertEqual(
+                    active,
+                    swarm.ProcessTracker._is_active_provider_cooldown(cooldown),
+                )
+                allowed, _ = tracker.should_dispatch(
+                    "issue#352:initial", "worker", ai_name="codex",
+                )
+                self.assertEqual(not active, allowed)
+
+    def test_malformed_retry_after_does_not_block_or_raise(self):
+        broken = record(
+            "issue#352:initial", "worker", swarm.ProcessStatus.DEFERRED,
+            retry_after="not-a-timestamp", defer_scope="provider",
+        )
+        tracker = make_tracker([broken])
+
+        allowed, _ = tracker.should_dispatch(
+            "issue#352:initial", "worker", ai_name="codex",
+        )
+
+        self.assertTrue(allowed)
+
+    def test_parse_timestamp_normalizes_offsets_to_utc(self):
+        parsed = swarm.ProcessTracker._parse_timestamp(
+            "2026-10-30T13:18:00+09:00"
+        )
+
+        self.assertEqual(datetime(2026, 10, 30, 4, 18, tzinfo=timezone.utc), parsed)
+        self.assertIsNone(swarm.ProcessTracker._parse_timestamp(None))
+
+    @unittest.skipUnless(hasattr(time, "tzset"), "needs POSIX time.tzset")
+    def test_naive_timestamp_uses_local_timezone(self):
+        with local_timezone("Asia/Seoul"):
+            parsed = swarm.ProcessTracker._parse_timestamp("2026-10-30T13:18:00")
+
+        self.assertEqual(datetime(2026, 10, 30, 4, 18, tzinfo=timezone.utc), parsed)
+
+    @unittest.skipUnless(hasattr(time, "tzset"), "needs POSIX time.tzset")
+    def test_describe_timestamp_shows_local_and_utc(self):
+        with local_timezone("Asia/Seoul"):
+            described = swarm.ProcessTracker._describe_timestamp(
+                "2026-10-30T23:27:37.155982+00:00"
+            )
+
+        self.assertEqual(
+            "2026-10-31 08:27:37 KST (2026-10-30T23:27:37.155982+00:00)",
+            described,
+        )
+
+    @unittest.skipUnless(hasattr(time, "tzset"), "needs POSIX time.tzset")
+    def test_dispatch_reason_shows_local_and_utc(self):
+        retry_at = datetime.now(timezone.utc) + timedelta(minutes=30)
+        tracker = make_tracker([
+            record(
+                "issue#352:initial", "worker", swarm.ProcessStatus.DEFERRED,
+                retry_after=retry_at.isoformat(), defer_scope="provider",
+            ),
+        ])
+
+        with local_timezone("Asia/Seoul"):
+            _, reason = tracker.should_dispatch(
+                "issue#99:initial", "worker", ai_name="codex",
+            )
+            expected = swarm.ProcessTracker._describe_timestamp(retry_at)
+
+        self.assertEqual(f"{swarm.DISPATCH_PROVIDER_COOLDOWN} until {expected}", reason)
+        self.assertIn("KST", reason)
+
+
+@unittest.skipUnless(hasattr(time, "tzset"), "needs POSIX time.tzset")
+class StaleCooldownRecoveryTests(unittest.TestCase):
+    """A 24h cooldown persisted before the fix heals on restart (Issue #355)."""
+
+    def stale_record(self, log_file, started_at=CODEX_STARTED_AT,
+                     ended_at=CODEX_ENDED_AT):
+        return {
+            "pid": 4321,
+            "role": "worker",
+            "ai_name": "codex",
+            "model": "5.6 terra",
+            "reasoning": "높음",
+            "task_ref": "issue#352:initial",
+            "branch": "worker/352-codex-side",
+            "command": "codex exec",
+            "cwd": "/repo",
+            "log_file": str(log_file),
+            "started_at": started_at,
+            "ended_at": ended_at,
+            "exit_code": 1,
+            "status": swarm.ProcessStatus.DEFERRED,
+            "failure_reason": CODEX_USAGE_LIMIT,
+            # Stale value from the old parser, kept in the future so the test
+            # proves the restart re-derives it rather than waiting it out.
+            "retry_after": (
+                datetime.now(timezone.utc) + timedelta(hours=20)
+            ).isoformat(),
+            "defer_scope": "provider",
+        }
+
+    def load(self, tmp_dir, log_text, **times):
+        log_file = Path(tmp_dir) / "worker.log"
+        if log_text is not None:
+            log_file.write_text(log_text, encoding="utf-8")
+        registry = Path(tmp_dir) / "registry.json"
+        registry.write_text(
+            json.dumps({"history": [self.stale_record(log_file, **times)]}),
+            encoding="utf-8",
+        )
+        with patch.object(swarm, "PROCESS_REGISTRY_FILE", registry):
+            return swarm.ProcessTracker(), registry
+
+    def test_restart_rederives_stale_deferred_cooldown(self):
+        with tempfile.TemporaryDirectory() as tmp_dir, local_timezone("Asia/Seoul"):
+            tracker, registry = self.load(tmp_dir, CODEX_USAGE_LIMIT + "\n")
+            (cooldown,) = tracker._history
+
+            self.assertEqual("2026-10-30T04:18:00+00:00", cooldown.retry_after)
+            self.assertFalse(tracker._is_active_provider_cooldown(cooldown))
+
+            with (
+                patch.object(swarm, "tracker", tracker),
+                patch.object(swarm, "PROCESS_REGISTRY_FILE", registry),
+            ):
+                swarm.reset_process_history()
+                allowed, reason = tracker.should_dispatch(
+                    "issue#352:initial", "worker", ai_name="codex",
+                )
+
+        self.assertEqual([], tracker._history)
+        self.assertTrue(allowed, reason)
+
+    def test_restart_anchors_reset_time_to_process_start(self):
+        with tempfile.TemporaryDirectory() as tmp_dir, local_timezone("Asia/Seoul"):
+            tracker, _ = self.load(
+                tmp_dir,
+                CODEX_USAGE_LIMIT + "\n",
+                started_at="2026-10-30T04:10:00+00:00",  # 13:10 KST
+                ended_at="2026-10-30T04:20:00+00:00",  # 13:20 KST
+            )
+            (cooldown,) = tracker._history
+
+        # 1:17 PM falls between start and end: same day, not anchored on
+        # ended_at and rolled over to 2026-10-31.
+        self.assertEqual("2026-10-30T04:18:00+00:00", cooldown.retry_after)
+
+    def test_deferred_record_without_log_keeps_its_cooldown(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tracker, _ = self.load(tmp_dir, None)
+            (cooldown,) = tracker._history
+
+            self.assertTrue(tracker._is_active_provider_cooldown(cooldown))
 
 
 class AiArgvTests(unittest.TestCase):
@@ -2777,7 +3141,7 @@ class RuntimeLifecycleTests(unittest.TestCase):
                     mock_info.assert_called_once_with(
                         "⏸️ Preserving '%s' provider cooldown across restart (retry after %s).",
                         "antigravity",
-                        active_retry,
+                        swarm.ProcessTracker._describe_timestamp(active_retry),
                     )
             finally:
                 tracker._history = original_history
