@@ -89,6 +89,21 @@ PROVIDER_SPEND_LIMIT_PATTERNS = (
     "hit your usage limit",
 )
 PROVIDER_SPEND_LIMIT_COOLDOWN_SECONDS = 24 * 60 * 60  # 24 hours
+# Codex reports its reset as a local wall-clock time with seconds dropped:
+# "try again at 1:17 PM." on the same local day, otherwise
+# "try again at Nov 3rd, 2026 2:32 PM." An explicit reset beats the 24h
+# spend-limit guess, which would otherwise park a 5h rolling window for a day.
+PROVIDER_TRY_AGAIN_AT_PATTERN = re.compile(
+    r"try\s+again\s+at\s+"
+    r"(?:(?P<month>jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+"
+    r"(?P<day>\d{1,2})(?:st|nd|rd|th)?,?\s+(?P<year>\d{4}),?\s+)?"
+    r"(?P<hour>\d{1,2}):(?P<minute>\d{2})(?!\d)"
+    r"(?:\s*(?P<meridiem>[ap])\.?m\b)?"
+)
+MONTH_ABBREVIATIONS = (
+    "jan", "feb", "mar", "apr", "may", "jun",
+    "jul", "aug", "sep", "oct", "nov", "dec",
+)
 EVENT_DEFER_PATTERNS = (
     "timeout waiting for response",
     "no_tool_withdrawn",
@@ -329,16 +344,23 @@ class ProcessTracker:
         self._reclassify_deferred_failures()
 
     def _reclassify_deferred_failures(self):
-        """Upgrade historical transient failures so a restart can recover them."""
+        """Upgrade historical transient failures so a restart can recover them.
+
+        DEFERRED records are re-derived from their logs as well, so a cooldown
+        persisted by an older parser (e.g. a 24h guess for a Codex
+        "try again at" reset) heals on restart instead of blocking the provider
+        until the stale deadline. A record whose log is gone keeps its value.
+        """
         for record in self._history:
             if record.status not in (
                 ProcessStatus.FAILED,
                 ProcessStatus.COMPLETED,
+                ProcessStatus.DEFERRED,
             ):
                 continue
             output_tail = self._read_log_tail(record.log_file, 2000)
             retry_after = self._provider_retry_after(
-                output_tail, record.ended_at or record.started_at
+                output_tail, record.ended_at, record.started_at
             )
             if not retry_after:
                 continue
@@ -490,6 +512,7 @@ class ProcessTracker:
         tracked.retry_after = self._provider_retry_after(
             output_tail,
             tracked.ended_at,
+            tracked.started_at,
         )
 
         if tracked.retry_after:
@@ -504,7 +527,7 @@ class ProcessTracker:
                 tracked.task_ref,
                 retcode,
                 elapsed,
-                tracked.retry_after,
+                self._describe_timestamp(tracked.retry_after),
                 tracked.failure_reason,
             )
         elif retcode == 0:
@@ -579,13 +602,13 @@ class ProcessTracker:
         if any(record.status == ProcessStatus.RUNNING for record in attempts):
             return False, DISPATCH_RUNNING
         provider_cooldowns = [
-            datetime.fromisoformat(record.retry_after)
+            self._parse_timestamp(record.retry_after)
             for record in self.all_records
             if record.ai_name == ai_name
             and self._is_active_provider_cooldown(record)
         ] if ai_name else []
         if provider_cooldowns:
-            retry_at = max(provider_cooldowns).isoformat()
+            retry_at = self._describe_timestamp(max(provider_cooldowns))
             return False, f"{DISPATCH_PROVIDER_COOLDOWN} until {retry_at}"
         if not attempts:
             return True, "new event"
@@ -596,12 +619,13 @@ class ProcessTracker:
         ]
         if deferred:
             latest = deferred[-1]
-            if latest.retry_after:
-                retry_at = datetime.fromisoformat(latest.retry_after)
+            retry_at = self._parse_timestamp(latest.retry_after)
+            if retry_at:
                 if datetime.now(timezone.utc) < retry_at:
                     return (
                         False,
-                        f"{DISPATCH_PROVIDER_COOLDOWN} until {latest.retry_after}",
+                        f"{DISPATCH_PROVIDER_COOLDOWN} until "
+                        f"{self._describe_timestamp(retry_at)}",
                     )
 
         crash_attempts = [
@@ -770,7 +794,92 @@ class ProcessTracker:
         return lines[-1][-500:] if lines else ""
 
     @staticmethod
+    def _parse_timestamp(value) -> Optional[datetime]:
+        """Parse a stored ISO timestamp (or datetime) into an aware UTC datetime.
+
+        A naive value is read as local wall-clock time, the way a provider CLI
+        prints it; comparing it as-is with `datetime.now(timezone.utc)` would
+        raise TypeError. Returns None for a missing or malformed value.
+        """
+        if isinstance(value, datetime):
+            parsed = value
+        else:
+            try:
+                parsed = datetime.fromisoformat(value)
+            except (TypeError, ValueError):
+                return None
+        if parsed.tzinfo is None:
+            parsed = parsed.astimezone()
+        return parsed.astimezone(timezone.utc)
+
+    @classmethod
+    def _describe_timestamp(cls, value) -> str:
+        """Render a timestamp in local time next to its stored UTC form.
+
+        Log lines are stamped in local time, so a bare UTC value such as
+        23:27Z beside a 03:00 KST log line reads as already past while the
+        cooldown is in fact still active.
+        """
+        parsed = cls._parse_timestamp(value)
+        if parsed is None:
+            return str(value)
+        local = parsed.astimezone()
+        return f"{local:%Y-%m-%d %H:%M:%S %Z} ({parsed.isoformat()})"
+
+    @staticmethod
+    def _try_again_at(lowered: str, anchor: datetime) -> Optional[datetime]:
+        """Resolve the last "try again at <time>" in `lowered` to an aware datetime.
+
+        The time is local wall-clock time. It is built as a naive datetime and
+        passed through `.astimezone()`, so the UTC offset follows the reset
+        date's own DST rules rather than today's. A time with no date belongs
+        to `anchor`'s local day — the process start, since the message is
+        printed after it — or to the next day when it is earlier than that
+        start. The comparison is at minute precision because the provider
+        drops seconds.
+        """
+        matches = list(PROVIDER_TRY_AGAIN_AT_PATTERN.finditer(lowered))
+        if not matches:
+            return None
+        match = matches[-1]
+        hour = int(match.group("hour"))
+        minute = int(match.group("minute"))
+        meridiem = match.group("meridiem")
+        if meridiem:
+            if not 1 <= hour <= 12:
+                return None
+            hour = hour % 12 + (12 if meridiem == "p" else 0)
+        if hour > 23 or minute > 59:
+            return None
+
+        if match.group("year"):
+            day = (
+                int(match.group("year")),
+                MONTH_ABBREVIATIONS.index(match.group("month")) + 1,
+                int(match.group("day")),
+            )
+        else:
+            local_anchor = anchor.astimezone()
+            day = (local_anchor.year, local_anchor.month, local_anchor.day)
+        try:
+            wall_clock = datetime(*day, hour, minute)
+        except ValueError:
+            return None
+        reset = wall_clock.astimezone()
+        if match.group("year"):
+            return reset
+        start_minute = anchor.replace(second=0, microsecond=0)
+        if reset < start_minute:
+            # In the hour repeated when DST ends, the second occurrence
+            # (fold=1) may still be ahead; only otherwise is it tomorrow.
+            reset = wall_clock.replace(fold=1).astimezone()
+        if reset < start_minute:
+            reset = (wall_clock + timedelta(days=1)).astimezone()
+        return reset
+
+    @classmethod
     def _provider_retry_after(
+        cls,
         output: str,
         ended_at: Optional[str] = None,
         started_at: Optional[str] = None,
@@ -780,6 +889,10 @@ class ProcessTracker:
         if not any(pattern in lowered for pattern in deferred_patterns):
             return None
 
+        base = (
+            cls._parse_timestamp(ended_at or started_at)
+            or datetime.now(timezone.utc)
+        )
         reset_match = re.search(
             r"resets?\s+in\s+"
             r"(?:(?P<hours>\d+)h)?"
@@ -795,15 +908,17 @@ class ProcessTracker:
                 + int(reset_match.group("seconds") or 0)
                 + PROVIDER_COOLDOWN_BUFFER_SECONDS
             )
-        elif any(p in lowered for p in PROVIDER_SPEND_LIMIT_PATTERNS):
-            delay = PROVIDER_SPEND_LIMIT_COOLDOWN_SECONDS
+        else:
+            anchor = cls._parse_timestamp(started_at) or base
+            reset_at = cls._try_again_at(lowered, anchor)
+            if reset_at:
+                retry_at = reset_at + timedelta(
+                    seconds=PROVIDER_COOLDOWN_BUFFER_SECONDS
+                )
+                return retry_at.astimezone(timezone.utc).isoformat()
+            if any(p in lowered for p in PROVIDER_SPEND_LIMIT_PATTERNS):
+                delay = PROVIDER_SPEND_LIMIT_COOLDOWN_SECONDS
 
-        base_time = ended_at or started_at
-        base = (
-            datetime.fromisoformat(base_time)
-            if base_time
-            else datetime.now(timezone.utc)
-        )
         return (base + timedelta(seconds=delay)).isoformat()
 
     @staticmethod
@@ -831,9 +946,8 @@ class ProcessTracker:
             or not record.retry_after
         ):
             return False
-        try:
-            retry_at = datetime.fromisoformat(record.retry_after)
-        except ValueError:
+        retry_at = ProcessTracker._parse_timestamp(record.retry_after)
+        if retry_at is None:
             return False
         return datetime.now(timezone.utc) < retry_at
 
@@ -883,7 +997,7 @@ def reset_process_history(preserve_running: bool = False):
                 "⏸️ Preserving '%s' provider cooldown across restart "
                 "(retry after %s).",
                 record.ai_name,
-                record.retry_after,
+                tracker._describe_timestamp(record.retry_after),
             )
     tracker._history = surviving
     if surviving:
