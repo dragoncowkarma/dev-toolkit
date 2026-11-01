@@ -1,0 +1,162 @@
+.bech32-tool {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.bech32-tool button,
+.bech32-tool input,
+.bech32-tool select,
+.bech32-tool textarea {
+  font: inherit;
+}
+
+.bech32-tool__toolbar,
+.bech32-tool__toggle,
+.bech32-tool__presets,
+.bech32-tool__result {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.bech32-tool__toolbar {
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+
+.bech32-tool__toggle {
+  padding: 0.25rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.bech32-tool button {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.45rem 0.75rem;
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.bech32-tool button:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.bech32-tool button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.bech32-tool__toggle button {
+  border: none;
+}
+
+.bech32-tool__toggle button.is-active {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.bech32-tool__presets {
+  flex-wrap: wrap;
+}
+
+.bech32-tool__inputs {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+.bech32-tool label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.bech32-tool input,
+.bech32-tool select,
+.bech32-tool textarea {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.bech32-tool textarea {
+  min-height: 9rem;
+  resize: vertical;
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+  line-height: 1.5;
+}
+
+.bech32-tool input:focus,
+.bech32-tool select:focus,
+.bech32-tool textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.bech32-tool__error {
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+}
+
+.bech32-tool__results {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+}
+
+.bech32-tool__result {
+  justify-content: space-between;
+  padding: 0.9rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.bech32-tool__result div {
+  min-width: 0;
+}
+
+.bech32-tool__result h3 {
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.bech32-tool__result-value {
+  display: block;
+  overflow-wrap: anywhere;
+  color: var(--color-text);
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+}
+
+@media (min-width: 768px) {
+  .bech32-tool {
+    padding: 0 2rem 3rem;
+  }
+
+  .bech32-tool__inputs {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .bech32-tool__wide-label {
+    grid-column: 1 / -1;
+  }
+}
