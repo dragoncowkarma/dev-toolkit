@@ -1,11 +1,16 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import Base62Tool from './Base62Tool.jsx';
 import * as base62Utils from './base62.utils.js';
 
 vi.mock('./base62.utils.js', async (importOriginal) => {
   const actual = await importOriginal();
   return { ...actual, fileToBytes: vi.fn(actual.fileToBytes) };
+});
+
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
 });
 
 function selectFile(input, file) {

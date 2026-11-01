@@ -7,7 +7,7 @@ const BASE62_VALUES = new Map([...BASE62_ALPHABET].map((character, index) => [ch
  * @returns {string}
  */
 export function encodeBytesToBase62(bytes) {
-  if (!(bytes instanceof Uint8Array)) {
+  if (Object.prototype.toString.call(bytes) !== '[object Uint8Array]') {
     throw new TypeError('Input must be a Uint8Array.');
   }
   if (bytes.length === 0) return '';
@@ -89,10 +89,10 @@ export function encodeToBase62(text) {
  * @returns {string}
  */
 export function decodeFromBase62(value) {
+  const bytes = decodeBase62ToBytes(value);
   try {
-    return new TextDecoder('utf-8', { fatal: true }).decode(decodeBase62ToBytes(value));
-  } catch (error) {
-    if (error instanceof TypeError || error.message.startsWith('Invalid Base62')) throw error;
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
     throw new Error('Decoded Base62 data is binary, not valid UTF-8 text. Download it instead.');
   }
 }

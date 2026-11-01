@@ -21,7 +21,10 @@ export default function Base62Tool() {
   const [binaryOutput, setBinaryOutput] = useState(null);
   const [copyError, setCopyError] = useState('');
   const [file, setFile] = useState(null);
-  const [copied, showCopied] = useCopyFeedback({ initialValue: false, resetValue: false });
+  const [copied, showCopied, dismissCopyFeedback] = useCopyFeedback({
+    initialValue: false,
+    resetValue: false,
+  });
   const fileInputRef = useRef(null);
   const fileRequestRef = useRef(0);
 
@@ -81,6 +84,7 @@ export default function Base62Tool() {
     setBinaryOutput(null);
     setFile(null);
     setCopyError('');
+    dismissCopyFeedback();
     if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
@@ -99,6 +103,10 @@ export default function Base62Tool() {
       setError('');
     } catch (fileError) {
       if (fileRequestRef.current !== requestId) return;
+      setFile(null);
+      setInput('');
+      setOutput('');
+      setBinaryOutput(null);
       setError(fileError.message);
     }
   }
