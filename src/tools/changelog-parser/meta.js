@@ -3,5 +3,5 @@ export default {
   name: 'Changelog Parser',
   description: 'Parse, validate, filter, and export Keep a Changelog release notes.',
   icon: '▤',
-  category: 'Markdown',
+  category: 'Formatter',
 };
