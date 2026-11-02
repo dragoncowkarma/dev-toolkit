@@ -388,6 +388,15 @@ export function generateCssGradient(config) {
 }
 
 /**
+ * Default color stops for initial gradient state.
+ */
+export const DEFAULT_STOPS = [
+  { id: 'stop-1', color: '#6366f1', position: 0 },
+  { id: 'stop-2', color: '#a78bfa', position: 50 },
+  { id: 'stop-3', color: '#34d399', position: 100 },
+];
+
+/**
  * Adds a new stop to the stops array at a collision-free default position.
  *
  * Position selection algorithm:
@@ -404,6 +413,10 @@ export function generateCssGradient(config) {
  * 7. Fallback strategy (when no positive interval exists or all valid positions are equal):
  *    If all valid positions equal X, choose 100 if X < 100 else 50.
  *    If no valid positions exist, choose 50.
+ * 8. Insertion index:
+ *    Insert new stop immediately after the last existing stop whose position <= defaultPosition
+ *    (or at index 0 if all existing valid stops have position > defaultPosition).
+ *    If no valid stops exist, append to the end. Preserves relative order of existing stops.
  *
  * @param {Array<Object>} stops - Current stops array.
  * @param {Object} [newStopProps] - Optional properties for the new stop.
@@ -461,7 +474,19 @@ export function addStop(stops, newStopProps = {}) {
     ...newStopProps,
   };
 
-  return [...currentStops, newStop];
+  const insertAt =
+    validPositions.length === 0
+      ? currentStops.length
+      : currentStops.reduce(
+        (acc, stop, i) =>
+          stop && validatePosition(stop.position) && Number(stop.position) <= defaultPosition
+            ? i + 1
+            : acc,
+        0,
+      );
+  const nextStops = [...currentStops];
+  nextStops.splice(insertAt, 0, newStop);
+  return nextStops;
 }
 
 /**

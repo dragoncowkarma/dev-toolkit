@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DEFAULT_STOPS,
   addStop,
   generateCssGradient,
   normalizeHexForPicker,
@@ -266,7 +267,7 @@ describe('cssGradient.utils', () => {
   });
 
   describe('addStop collision-free insertion', () => {
-    it('yields position strictly between 0 and 100 when adding after [0, 100, 100]', () => {
+    it('inserts new stop at index 1 between 0 and 100 when adding to [0, 100, 100]', () => {
       const repeatedStops = [
         { id: 's1', color: '#ff0000', position: 0 },
         { id: 's2', color: '#00ff00', position: 100 },
@@ -274,10 +275,30 @@ describe('cssGradient.utils', () => {
       ];
       const updated = addStop(repeatedStops);
       expect(updated.length).toBe(4);
-      const newPos = updated[3].position;
-      expect(newPos).toBe(50);
-      expect(newPos).toBeGreaterThan(0);
-      expect(newPos).toBeLessThan(100);
+      // Spliced at index 1 after stop 1 (pos 0), not appended at array end
+      expect(updated[1].position).toBe(50);
+      expect(updated[1].color).toBe('#818cf8');
+      expect(updated[1].position).toBeGreaterThan(0);
+      expect(updated[1].position).toBeLessThan(100);
+      // Existing stops preserve their relative order
+      expect(updated[0].id).toBe('s1');
+      expect(updated[2].id).toBe('s2');
+      expect(updated[3].id).toBe('s3');
+    });
+
+    it('generates CSS gradient with ascending stops after adding to DEFAULT_STOPS', () => {
+      const updated = addStop(DEFAULT_STOPS);
+      expect(updated.length).toBe(4);
+      expect(updated.map((s) => Number(s.position))).toEqual([0, 25, 50, 100]);
+      const gradient = generateCssGradient({
+        type: 'linear',
+        angle: 90,
+        stops: updated,
+      });
+      expect(gradient.valid).toBe(true);
+      expect(gradient.css).toBe(
+        'linear-gradient(90deg, #6366f1 0%, #818cf8 25%, #a78bfa 50%, #34d399 100%)'
+      );
     });
 
     it('selects largest interval correctly for unsorted stops', () => {
@@ -287,7 +308,9 @@ describe('cssGradient.utils', () => {
         { id: 's3', color: '#888', position: 80 },
       ];
       const updated = addStop(unsortedStops);
-      expect(updated[3].position).toBe(40);
+      // Largest interval is [0, 80] with midpoint 40; spliced after s2 (pos 0) at index 2
+      expect(updated[2].position).toBe(40);
+      expect(updated.map((s) => s.id)).toEqual(['s1', 's2', updated[2].id, 's3']);
     });
 
     it('applies stable tie-breaking when multiple max-width intervals exist', () => {
@@ -297,7 +320,9 @@ describe('cssGradient.utils', () => {
         { id: 's3', color: '#333', position: 100 },
       ];
       const updated = addStop(tieStops);
-      expect(updated[3].position).toBe(25);
+      // First max-width interval [0, 50] chosen; midpoint 25 spliced after s1 at index 1
+      expect(updated[1].position).toBe(25);
+      expect(updated.map((s) => s.id)).toEqual(['s1', updated[1].id, 's2', 's3']);
     });
 
     it('uses fallback position when all valid stop positions are identical', () => {
@@ -306,7 +331,10 @@ describe('cssGradient.utils', () => {
         { id: 's2', color: '#00ff00', position: 100 },
       ];
       const updated100 = addStop(all100Stops);
-      expect(updated100[2].position).toBe(50);
+      // All valid positions are 100, fallback is 50, spliced before 100 at index 0
+      expect(updated100[0].position).toBe(50);
+      expect(updated100[1].id).toBe('s1');
+      expect(updated100[2].id).toBe('s2');
 
       const all50Stops = [
         { id: 's1', color: '#ff0000', position: 50 },
@@ -340,7 +368,7 @@ describe('cssGradient.utils', () => {
         { id: 's2', color: '#222', position: 51 },
       ];
       const updated = addStop(smallInterval);
-      expect(updated[2].position).toBe(50.5);
+      expect(updated[1].position).toBe(50.5);
     });
 
     it('places position strictly inside narrow intervals without endpoint duplication', () => {
@@ -374,7 +402,9 @@ describe('cssGradient.utils', () => {
 
       for (const { stops, start, end } of cases) {
         const updated = addStop(stops);
-        const newPos = updated[updated.length - 1].position;
+        const newStop = updated.find((s) => !stops.some((orig) => orig.id === s.id));
+        expect(newStop).toBeDefined();
+        const newPos = newStop.position;
         expect(newPos).toBeGreaterThan(start);
         expect(newPos).toBeLessThan(end);
         for (const stop of stops) {
@@ -404,8 +434,8 @@ describe('cssGradient.utils', () => {
     it('adds a stop with default values', () => {
       const updated = addStop(initialStops);
       expect(updated.length).toBe(3);
-      expect(updated[2].id).toBeTruthy();
-      expect(updated[2].color).toBe('#818cf8');
+      expect(updated[1].id).toBeTruthy();
+      expect(updated[1].color).toBe('#818cf8');
     });
 
     it('removes a stop by id or index', () => {
