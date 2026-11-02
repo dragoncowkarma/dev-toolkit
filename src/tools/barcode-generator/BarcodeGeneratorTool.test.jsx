@@ -43,6 +43,7 @@ describe('BarcodeGeneratorTool', () => {
 
     expect(createObjectUrl).toHaveBeenCalledWith(expect.any(Blob));
     expect(createObjectUrl.mock.calls[0][0].type).toBe('image/svg+xml;charset=utf-8');
+    expect(click).toHaveBeenCalledTimes(1);
     expect(revokeObjectUrl).toHaveBeenCalledWith('blob:barcode');
   });
 });
