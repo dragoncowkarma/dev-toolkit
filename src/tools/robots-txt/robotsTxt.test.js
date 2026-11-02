@@ -353,6 +353,23 @@ describe('evaluatePath percent-encoding normalization', () => {
     expect(result.matchedRule).toEqual({ type: 'disallow', value: '/café', line: 2 });
   });
 
+  it('ranks a wildcard pattern with a non-ASCII literal by octets, not by the expanded escape\'s character length', () => {
+    const { groups } = parseRobotsTxt([
+      'User-agent: *',
+      'Disallow: /*é',
+      'Allow: /aaaa',
+    ].join('\n'));
+
+    // "/*é" normalizes to "/*%C3%A9": 4 octets ("/", "*", one octet each for %C3 and %A9), but 8
+    // characters once "é" is spelled out as a two-byte percent-escape. "/aaaa" is 5 octets and 5
+    // characters. Ranking by character length would wrongly let the Disallow (8 chars) beat the
+    // Allow (5 chars); ranking by octets correctly lets the Allow (5 octets) beat the Disallow
+    // (4 octets).
+    const result = evaluatePath(groups, { userAgent: '*', path: '/aaaaé' });
+    expect(result.verdict).toBe('ALLOWED');
+    expect(result.matchedRule).toEqual({ type: 'allow', value: '/aaaa', line: 3 });
+  });
+
   it('implicitly allows /robots.txt even under a blanket Disallow: /', () => {
     const { groups } = parseRobotsTxt([
       'User-agent: *',

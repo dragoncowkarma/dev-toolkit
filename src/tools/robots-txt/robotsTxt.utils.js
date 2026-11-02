@@ -225,6 +225,20 @@ function normalizePercentEncoding(value) {
 }
 
 /**
+ * Counts the octets a percent-normalized value (see `normalizePercentEncoding`) represents: each
+ * `%XX` escape is one octet, and every other character is one ASCII octet. Used instead of
+ * `.length` to measure specificity, because a normalized non-ASCII character expands to a
+ * multi-character `%XX` escape per UTF-8 byte (e.g. `é` becomes the six characters `%C3%A9` but
+ * is two octets), which would otherwise inflate its apparent specificity relative to an
+ * equally-many-octet ASCII pattern.
+ * @param {string} normalized Output of `normalizePercentEncoding`.
+ * @returns {number} The number of octets the value represents.
+ */
+function countOctets(normalized) {
+  return (normalized.match(/%[0-9A-Fa-f]{2}|[\s\S]/g) ?? []).length;
+}
+
+/**
  * Compiles a robots.txt path pattern into a matcher, per RFC 9309 §2.2.3: `*` matches any run
  * of characters (including none), and a trailing `$` anchors the match to the end of the path.
  * Matching is otherwise a literal prefix match, and is case-sensitive. The pattern is
@@ -283,13 +297,17 @@ function selectGroup(groups, userAgent) {
  * Precedence (documented here since the RFC leaves exact tie-break wording implementation
  * defined beyond "the most specific rule wins"): among rules in the selected group whose
  * pattern matches the path, the rule whose *percent-normalized* path value (see
- * `normalizePercentEncoding`) has the greatest character length wins (wildcards and the `$`
- * anchor count as their literal characters, matching how most production crawlers - e.g.
- * Google's documented algorithm - implement "most specific"). Normalizing before measuring
- * ensures two rules that match the same octets rank identically regardless of how each author
- * spelled a percent-escape (e.g. `Disallow: /%61` and `Allow: /a` are equally specific, per RFC
- * 9309's deference to RFC 3986 §6.2.2.2 octet equivalence), rather than letting a longer raw
- * `%XX` escape spuriously outrank an equivalent literal. On an exact length tie between a
+ * `normalizePercentEncoding`) has the greatest octet count, per `countOctets`, wins (wildcards
+ * and the `$` anchor count as their literal octets, matching how most production crawlers - e.g.
+ * Google's documented algorithm - implement "most specific"). Counting octets rather than the
+ * normalized form's character length matters once non-ASCII characters are involved: RFC 9309
+ * §2.2.2 compares rule values by octets, and `normalizePercentEncoding` expands each non-ASCII
+ * character to a multi-character `%XX`-per-byte escape, so measuring characters would overcount
+ * it relative to its true, RFC-mandated octet length. Normalizing before counting also ensures
+ * two rules that match the same octets rank identically regardless of how each author spelled a
+ * percent-escape (e.g. `Disallow: /%61` and `Allow: /a` are equally specific, per RFC 9309's
+ * deference to RFC 3986 §6.2.2.2 octet equivalence), rather than letting a longer raw `%XX`
+ * escape spuriously outrank an equivalent literal. On an exact tie between a
  * matching `Allow` and a matching `Disallow`, `Allow` wins, mirroring Google's and Bing's
  * documented tie-break and the least-surprising outcome for an author who wrote both rules. An
  * empty `Disallow:` (and, symmetrically, an empty `Allow:`) value carries no path and is never a
@@ -327,7 +345,7 @@ export function evaluatePath(groups, options = {}) {
   const candidates = group.rules
     .filter((rule) => (rule.type === 'allow' || rule.type === 'disallow') && rule.value !== '')
     .filter((rule) => compilePathPattern(rule.value).test(path))
-    .map((rule) => ({ rule, specificity: normalizePercentEncoding(rule.value).length }));
+    .map((rule) => ({ rule, specificity: countOctets(normalizePercentEncoding(rule.value)) }));
 
   if (candidates.length === 0) {
     return { verdict: 'ALLOWED', matchedRule: null, group: group.userAgent };
