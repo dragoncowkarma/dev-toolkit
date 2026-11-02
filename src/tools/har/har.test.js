@@ -8,6 +8,7 @@ import {
   parseHar,
   toCurlCommand,
   toFetchSnippet,
+  toHttpieCommand,
 } from './har.utils.js';
 
 const sampleHar = {
@@ -267,5 +268,62 @@ describe('toFetchSnippet', () => {
     expect(snippet).toContain('https://example.test/quote\'s');
     expect(snippet).toContain('\\"quoted\\" `template`');
     expect(snippet).toContain('body: "line one\\nline \'two\' `three`"');
+  });
+});
+
+describe('toHttpieCommand', () => {
+  it('uses HTTPie\'s implicit GET form when a request has no body', () => {
+    expect(toHttpieCommand({
+      request: { method: 'GET', url: 'https://example.test/items' },
+    })).toBe("http 'https://example.test/items'");
+  });
+
+  it('formats named headers and skips malformed header entries', () => {
+    const command = toHttpieCommand({
+      request: {
+        method: 'GET',
+        url: 'https://example.test/profile',
+        headers: [null, { value: 'missing name' }, { name: '', value: 'empty name' }, {
+          name: 'Authorization', value: 'Bearer token',
+        }],
+      },
+    });
+
+    expect(command).toContain("'Authorization:Bearer token'");
+    expect(command).not.toContain('missing name');
+    expect(command).not.toContain('empty name');
+  });
+
+  it('uses JSON field syntax for a POST JSON object body', () => {
+    const command = toHttpieCommand({
+      request: {
+        method: 'POST',
+        url: 'https://api.example.test/items',
+        headers: [{ name: 'X-Request-Id', value: 'abc' }],
+        postData: { mimeType: 'application/json', text: '{"name":"Ada","active":true}' },
+      },
+    });
+
+    expect(command).toContain('http POST');
+    expect(command).toContain("'X-Request-Id:abc'");
+    expect(command).toContain("'Content-Type:application/json'");
+    expect(command).toContain("'name=Ada'");
+    expect(command).toContain("'active:=true'");
+    expect(command).not.toContain('--raw');
+  });
+
+  it('uses --raw for non-JSON request bodies', () => {
+    const command = toHttpieCommand({
+      request: {
+        method: 'POST',
+        url: 'https://api.example.test/items',
+        headers: [],
+        postData: { mimeType: 'text/plain', text: "O'Brien" },
+      },
+    });
+
+    expect(command).toContain('http POST');
+    expect(command).toContain("'Content-Type:text/plain'");
+    expect(command).toContain("--raw 'O'\\''Brien'");
   });
 });
