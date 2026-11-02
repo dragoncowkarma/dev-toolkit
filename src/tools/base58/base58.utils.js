@@ -272,8 +272,8 @@ export function assertEncodeInputWithinLimit(value, { inputType = 'text' } = {})
       : new TextEncoder().encode(value).length;
   if (byteLength > MAX_INPUT_BYTES) {
     throw new Error(
-      `Input is ${formatFileSize(byteLength)}, which exceeds the ` +
-        `${formatFileSize(MAX_INPUT_BYTES)} Base58 limit. ${BASE58_LIMIT_HINT}`
+      `Input is ${formatExactSize(byteLength)}, which exceeds the ` +
+        `${formatExactSize(MAX_INPUT_BYTES)} Base58 limit. ${BASE58_LIMIT_HINT}`
     );
   }
   return byteLength;
@@ -326,8 +326,8 @@ export function assertDecodeInputWithinLimit(value, { maxBytes = MAX_INPUT_BYTES
   if (zeroCount > maxBytes) {
     throw new Error(
       `Input has ${zeroCount} leading '1' characters, which decode to ` +
-        `${formatFileSize(zeroCount)} of leading zero bytes alone -- this ` +
-        `exceeds the ${formatFileSize(maxBytes)} Base58 limit. ${BASE58_LIMIT_HINT}`
+        `${formatExactSize(zeroCount)} of leading zero bytes alone -- this ` +
+        `exceeds the ${formatExactSize(maxBytes)} Base58 limit. ${BASE58_LIMIT_HINT}`
     );
   }
 
@@ -340,7 +340,7 @@ export function assertDecodeInputWithinLimit(value, { maxBytes = MAX_INPUT_BYTES
     const limitChars = NUMERIC_CHAR_LIMIT_TABLE[maxBytes];
     throw new Error(
       `Input is ${cleaned.length} characters, which exceeds the ` +
-        `${limitChars}-character Base58 limit (~${formatFileSize(maxBytes)} ` +
+        `${limitChars}-character Base58 limit (~${formatExactSize(maxBytes)} ` +
         `decoded). ${BASE58_LIMIT_HINT}`
     );
   }
@@ -364,8 +364,8 @@ export function assertDecodeInputWithinLimit(value, { maxBytes = MAX_INPUT_BYTES
 function assertDecodedBytesWithinLimit(bytes, { maxBytes = MAX_INPUT_BYTES } = {}) {
   if (bytes.length > maxBytes) {
     throw new Error(
-      `Input decodes to ${formatFileSize(bytes.length)}, which exceeds the ` +
-        `${formatFileSize(maxBytes)} Base58 limit. ${BASE58_LIMIT_HINT}`
+      `Input decodes to ${formatExactSize(bytes.length)}, which exceeds the ` +
+        `${formatExactSize(maxBytes)} Base58 limit. ${BASE58_LIMIT_HINT}`
     );
   }
 }
@@ -597,8 +597,8 @@ export function fileToBase58(file, { useChecksum = false } = {}) {
   if (file.size > MAX_INPUT_BYTES) {
     return Promise.reject(
       new Error(
-        `File is ${formatFileSize(file.size)}, which exceeds the ` +
-          `${formatFileSize(MAX_INPUT_BYTES)} Base58 limit. ${BASE58_LIMIT_HINT}`
+        `File is ${formatExactSize(file.size)}, which exceeds the ` +
+          `${formatExactSize(MAX_INPUT_BYTES)} Base58 limit. ${BASE58_LIMIT_HINT}`
       )
     );
   }
@@ -639,4 +639,20 @@ export function formatFileSize(bytes) {
     unitIndex += 1;
   }
   return `${value.toFixed(1)} ${units[unitIndex]}`;
+}
+
+/**
+ * Formats a byte size for size-limit error messages, always including the
+ * exact byte count alongside `formatFileSize`'s rounded unit. Rounding alone
+ * is ambiguous at a KB/MB/GB boundary -- e.g. formatFileSize(2048),
+ * formatFileSize(2049), and formatFileSize(2050) all return '2.0 KB' -- which
+ * would make a limit error indistinguishable from the value that triggered
+ * it. Every size-limit error message should use this instead of
+ * `formatFileSize` directly.
+ * @param {number} bytes
+ * @returns {string}
+ */
+export function formatExactSize(bytes) {
+  const rounded = formatFileSize(bytes);
+  return rounded.endsWith(' B') ? rounded : `${bytes} B (${rounded})`;
 }

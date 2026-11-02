@@ -281,10 +281,45 @@ describe('Base58Tool File Upload', () => {
     await act(async () => selectFile(fileInput, file));
 
     expect(screen.getByRole('alert')).toHaveTextContent(
-      'exceeds the 2.0 KB Base58 limit'
+      'exceeds the 2048 B (2.0 KB) Base58 limit'
     );
     expect(screen.getByRole('alert')).toHaveTextContent(
       'Base58 is intended for short identifiers and keys'
+    );
+  });
+
+  it('keeps the oversized-file alert visible with existing text in the input', async () => {
+    render(<Base58Tool />);
+    fireEvent.change(screen.getByLabelText('Text'), {
+      target: { value: 'existing text' },
+    });
+
+    const largeContent = new Uint8Array(MAX_INPUT_BYTES + 1);
+    const file = new File([largeContent], 'large.bin', {
+      type: 'application/octet-stream',
+    });
+    const fileInput = screen.getByLabelText('Convert a file to Base58');
+    await act(async () => selectFile(fileInput, file));
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      `exceeds the ${MAX_INPUT_BYTES} B (2.0 KB) Base58 limit`
+    );
+  });
+
+  it('keeps the oversized-file alert visible with an existing file already selected', async () => {
+    render(<Base58Tool />);
+    const firstFile = new File(['hello'], 'hello.txt', { type: 'text/plain' });
+    const fileInput = screen.getByLabelText('Convert a file to Base58');
+    await act(async () => selectFile(fileInput, firstFile));
+
+    const largeContent = new Uint8Array(MAX_INPUT_BYTES + 1);
+    const secondFile = new File([largeContent], 'large.bin', {
+      type: 'application/octet-stream',
+    });
+    await act(async () => selectFile(fileInput, secondFile));
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      `exceeds the ${MAX_INPUT_BYTES} B (2.0 KB) Base58 limit`
     );
   });
 
@@ -318,7 +353,7 @@ describe('Base58Tool Textarea Size Limit', () => {
     });
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'exceeds the 2.0 KB Base58 limit'
+      'exceeds the 2048 B (2.0 KB) Base58 limit'
     );
     expect(screen.getByRole('alert')).toHaveTextContent(
       'Base58 is intended for short identifiers and keys'
@@ -349,7 +384,7 @@ describe('Base58Tool Textarea Size Limit', () => {
     });
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'exceeds the 2.0 KB Base58 limit'
+      'exceeds the 2048 B (2.0 KB) Base58 limit'
     );
   });
 
@@ -436,7 +471,7 @@ describe('Base58Tool Textarea Size Limit', () => {
     });
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      `exceeds the 2.0 KB Base58 limit`
+      `exceeds the ${base58Utils.formatExactSize(MAX_INPUT_BYTES)} Base58 limit`
     );
   });
 
@@ -460,7 +495,7 @@ describe('Base58Tool Textarea Size Limit', () => {
       });
 
       expect(await screen.findByRole('alert')).toHaveTextContent(
-        `exceeds the ${base58Utils.formatFileSize(
+        `exceeds the ${base58Utils.formatExactSize(
           MAX_INPUT_BYTES + CHECKSUM_BYTES
         )} Base58 limit`
       );

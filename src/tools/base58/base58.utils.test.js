@@ -14,6 +14,7 @@ import {
   encodeToBase58,
   encodeToBase58Check,
   fileToBase58,
+  formatExactSize,
   formatFileSize,
   hexToBytes,
   isValidBase58,
@@ -243,7 +244,7 @@ describe('base58.utils', () => {
       const largeContent = new Uint8Array(MAX_INPUT_BYTES + 1024);
       const blob = new Blob([largeContent], { type: 'application/octet-stream' });
       await expect(fileToBase58(blob)).rejects.toThrow(
-        `exceeds the ${formatFileSize(MAX_INPUT_BYTES)} Base58 limit`
+        `exceeds the ${formatExactSize(MAX_INPUT_BYTES)} Base58 limit`
       );
     });
 
@@ -254,10 +255,35 @@ describe('base58.utils', () => {
       expect(result.length).toBeGreaterThan(0);
     });
 
+    it('rejects a file exactly MAX_INPUT_BYTES + 1 with an exact byte count', async () => {
+      const content = new Uint8Array(MAX_INPUT_BYTES + 1);
+      const blob = new Blob([content], { type: 'application/octet-stream' });
+      await expect(fileToBase58(blob)).rejects.toThrow(
+        `File is ${MAX_INPUT_BYTES + 1} B`
+      );
+    });
+
     it('formats file sizes accurately', () => {
       expect(formatFileSize(500)).toBe('500 B');
       expect(formatFileSize(1500)).toBe('1.5 KB');
       expect(formatFileSize(1048576)).toBe('1.0 MB');
+    });
+
+    it('disambiguates sizes that round to the same formatFileSize unit', () => {
+      // 2048, 2049, and 2050 bytes all format to '2.0 KB' under formatFileSize,
+      // which would make a MAX_INPUT_BYTES + 1 limit error indistinguishable
+      // from the limit itself. formatExactSize must keep them distinct.
+      expect(formatFileSize(2048)).toBe('2.0 KB');
+      expect(formatFileSize(2049)).toBe('2.0 KB');
+      expect(formatFileSize(2050)).toBe('2.0 KB');
+
+      expect(formatExactSize(2048)).toBe('2048 B (2.0 KB)');
+      expect(formatExactSize(2049)).toBe('2049 B (2.0 KB)');
+      expect(formatExactSize(2050)).toBe('2050 B (2.0 KB)');
+    });
+
+    it('formatExactSize matches formatFileSize for sizes under 1 KB', () => {
+      expect(formatExactSize(500)).toBe('500 B');
     });
   });
 
@@ -271,10 +297,20 @@ describe('base58.utils', () => {
     it('rejects text input exceeding MAX_INPUT_BYTES with a size error', () => {
       const text = 'a'.repeat(MAX_INPUT_BYTES + 1);
       expect(() => encodeToBase58(text)).toThrow(
-        `exceeds the ${formatFileSize(MAX_INPUT_BYTES)} Base58 limit`
+        `exceeds the ${formatExactSize(MAX_INPUT_BYTES)} Base58 limit`
       );
       expect(() => encodeToBase58(text)).toThrow(
         'Base58 is intended for short identifiers and keys'
+      );
+    });
+
+    it('reports the exact byte count at MAX_INPUT_BYTES + 1, not just the rounded unit', () => {
+      // MAX_INPUT_BYTES (2048) and MAX_INPUT_BYTES + 1 (2049) both round to
+      // '2.0 KB' under formatFileSize, so the error must include the exact
+      // byte count to remain unambiguous at this boundary.
+      const text = 'a'.repeat(MAX_INPUT_BYTES + 1);
+      expect(() => encodeToBase58(text)).toThrow(
+        `Input is ${MAX_INPUT_BYTES + 1} B (2.0 KB)`
       );
     });
 
@@ -284,7 +320,7 @@ describe('base58.utils', () => {
       const text = '한'.repeat(1000);
       expect(text.length).toBeLessThan(MAX_INPUT_BYTES);
       expect(() => encodeToBase58(text)).toThrow(
-        `exceeds the ${formatFileSize(MAX_INPUT_BYTES)} Base58 limit`
+        `exceeds the ${formatExactSize(MAX_INPUT_BYTES)} Base58 limit`
       );
     });
 
@@ -296,7 +332,7 @@ describe('base58.utils', () => {
     it('rejects hex input whose decoded byte length exceeds MAX_INPUT_BYTES', () => {
       const hex = '00'.repeat(MAX_INPUT_BYTES + 1);
       expect(() => encodeToBase58(hex, { inputType: 'hex' })).toThrow(
-        `exceeds the ${formatFileSize(MAX_INPUT_BYTES)} Base58 limit`
+        `exceeds the ${formatExactSize(MAX_INPUT_BYTES)} Base58 limit`
       );
     });
 
@@ -315,7 +351,7 @@ describe('base58.utils', () => {
     it('rejects oversized encode input for Base58Check too', async () => {
       const text = 'a'.repeat(MAX_INPUT_BYTES + 1);
       await expect(encodeToBase58Check(text)).rejects.toThrow(
-        `exceeds the ${formatFileSize(MAX_INPUT_BYTES)} Base58 limit`
+        `exceeds the ${formatExactSize(MAX_INPUT_BYTES)} Base58 limit`
       );
     });
 
@@ -378,20 +414,20 @@ describe('base58.utils', () => {
         const bytes = decodeBase58ToBytes(base58);
         expect(bytes.length).toBeGreaterThan(MAX_INPUT_BYTES);
         expect(() => decodeFromBase58(base58)).toThrow(
-          `exceeds the ${formatFileSize(MAX_INPUT_BYTES)} Base58 limit`
+          `exceeds the ${formatExactSize(MAX_INPUT_BYTES)} Base58 limit`
         );
         expect(() => decodeBase58Details(base58)).toThrow(
-          `exceeds the ${formatFileSize(MAX_INPUT_BYTES)} Base58 limit`
+          `exceeds the ${formatExactSize(MAX_INPUT_BYTES)} Base58 limit`
         );
       });
 
-      it('rejects an all-"z" run past MAX_BASE58_CHECK_CHARS for Base58Check, via the byte-length check', async () => {
+      it('rejects an all-"z" run past MAX_BASE58_CHECK_CHARS via the byte check', async () => {
         // Base58Check's slack boundary is one past MAX_BASE58_CHECK_CHARS,
         // not MAX_BASE58_CHARS -- mirroring the plain-Base58 case above but
         // against the wider (payload + checksum) raw-decode budget.
         const base58 = 'z'.repeat(MAX_BASE58_CHECK_CHARS + 1);
         await expect(decodeBase58CheckDetails(base58)).rejects.toThrow(
-          `exceeds the ${formatFileSize(MAX_INPUT_BYTES + CHECKSUM_BYTES)} Base58 limit`
+          `exceeds the ${formatExactSize(MAX_INPUT_BYTES + CHECKSUM_BYTES)} Base58 limit`
         );
       });
 
@@ -473,10 +509,10 @@ describe('base58.utils', () => {
       it('rejects MAX_INPUT_BYTES + 1 leading 1s for plain Base58', () => {
         const base58 = '1'.repeat(MAX_INPUT_BYTES + 1);
         expect(() => decodeFromBase58(base58, { outputType: 'hex' })).toThrow(
-          `exceeds the ${formatFileSize(MAX_INPUT_BYTES)} Base58 limit`
+          `exceeds the ${formatExactSize(MAX_INPUT_BYTES)} Base58 limit`
         );
         expect(() => decodeBase58Details(base58)).toThrow(
-          `exceeds the ${formatFileSize(MAX_INPUT_BYTES)} Base58 limit`
+          `exceeds the ${formatExactSize(MAX_INPUT_BYTES)} Base58 limit`
         );
       });
 
@@ -500,7 +536,7 @@ describe('base58.utils', () => {
       it('rejects MAX_INPUT_BYTES + CHECKSUM_BYTES + 1 leading 1s for Base58Check', async () => {
         const base58 = '1'.repeat(MAX_INPUT_BYTES + CHECKSUM_BYTES + 1);
         await expect(decodeBase58CheckDetails(base58)).rejects.toThrow(
-          `exceeds the ${formatFileSize(MAX_INPUT_BYTES + CHECKSUM_BYTES)} Base58 limit`
+          `exceeds the ${formatExactSize(MAX_INPUT_BYTES + CHECKSUM_BYTES)} Base58 limit`
         );
       });
     });
