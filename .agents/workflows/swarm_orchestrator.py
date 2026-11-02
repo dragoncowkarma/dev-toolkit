@@ -66,12 +66,11 @@ GH_TIMEOUT_SECONDS = 60
 MAIN_SYNC_EVERY_CYCLES = 5
 
 # A lifecycle event runs at most once successfully, but a crashed process is
-# retried so a transient AI CLI failure cannot deadlock the swarm forever.
-MAX_DISPATCH_ATTEMPTS = 3
+# retried without limit so a transient AI CLI failure cannot deadlock the swarm.
 
 # Provider quota/tool/timeout failures are availability pauses, not crashed
-# task attempts. Keep them out of the bounded crash budget and retry after the
-# provider's advertised reset, or after a conservative fallback cooldown.
+# task attempts. Retry them only after the provider's advertised reset, or
+# after a conservative fallback cooldown.
 PROVIDER_COOLDOWN_SECONDS = 60 * 60
 PROVIDER_COOLDOWN_BUFFER_SECONDS = 60
 PROVIDER_LIMIT_PATTERNS = (
@@ -112,8 +111,8 @@ EVENT_DEFER_PATTERNS = (
 # `agy --print-timeout` defaults to 5m, which is shorter than a real Worker
 # task (exploration + npm install + implementation). Without an explicit
 # override, agy exits 1 with "Error: timeout waiting for response" well
-# before finishing, burning all MAX_DISPATCH_ATTEMPTS on tasks that never
-# had a chance to complete.
+# before finishing, burning dispatch retries on tasks that never had a
+# chance to complete.
 ANTIGRAVITY_PRINT_TIMEOUT = "45m"
 
 # Stable reasons returned by ProcessTracker.should_dispatch().
@@ -125,10 +124,6 @@ DISPATCH_PROVIDER_COOLDOWN = "provider cooldown"
 # Upper bound on persisted history so the registry cannot grow without limit.
 MAX_HISTORY_RECORDS = 500
 IDLE_EXIT_CYCLES = 1
-
-# Maximum Worker revision cycles per PR before blocking further revisions.
-# Prevents infinite Reviewer↔Worker ping-pong loops.
-MAX_REVISION_CYCLES = 3
 
 # Metadata tag patterns
 WORKER_PATTERN = re.compile(
@@ -244,7 +239,7 @@ def log_blocker(key: str, message: str, *args, level: int = logging.ERROR):
 
 def log_dispatch_blocker(key: str, subject: str, reason: str):
     """Report terminal or deferred dispatch state without poll-cycle spam."""
-    if reason.startswith("exhausted") or reason == DISPATCH_UNCONFIRMED:
+    if reason == DISPATCH_UNCONFIRMED:
         log_blocker(key, "%s dispatch blocked: %s.", subject, reason)
     elif reason.startswith(DISPATCH_PROVIDER_COOLDOWN):
         log_blocker(
@@ -592,8 +587,8 @@ class ProcessTracker:
         instead of being run again, preserving the one-successful-dispatch
         invariant.
 
-        Provider quota failures pause until their cooldown expires and do not
-        consume the bounded crash retry budget.
+        Provider quota failures pause until their cooldown expires. Crashed
+        attempts are retried without limit.
         """
         attempts = [
             record for record in self.all_records
@@ -632,8 +627,7 @@ class ProcessTracker:
             record for record in attempts
             if record.status in (ProcessStatus.FAILED, ProcessStatus.UNKNOWN)
         ]
-        # Event-scope deferrals (e.g. timeouts) also count toward the crash
-        # budget so a perpetually-hanging task cannot retry indefinitely.
+        # Event-scope deferrals (e.g. timeouts) also count as failed attempts.
         event_deferrals = [
             r for r in deferred if r.defer_scope == "event"
         ]
@@ -646,14 +640,9 @@ class ProcessTracker:
             if completion_confirmed:
                 return False, DISPATCH_COMPLETED
             return False, DISPATCH_UNCONFIRMED
-        if budget_count >= MAX_DISPATCH_ATTEMPTS:
-            return False, f"exhausted {budget_count} failed/deferred attempts"
         if deferred:
             return True, "retry after provider cooldown"
-        return (
-            True,
-            f"retry {budget_count + 1}/{MAX_DISPATCH_ATTEMPTS} after failure",
-        )
+        return True, f"retry {budget_count + 1} after failure"
 
     @property
     def active_count(self) -> int:
@@ -3148,21 +3137,6 @@ def process_prs(
                 f"revise-no-worker:{pr_num}:{signal_id}",
                 "PR #%d needs Worker revision but no Worker is known; skipping.",
                 pr_num,
-                level=logging.WARNING,
-            )
-            continue
-
-        # Cap revision cycles to prevent infinite Reviewer↔Worker ping-pong.
-        revision_count = sum(
-            1 for c in comments
-            if "[Worker] Revision complete." in c.get("body", "")
-        )
-        if revision_count >= MAX_REVISION_CYCLES:
-            log_blocker(
-                f"revision-cap:{pr_num}",
-                "PR #%d has reached %d revision cycles (max %d); "
-                "blocking further revisions.",
-                pr_num, revision_count, MAX_REVISION_CYCLES,
                 level=logging.WARNING,
             )
             continue

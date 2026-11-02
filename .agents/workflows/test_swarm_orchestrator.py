@@ -118,16 +118,16 @@ class DispatchDecisionTests(unittest.TestCase):
         self.assertTrue(allowed)
         self.assertIn("retry 2", reason)
 
-    def test_retries_stop_at_the_attempt_budget(self):
+    def test_crashed_event_retries_are_unbounded(self):
         tracker = make_tracker([
             record("issue#7:initial", "worker", swarm.ProcessStatus.FAILED)
-            for _ in range(swarm.MAX_DISPATCH_ATTEMPTS)
+            for _ in range(10)
         ])
 
         allowed, reason = tracker.should_dispatch("issue#7:initial", "worker")
 
-        self.assertFalse(allowed)
-        self.assertIn("exhausted", reason)
+        self.assertTrue(allowed)
+        self.assertIn("retry 11", reason)
 
     def test_provider_cooldown_does_not_consume_crash_attempt_budget(self):
         retry_after = (
@@ -140,7 +140,7 @@ class DispatchDecisionTests(unittest.TestCase):
                 swarm.ProcessStatus.DEFERRED,
                 retry_after=retry_after,
             )
-            for _ in range(swarm.MAX_DISPATCH_ATTEMPTS)
+            for _ in range(3)
         ])
 
         allowed, reason = tracker.should_dispatch(

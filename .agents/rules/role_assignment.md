@@ -19,7 +19,7 @@ The orchestrator assigns roles using this priority:
 | Capability matching | Assign complex tasks to high-reasoning models |
 | Fail closed | Missing or duplicate role metadata blocks dispatch |
 | Event idempotency | One successful AI process per Issue, head SHA, or trigger comment ID |
-| Bounded retry | A crashed process is retried up to 3 times for the same event |
+| Unbounded retry | A crashed process is retried without limit for the same event |
 
 ## Lifecycle Signals
 

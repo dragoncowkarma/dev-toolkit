@@ -50,7 +50,7 @@ This project uses a **vendor-agnostic autonomous multi-agent swarm** where multi
   `[Worker] Revision complete.` signal, or after a tagged Maintainer block.
 - Polling or restarting the orchestrator MUST NOT duplicate an event that is
   running or already succeeded.
-- An event whose AI process crashed IS retried, up to 3 attempts, so a single
+- An event whose AI process crashed IS retried, without an attempt limit, so a
   transient CLI failure cannot deadlock the swarm.
 
 ---
