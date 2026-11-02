@@ -1,0 +1,209 @@
+.asn1-tool {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.asn1-tool .asn1-toolbar,
+.asn1-tool .asn1-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.75rem;
+}
+
+.asn1-tool .asn1-toolbar {
+  justify-content: space-between;
+}
+
+.asn1-tool .asn1-format-control {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.asn1-tool select,
+.asn1-tool .asn1-textarea,
+.asn1-tool .asn1-panel,
+.asn1-tool .asn1-node-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+}
+
+.asn1-tool select {
+  padding: 0.5rem;
+  font: inherit;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.asn1-tool .asn1-button {
+  display: inline-flex;
+  align-items: center;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.6rem 0.9rem;
+}
+
+.asn1-tool .asn1-button:hover,
+.asn1-tool .asn1-button:focus-visible {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.asn1-tool .asn1-primary-button {
+  background: var(--color-primary);
+  color: var(--color-text);
+}
+
+.asn1-tool .asn1-file-button {
+  position: relative;
+  overflow: hidden;
+}
+
+.asn1-tool .asn1-file-button:focus-within {
+  outline: 2px solid var(--color-primary-light);
+  outline-offset: 3px;
+}
+
+.asn1-tool .asn1-file-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.asn1-tool .asn1-panel {
+  padding: 1rem;
+}
+
+.asn1-tool .asn1-label,
+.asn1-tool .asn1-tree-heading {
+  display: block;
+  margin: 0 0 0.5rem;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.asn1-tool .asn1-textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 180px;
+  padding: 0.8rem;
+  resize: vertical;
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.asn1-tool .asn1-textarea:focus,
+.asn1-tool select:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.asn1-tool .asn1-file-name {
+  margin: 0.6rem 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.asn1-tool .asn1-error {
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+  padding: 0.75rem 1rem;
+}
+
+.asn1-tool .asn1-tree,
+.asn1-tool .asn1-tree-children {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.asn1-tool .asn1-tree-children {
+  margin: 0.6rem 0 0 1.25rem;
+  padding-left: 0.9rem;
+  border-left: 2px solid var(--color-border);
+}
+
+.asn1-tool .asn1-node-card {
+  display: flex;
+  gap: 0.6rem;
+  padding: 0.8rem;
+}
+
+.asn1-tool .asn1-expand-button,
+.asn1-tool .asn1-node-spacer {
+  flex: 0 0 1.5rem;
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.asn1-tool .asn1-expand-button {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-bg);
+  color: var(--color-text);
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+.asn1-tool .asn1-node-details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.4rem 1rem;
+  margin: 0.5rem 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.asn1-tool .asn1-node-details div {
+  min-width: 0;
+}
+
+.asn1-tool .asn1-node-details dt,
+.asn1-tool .asn1-node-details dd {
+  display: inline;
+  margin: 0;
+}
+
+.asn1-tool .asn1-node-details dt::after {
+  content: ': ';
+}
+
+.asn1-tool .asn1-node-value {
+  grid-column: 1 / -1;
+  overflow-wrap: anywhere;
+}
+
+@media (min-width: 768px) {
+  .asn1-tool {
+    padding: 0 2rem 3rem;
+  }
+}
