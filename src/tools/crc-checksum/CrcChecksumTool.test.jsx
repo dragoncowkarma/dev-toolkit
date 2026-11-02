@@ -1,8 +1,13 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import CrcChecksumTool from './CrcChecksumTool.jsx';
 
 describe('CrcChecksumTool', () => {
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
+
   it('switches between text and hex input while calculating selected algorithms', () => {
     render(<CrcChecksumTool />);
     fireEvent.change(screen.getByLabelText('Text input'), { target: { value: '123456789' } });
