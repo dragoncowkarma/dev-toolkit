@@ -171,6 +171,64 @@ function uniqueIdField(tagNumber) {
   return Uint8Array.from([0x80 | tagNumber, 0x02, 0x00, 0xff]);
 }
 
+/** Encodes text as the content octets of a printable ASN.1 element. */
+function asciiBytes(text) {
+  return Uint8Array.from(text.split('').map((character) => character.charCodeAt(0)));
+}
+
+/**
+ * Rebuilds the certificate with `mapExtension` applied to every `Extension`
+ * TLV, re-encoding the `Extensions` SEQUENCE, the `[3]` wrapper, and both
+ * enclosing SEQUENCE lengths, so only the extension under test differs.
+ * A mapper returning `null` leaves that extension untouched.
+ */
+function withExtensions(der, mapExtension) {
+  const certificate = parseAsn1(der);
+  const tbs = certificate.children[0];
+  const lastIndex = tbs.children.length - 1;
+  const extensions = tbs.children[lastIndex].children[0];
+  const rebuilt = encodeSequence(
+    concatBytes(extensions.children.map((extension) => mapExtension(extension) ?? extension.raw)),
+  );
+  const head = tbs.children.slice(0, lastIndex).map((field) => field.raw);
+  return encodeSequence(
+    concatBytes([
+      encodeSequence(concatBytes([...head, encodeContext(3, rebuilt)])),
+      certificate.children[1].raw,
+      certificate.children[2].raw,
+    ]),
+  );
+}
+
+/** Reads an `Extension`'s `extnID` so a mutation can target one extension. */
+function extensionOid(extension) {
+  return decodeOid(extension.children[0].content);
+}
+
+/**
+ * Rebuilds the certificate with `notBefore` replaced by a freshly encoded time
+ * element, so the replacement may differ in length from the original.
+ */
+function withNotBeforeElement(der, tag, text) {
+  const certificate = parseAsn1(der);
+  const tbs = certificate.children[0];
+  const validityIndex = tbsVersionFields(der) + 3;
+  const validity = tbs.children[validityIndex];
+  const rebuiltValidity = encodeSequence(
+    concatBytes([encodeTlv(tag, asciiBytes(text)), validity.children[1].raw]),
+  );
+  const fields = tbs.children.map((field, index) =>
+    index === validityIndex ? rebuiltValidity : field.raw,
+  );
+  return encodeSequence(
+    concatBytes([
+      encodeSequence(concatBytes(fields)),
+      certificate.children[1].raw,
+      certificate.children[2].raw,
+    ]),
+  );
+}
+
 /** Parses a standalone UTCTime or GeneralizedTime element from its text. */
 function timeNode(tag, text) {
   const bytes = Uint8Array.from([tag, text.length, ...text.split('').map((c) => c.charCodeAt(0))]);
@@ -248,6 +306,45 @@ describe('parseAsn1', () => {
     expect(() => parseAsn1(Uint8Array.from([]))).toThrow('The DER data is empty');
     expect(() => parseAsn1(buildNestedSequences(50))).toThrow('nested too deeply');
     expect(() => parseAsn1(buildNestedSequences(20))).not.toThrow();
+  });
+
+  it('rejects a long-form length that encodes a value below 128', () => {
+    // `81 05` and `05` describe the same five content octets; only the latter is DER.
+    const content = new Uint8Array(5).fill(0x41);
+    expect(() => parseAsn1(Uint8Array.from([0x04, 0x81, 0x05, ...content]))).toThrow(
+      'A DER length below 128 must use the short form',
+    );
+    expect(() => parseAsn1(Uint8Array.from([0x04, 0x81, 0x7f, ...new Uint8Array(127)]))).toThrow(
+      'A DER length below 128 must use the short form',
+    );
+    // 128 is the smallest length the long form is allowed to carry.
+    expect(parseAsn1(Uint8Array.from([0x04, 0x81, 0x80, ...new Uint8Array(128)])).content)
+      .toHaveLength(128);
+  });
+
+  it('rejects a long-form length with a leading zero octet', () => {
+    const content = new Uint8Array(200).fill(0x41);
+    expect(() => parseAsn1(Uint8Array.from([0x04, 0x82, 0x00, 0xc8, ...content]))).toThrow(
+      'A DER length has a leading zero octet',
+    );
+  });
+
+  it('rejects a high-tag-number identifier that a single octet could encode', () => {
+    // `3F 10` spells SEQUENCE the long way round; DER admits only `30`.
+    expect(() => parseAsn1(Uint8Array.from([0x3f, 0x10, 0x00]))).toThrow(
+      'A DER tag number below 31 must use the low-tag-number form',
+    );
+    expect(() => parseAsn1(Uint8Array.from([0x1f, 0x1e, 0x00]))).toThrow(
+      'A DER tag number below 31 must use the low-tag-number form',
+    );
+    // Tag number 31 is the smallest the high-tag-number form may carry.
+    expect(parseAsn1(Uint8Array.from([0x1f, 0x1f, 0x00])).tagNumber).toBe(31);
+  });
+
+  it('rejects a high-tag-number identifier padded with a leading zero octet', () => {
+    expect(() => parseAsn1(Uint8Array.from([0x3f, 0x80, 0x20, 0x00]))).toThrow(
+      'A DER tag number has a leading zero octet',
+    );
   });
 });
 
@@ -914,6 +1011,127 @@ describe('parseCertificate error handling', () => {
     );
     expect(results[0].error).toMatch('is not a valid ASN.1 time value');
     expect(results[1].certificate.validity.notBefore.utc).toBe('2026-08-12T04:08:20Z');
+  });
+
+  it('rejects a root header rewritten into the high-tag-number form', () => {
+    // Only the identifier octet changes: 30 82 04 28 becomes 3F 10 82 04 28,
+    // leaving every content octet of the certificate exactly as it was.
+    const mutated = concatBytes([Uint8Array.from([0x3f, 0x10]), sampleDer.subarray(1)]);
+    expect(() => parseCertificate(mutated)).toThrow(
+      'A DER tag number below 31 must use the low-tag-number form',
+    );
+    const entry = decodeOne(toPemFromDer(mutated));
+    expect(entry.certificate).toBeUndefined();
+    expect(entry.error).toMatch('must use the low-tag-number form');
+  });
+
+  it('rejects a non-minimal long-form length on the root header', () => {
+    const contentStart = sampleDer.length - parseAsn1(sampleDer).content.length;
+    const mutated = concatBytes([
+      Uint8Array.from([0x30, 0x83, 0x00]),
+      sampleDer.subarray(2, contentStart),
+      sampleDer.subarray(contentStart),
+    ]);
+    expect(() => parseCertificate(mutated)).toThrow('A DER length has a leading zero octet');
+    expect(decodeOne(toPemFromDer(mutated)).error).toMatch('leading zero octet');
+  });
+
+  it('rejects an extension criticality BOOLEAN encoded as 01 instead of FF', () => {
+    const mutated = withExtensions(sampleDer, (extension) => {
+      if (extension.children.length !== 3) return null;
+      return encodeSequence(
+        concatBytes([
+          extension.children[0].raw,
+          Uint8Array.from([ASN1_TAG.BOOLEAN, 0x01, 0x01]),
+          extension.children[2].raw,
+        ]),
+      );
+    });
+    expect(() => parseCertificate(mutated)).toThrow('criticality is not a valid DER BOOLEAN');
+    const entry = decodeOne(toPemFromDer(mutated));
+    expect(entry.certificate).toBeUndefined();
+    expect(entry.error).toMatch('is not a valid DER BOOLEAN');
+  });
+
+  it('rejects a basicConstraints CA BOOLEAN encoded as 01 instead of FF', () => {
+    const mutated = withExtensions(sampleDer, (extension) => {
+      if (extensionOid(extension) !== '2.5.29.19') return null;
+      const value = encodeSequence(Uint8Array.from([ASN1_TAG.BOOLEAN, 0x01, 0x01]));
+      return encodeSequence(
+        concatBytes([
+          extension.children[0].raw,
+          extension.children[1].raw,
+          encodeTlv(ASN1_TAG.OCTET_STRING, value),
+        ]),
+      );
+    });
+    expect(() => parseCertificate(mutated)).toThrow(
+      'The basicConstraints CA flag is not a valid DER BOOLEAN',
+    );
+    expect(decodeOne(toPemFromDer(mutated)).error).toMatch('CA flag is not a valid DER BOOLEAN');
+  });
+
+  it('rejects an Extension carrying a fourth field after extnValue', () => {
+    const mutated = withExtensions(sampleDer, (extension) =>
+      extensionOid(extension) === '2.5.29.19' ? withSurplusField(extension) : null,
+    );
+    expect(() => parseCertificate(mutated)).toThrow(
+      'Extension 2.5.29.19 has more fields than an X.509 extension allows',
+    );
+    const entry = decodeOne(toPemFromDer(mutated));
+    expect(entry.certificate).toBeUndefined();
+    expect(entry.error).toMatch('has more fields than an X.509 extension allows');
+  });
+
+  it('rejects a non-critical Extension carrying a surplus third field', () => {
+    const mutated = withExtensions(sampleDer, (extension) =>
+      extension.children.length === 2 ? withSurplusField(extension) : null,
+    );
+    expect(() => parseCertificate(mutated)).toThrow(
+      'has more fields than an X.509 extension allows',
+    );
+  });
+
+  it('rejects a notBefore carrying a numeric zone offset instead of Zulu time', () => {
+    const mutated = withNotBeforeElement(sampleDer, ASN1_TAG.UTC_TIME, '260812040820+0900');
+    expect(() => parseCertificate(mutated)).toThrow(
+      '"260812040820+0900" is not an RFC 5280 certificate time',
+    );
+    const entry = decodeOne(toPemFromDer(mutated));
+    expect(entry.certificate).toBeUndefined();
+    expect(entry.error).toMatch('is not an RFC 5280 certificate time');
+  });
+
+  it('rejects a notBefore that omits the mandatory seconds field', () => {
+    const mutated = withNotBeforeElement(sampleDer, ASN1_TAG.UTC_TIME, '2608120408Z');
+    expect(() => parseCertificate(mutated)).toThrow(
+      '"2608120408Z" is not an RFC 5280 certificate time',
+    );
+    expect(decodeOne(toPemFromDer(mutated)).error).toMatch('is not an RFC 5280 certificate time');
+  });
+
+  it('rejects a GeneralizedTime notBefore carrying a fractional second', () => {
+    const mutated = withNotBeforeElement(
+      sampleDer,
+      ASN1_TAG.GENERALIZED_TIME,
+      '20260812040820.5Z',
+    );
+    expect(() => parseCertificate(mutated)).toThrow(
+      '"20260812040820.5Z" is not an RFC 5280 certificate time',
+    );
+    expect(decodeOne(toPemFromDer(mutated)).error).toMatch('is not an RFC 5280 certificate time');
+  });
+
+  it('still accepts the profile-conformant UTCTime and GeneralizedTime forms', () => {
+    // The control for the three rejections above: only the time text differs.
+    const utc = withNotBeforeElement(sampleDer, ASN1_TAG.UTC_TIME, '260812040820Z');
+    expect(parseCertificate(utc).validity.notBefore.utc).toBe('2026-08-12T04:08:20Z');
+    const generalized = withNotBeforeElement(
+      sampleDer,
+      ASN1_TAG.GENERALIZED_TIME,
+      '20260812040820Z',
+    );
+    expect(parseCertificate(generalized).validity.notBefore.utc).toBe('2026-08-12T04:08:20Z');
   });
 
   it('reports a retagged signatureValue as a per-block decode error', () => {

@@ -235,18 +235,31 @@ function readTlvHeader(bytes, offset, limit) {
   let tagNumber = identifier & 0x1f;
   let cursor = offset + 1;
 
+  // X.690 §8.1.2 fixes a single encoding per tag number: the high-tag-number
+  // form exists only for numbers of 31 and above, and its base-128 digits carry
+  // no leading zero. Accepting either variant would let `3F 10` stand in for the
+  // SEQUENCE identifier `30`, so a re-encoded certificate would decode as if
+  // nothing had changed. Both deviations are rejected rather than normalised.
   if (tagNumber === 0x1f) {
     tagNumber = 0;
     let byte;
+    let isFirstTagOctet = true;
     do {
       if (cursor >= limit) throw new Error('A DER tag is truncated.');
       byte = bytes[cursor];
       cursor += 1;
+      if (isFirstTagOctet && (byte & 0x7f) === 0) {
+        throw new Error('A DER tag number has a leading zero octet.');
+      }
+      isFirstTagOctet = false;
       tagNumber = tagNumber * 128 + (byte & 0x7f);
       if (!Number.isSafeInteger(tagNumber)) {
         throw new Error('A DER tag number is too large to decode.');
       }
     } while ((byte & 0x80) !== 0);
+    if (tagNumber < 0x1f) {
+      throw new Error('A DER tag number below 31 must use the low-tag-number form.');
+    }
   }
 
   if (cursor >= limit) throw new Error('A DER length octet is missing.');
@@ -262,11 +275,20 @@ function readTlvHeader(bytes, offset, limit) {
     if (lengthByteCount > 4) {
       throw new Error('A DER element declares an unsupported length.');
     }
+    // X.690 §10.1: DER admits exactly one encoding of a length. The long form is
+    // reserved for values of 128 and above and carries no leading zero octet, so
+    // `81 05` and `82 00 05` are both rejected rather than read as 5.
     length = 0;
     for (let index = 0; index < lengthByteCount; index += 1) {
       if (cursor >= limit) throw new Error('A DER length is truncated.');
+      if (index === 0 && bytes[cursor] === 0) {
+        throw new Error('A DER length has a leading zero octet.');
+      }
       length = length * 256 + bytes[cursor];
       cursor += 1;
+    }
+    if (length < 0x80) {
+      throw new Error('A DER length below 128 must use the short form.');
     }
   }
 
@@ -547,6 +569,35 @@ export function decodeAsn1Time(node) {
   return { raw, utc: formatUtc(date), date };
 }
 
+// RFC 5280 §4.1.2.5 narrows the generic ASN.1 time syntax for certificate
+// validity: UTCTime is `YYMMDDHHMMSSZ` and GeneralizedTime is `YYYYMMDDHHMMSSZ`.
+// Seconds are mandatory, the zone is always Zulu, and GeneralizedTime carries no
+// fractional part — so an offset form such as `260812040820+0900` is not a
+// certificate time even though it is a well-formed ASN.1 one.
+const CERTIFICATE_UTC_TIME_PATTERN = /^\d{12}Z$/;
+const CERTIFICATE_GENERALIZED_TIME_PATTERN = /^\d{14}Z$/;
+
+/**
+ * Decodes a certificate validity field under the RFC 5280 §4.1.2.5 profile.
+ *
+ * @param {object} node ASN.1 UTCTime or GeneralizedTime node.
+ * @returns {{raw: string, utc: string, date: Date}} Raw text, ISO UTC text, and the date.
+ * @throws {Error} When the value is not a profile-conformant certificate time.
+ */
+export function decodeCertificateTime(node) {
+  const time = decodeAsn1Time(node);
+  const pattern = isUniversal(node, ASN1_TAG.UTC_TIME)
+    ? CERTIFICATE_UTC_TIME_PATTERN
+    : CERTIFICATE_GENERALIZED_TIME_PATTERN;
+  if (!pattern.test(time.raw)) {
+    throw new Error(
+      `"${time.raw}" is not an RFC 5280 certificate time: validity fields must use Zulu ` +
+        'time with seconds and no fractional part.',
+    );
+  }
+  return time;
+}
+
 /**
  * Formats a date as a second-precision UTC timestamp.
  *
@@ -573,10 +624,13 @@ function decodeSmallInteger(node, label) {
 }
 
 function decodeAsn1Boolean(node, label) {
-  if (node.content.length !== 1) {
+  // X.690 §11.1: DER encodes TRUE as the single octet FF and FALSE as 00. Any
+  // other non-zero octet is a BER-only spelling of TRUE, so accepting it would
+  // leave two distinct encodings of the same criticality or CA flag.
+  if (node.content.length !== 1 || (node.content[0] !== 0x00 && node.content[0] !== 0xff)) {
     throw new Error(`${label} is not a valid DER BOOLEAN.`);
   }
-  return node.content[0] !== 0;
+  return node.content[0] === 0xff;
 }
 
 /**
@@ -834,6 +888,15 @@ function parseExtensions(node) {
 
     const valueNode = extension.children[cursor];
     expectUniversal(valueNode, ASN1_TAG.OCTET_STRING, `Extension ${oid} value`);
+    cursor += 1;
+
+    // RFC 5280 §4.1.2.9: an Extension is exactly extnID, an optional critical
+    // BOOLEAN, and extnValue. Stopping at extnValue would let arbitrary surplus
+    // fields ride along inside an extension that still decoded cleanly.
+    if (cursor !== extension.children.length) {
+      throw new Error(`Extension ${oid} has more fields than an X.509 extension allows.`);
+    }
+
     all.push({ oid, name: EXTENSION_NAMES[oid] ?? null, critical });
 
     if (oid === OID.SUBJECT_ALT_NAME) {
@@ -992,8 +1055,8 @@ export function parseCertificate(der) {
     issuer,
     subject,
     validity: {
-      notBefore: decodeAsn1Time(validityNode.children[0]),
-      notAfter: decodeAsn1Time(validityNode.children[1]),
+      notBefore: decodeCertificateTime(validityNode.children[0]),
+      notAfter: decodeCertificateTime(validityNode.children[1]),
     },
     signatureAlgorithm: toAlgorithmSummary(signatureAlgorithm),
     publicKey,

@@ -1,5 +1,5 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import CertificateDecoderTool from './CertificateDecoderTool.jsx';
 import {
   EC_CERTIFICATE,
@@ -13,7 +13,25 @@ const SAMPLE_DN =
 
 const CORRUPT_BLOCK = '-----BEGIN CERTIFICATE-----\nMAUCAQEFAA==\n-----END CERTIFICATE-----';
 
-afterEach(cleanup);
+/** The sample fixture's validity window, read straight from its PEM text. */
+const SAMPLE_NOT_BEFORE = Date.parse('2026-08-12T04:08:20Z');
+const SAMPLE_NOT_AFTER = Date.parse('2036-08-09T04:08:20Z');
+
+/**
+ * Every test runs at a fixed instant inside the sample fixture's window, so the
+ * `Valid` assertions below describe the fixture rather than today's date and do
+ * not start failing once 2036-08-09 passes.
+ */
+const FIXED_NOW = Date.parse('2030-01-01T00:00:00Z');
+
+beforeEach(() => {
+  vi.useFakeTimers({ now: FIXED_NOW });
+});
+
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 function pasteCertificate(value) {
   fireEvent.change(screen.getByLabelText('PEM certificate'), { target: { value } });
@@ -126,6 +144,46 @@ describe('CertificateDecoderTool', () => {
     expect(screen.getByRole('heading', { name: /Certificate 2 — devtoolkit\.example/ }))
       .toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('1 of 2 certificate block(s) decoded.');
+  });
+
+  it('crosses the validity boundaries while the card stays open', () => {
+    vi.setSystemTime(SAMPLE_NOT_BEFORE - 1000);
+    render(<CertificateDecoderTool />);
+    pasteCertificate(SAMPLE_CERTIFICATE);
+    expect(screen.getByText('Not yet valid')).toBeInTheDocument();
+
+    // No further input: only the decoded-state timer moves the badge along.
+    act(() => vi.advanceTimersByTime(2000));
+    expect(screen.getByText('Valid')).toBeInTheDocument();
+    expect(screen.queryByText('Not yet valid')).not.toBeInTheDocument();
+
+    vi.setSystemTime(SAMPLE_NOT_AFTER - 1000);
+    act(() => vi.advanceTimersByTime(1000));
+    expect(screen.getByText('Valid')).toBeInTheDocument();
+
+    act(() => vi.advanceTimersByTime(2000));
+    expect(screen.getByText('Expired')).toBeInTheDocument();
+    expect(screen.getByText(/^Expired .+ ago\.$/)).toBeInTheDocument();
+  });
+
+  it('keeps every card in a chain on one shared instant', () => {
+    render(<CertificateDecoderTool />);
+    pasteCertificate(`${SAMPLE_CERTIFICATE}\n${EC_CERTIFICATE}`);
+    act(() => vi.advanceTimersByTime(5000));
+
+    expect(screen.getAllByText('Valid')).toHaveLength(2);
+  });
+
+  it('stops the validity timer once the decoded state ends', () => {
+    const clearInterval = vi.spyOn(globalThis, 'clearInterval');
+    render(<CertificateDecoderTool />);
+    pasteCertificate(SAMPLE_CERTIFICATE);
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+
+    pasteCertificate('');
+    expect(clearInterval).toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+    clearInterval.mockRestore();
   });
 
   it('clears the previous result when the input is emptied', () => {
