@@ -212,7 +212,7 @@ export default function HarTool() {
         ? toHttpieCommand(selectedEntry)
         : format === 'python'
           ? toPythonRequestsSnippet(selectedEntry)
-        : toCurlCommand(selectedEntry);
+          : toCurlCommand(selectedEntry);
 
     try {
       await navigator.clipboard.writeText(snippet);
@@ -225,7 +225,7 @@ export default function HarTool() {
           ? 'HTTPie command'
           : format === 'python'
             ? 'Python snippet'
-          : 'cURL command';
+            : 'cURL command';
       setCopyError(`Failed to copy ${formatName}.`);
     }
   }
@@ -508,7 +508,7 @@ export default function HarTool() {
                           ? 'HTTPie command'
                           : copiedFormat === 'python'
                             ? 'Python snippet'
-                          : 'cURL command'}
+                            : 'cURL command'}
                     </span>
                   )}
                 </div>
