@@ -1,109 +1,129 @@
-/**
- * Standard Base62 alphabet, ordered by the numeric value of each character.
- */
-export const BASE62_ALPHABET = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
-
-const BASE62_BASE = BigInt(BASE62_ALPHABET.length);
-const DECIMAL_PATTERN = /^\d+$/;
-const BASE62_PATTERN = /^[0-9a-zA-Z]+$/;
+const BASE62_ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+const BASE62_VALUES = new Map([...BASE62_ALPHABET].map((character, index) => [character, index]));
 
 /**
- * Checks whether a value is a non-negative whole-number decimal string.
- * @param {unknown} value
- * @returns {boolean}
+ * Encodes bytes using the standard 0-9A-Za-z Base62 alphabet.
+ * @param {Uint8Array} bytes
+ * @returns {string}
  */
-function isValidDecimal(value) {
-  return typeof value === 'string' && DECIMAL_PATTERN.test(value);
+export function encodeBytesToBase62(bytes) {
+  if (Object.prototype.toString.call(bytes) !== '[object Uint8Array]') {
+    throw new TypeError('Input must be a Uint8Array.');
+  }
+  if (bytes.length === 0) return '';
+
+  let leadingZeroes = 0;
+  while (leadingZeroes < bytes.length && bytes[leadingZeroes] === 0) leadingZeroes += 1;
+  const digits = [0];
+
+  for (const byte of bytes.subarray(leadingZeroes)) {
+    let carry = byte;
+    for (let index = 0; index < digits.length; index += 1) {
+      const value = digits[index] * 256 + carry;
+      digits[index] = value % 62;
+      carry = Math.floor(value / 62);
+    }
+    while (carry > 0) {
+      digits.push(carry % 62);
+      carry = Math.floor(carry / 62);
+    }
+  }
+
+  const encoded = digits.reverse().map((digit) => BASE62_ALPHABET[digit]).join('');
+  return `${'0'.repeat(leadingZeroes)}${leadingZeroes === bytes.length ? '' : encoded}`;
 }
 
 /**
- * Checks whether a value contains one or more standard Base62 characters.
- * @param {unknown} value
- * @returns {boolean}
- */
-function isValidBase62(value) {
-  return typeof value === 'string' && BASE62_PATTERN.test(value);
-}
-
-/**
- * Validates a decimal value before converting it with BigInt.
+ * Decodes a Base62 string into its original bytes.
  * @param {string} value
- * @returns {void}
+ * @returns {Uint8Array}
+ * @throws {Error} When the input contains a character outside the Base62 alphabet.
  */
-function assertValidDecimal(value) {
+export function decodeBase62ToBytes(value) {
   if (typeof value !== 'string') {
-    throw new TypeError('Decimal input must be a string.');
+    throw new TypeError('Input must be a string.');
   }
-  if (value === '') {
-    throw new Error('Enter a non-negative whole-number decimal value.');
+  if (value === '') return new Uint8Array();
+
+  let leadingZeroes = 0;
+  while (leadingZeroes < value.length && value[leadingZeroes] === '0') leadingZeroes += 1;
+  const bytes = [0];
+
+  for (const character of value.slice(leadingZeroes)) {
+    const digit = BASE62_VALUES.get(character);
+    if (digit === undefined) {
+      throw new Error(`Invalid Base62 character: "${character}". Use only 0-9, A-Z, and a-z.`);
+    }
+    let carry = digit;
+    for (let index = 0; index < bytes.length; index += 1) {
+      const decoded = bytes[index] * 62 + carry;
+      bytes[index] = decoded & 0xff;
+      carry = decoded >> 8;
+    }
+    while (carry > 0) {
+      bytes.push(carry & 0xff);
+      carry >>= 8;
+    }
   }
-  if (value.startsWith('-')) {
-    throw new Error('Negative numbers cannot be encoded as Base62.');
-  }
-  if (!isValidDecimal(value)) {
-    throw new Error('Decimal input must be a non-negative whole number.');
-  }
+
+  const decoded =
+    leadingZeroes === value.length ? new Uint8Array() : Uint8Array.from(bytes.reverse());
+  return new Uint8Array([...new Uint8Array(leadingZeroes), ...decoded]);
 }
 
 /**
- * Validates a Base62 value before converting it with BigInt.
+ * Encodes UTF-8 text as Base62.
+ * @param {string} text
+ * @returns {string}
+ */
+export function encodeToBase62(text) {
+  if (typeof text !== 'string') {
+    throw new TypeError('Input must be a string.');
+  }
+  return encodeBytesToBase62(new TextEncoder().encode(text));
+}
+
+/**
+ * Decodes Base62 into UTF-8 text.
  * @param {string} value
- * @returns {void}
+ * @returns {string}
  */
-function assertValidBase62(value) {
-  if (typeof value !== 'string') {
-    throw new TypeError('Base62 input must be a string.');
+export function decodeFromBase62(value) {
+  const bytes = decodeBase62ToBytes(value);
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    throw new Error('Decoded Base62 data is binary, not valid UTF-8 text. Download it instead.');
   }
-  if (value === '') {
-    throw new Error('Enter a Base62 value.');
-  }
-  if (isValidBase62(value)) {
-    return;
-  }
-
-  const invalidCharacter = [...value].find((character) => !BASE62_ALPHABET.includes(character));
-  const displayedCharacter = invalidCharacter === ' ' ? 'space' : invalidCharacter;
-  throw new Error(
-    `Invalid Base62 character "${displayedCharacter}". Use only 0-9, a-z, and A-Z.`
-  );
 }
 
 /**
- * Encodes a non-negative decimal string as a standard Base62 string.
- * @param {string} decimal - A non-negative whole-number decimal string.
- * @returns {string} The Base62 representation.
- * @throws {Error} When the decimal value is empty, negative, or non-integer.
+ * Reads a File or Blob as raw bytes.
+ * @param {File|Blob} file
+ * @returns {Promise<Uint8Array>}
  */
-export function encodeBase62(decimal) {
-  assertValidDecimal(decimal);
-
-  let remaining = BigInt(decimal);
-  if (remaining === 0n) {
-    return '0';
-  }
-
-  let encoded = '';
-  while (remaining > 0n) {
-    const remainder = Number(remaining % BASE62_BASE);
-    encoded = `${BASE62_ALPHABET[remainder]}${encoded}`;
-    remaining /= BASE62_BASE;
-  }
-  return encoded;
+export function fileToBytes(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(new Uint8Array(/** @type {ArrayBuffer} */ (reader.result)));
+    reader.onerror = () => reject(new Error('Failed to read the selected file.'));
+    reader.readAsArrayBuffer(file);
+  });
 }
 
 /**
- * Decodes a standard Base62 string to a non-negative decimal string.
- * @param {string} base62 - A Base62 value using 0-9, a-z, and A-Z.
- * @returns {string} The decimal representation.
- * @throws {Error} When the input is empty or contains an invalid Base62 character.
+ * Formats a byte count for display.
+ * @param {number} bytes
+ * @returns {string}
  */
-export function decodeBase62(base62) {
-  assertValidBase62(base62);
-
-  let decoded = 0n;
-  for (const character of base62) {
-    const value = BigInt(BASE62_ALPHABET.indexOf(character));
-    decoded = decoded * BASE62_BASE + value;
+export function formatFileSize(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ['KB', 'MB', 'GB'];
+  let value = bytes / 1024;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
   }
-  return decoded.toString();
+  return `${value.toFixed(1)} ${units[unitIndex]}`;
 }
