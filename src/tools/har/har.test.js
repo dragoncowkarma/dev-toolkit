@@ -7,6 +7,7 @@ import {
   getTimelineBounds,
   parseHar,
   toCurlCommand,
+  toFetchSnippet,
 } from './har.utils.js';
 
 const sampleHar = {
@@ -213,5 +214,58 @@ describe('toCurlCommand', () => {
 
     expect(command).toContain(`-H 'X-Note: it'\\''s fine'`);
     expect(command).toContain(`--data-raw 'O'\\''Brien'`);
+  });
+});
+
+describe('toFetchSnippet', () => {
+  it('uses the concise form for a GET request without options', () => {
+    expect(toFetchSnippet({ request: { method: 'GET', url: 'https://example.test/items' } }))
+      .toBe('fetch("https://example.test/items")');
+  });
+
+  it('formats a JSON body and infers a missing Content-Type header', () => {
+    const snippet = toFetchSnippet({
+      request: {
+        method: 'POST',
+        url: 'https://api.example.test/items',
+        postData: { mimeType: 'application/json', text: '{"name":"Ada"}' },
+      },
+    });
+
+    expect(snippet).toContain('method: "POST"');
+    expect(snippet).toContain('"Content-Type": "application/json"');
+    expect(snippet).toContain('body: JSON.stringify({');
+  });
+
+  it('keeps named custom headers and ignores malformed header entries', () => {
+    const snippet = toFetchSnippet({
+      request: {
+        method: 'GET',
+        url: 'https://example.test/profile',
+        headers: [null, { value: 'missing name' }, { name: '', value: 'empty name' }, {
+          name: 'Authorization', value: 'Bearer token',
+        }],
+      },
+    });
+
+    expect(snippet).toContain('method: "GET"');
+    expect(snippet).toContain('"Authorization": "Bearer token"');
+    expect(snippet).not.toContain('missing name');
+    expect(snippet).not.toContain('empty name');
+  });
+
+  it('escapes strings in headers and non-JSON bodies', () => {
+    const snippet = toFetchSnippet({
+      request: {
+        method: 'PATCH',
+        url: "https://example.test/quote's",
+        headers: [{ name: 'X-Note', value: '"quoted" `template`' }],
+        postData: { mimeType: 'text/plain', text: "line one\nline 'two' `three`" },
+      },
+    });
+
+    expect(snippet).toContain('https://example.test/quote\'s');
+    expect(snippet).toContain('\\"quoted\\" `template`');
+    expect(snippet).toContain('body: "line one\\nline \'two\' `three`"');
   });
 });

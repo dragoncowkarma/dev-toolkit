@@ -7,6 +7,7 @@ import {
   getTimelineBounds,
   parseHar,
   toCurlCommand,
+  toFetchSnippet,
 } from './har.utils.js';
 import { useCopyFeedback } from '../../hooks/useCopyFeedback.js';
 import './har.css';
@@ -149,7 +150,7 @@ export default function HarTool() {
   const [selectedId, setSelectedId] = useState(null);
   const [dragging, setDragging] = useState(false);
   const [copyError, setCopyError] = useState('');
-  const [copied, showCopied] = useCopyFeedback({ initialValue: false, resetValue: false });
+  const [copiedFormat, showCopiedFormat] = useCopyFeedback({ initialValue: null });
   const fileInputRef = useRef(null);
 
   const overview = useMemo(() => getOverview(har?.entries ?? []), [har]);
@@ -200,13 +201,19 @@ export default function HarTool() {
     }
   }
 
-  async function copyAsCurl(entry) {
+  async function copyRequest(format) {
+    if (!selectedEntry) return;
+
+    const snippet = format === 'fetch'
+      ? toFetchSnippet(selectedEntry)
+      : toCurlCommand(selectedEntry);
+
     try {
-      await navigator.clipboard.writeText(toCurlCommand(entry));
-      showCopied(true);
+      await navigator.clipboard.writeText(snippet);
+      showCopiedFormat(format);
       setCopyError('');
     } catch {
-      setCopyError('Failed to copy to clipboard.');
+      setCopyError(`Failed to copy ${format === 'fetch' ? 'fetch snippet' : 'cURL command'}.`);
     }
   }
 
@@ -443,24 +450,35 @@ export default function HarTool() {
           {selectedEntry && (
             <section className="har-inspector" aria-label="Request inspector">
               <div className="har-inspector__heading">
-                <h3>
-                  {selectedEntry.request.method} {selectedEntry.request.url}
-                </h3>
-                <span>
-                  {selectedEntry.resourceType} · {selectedEntry.response.status || 'No status'}
-                </span>
-                <button
-                  type="button"
-                  className="har-button har-button--quiet"
-                  onClick={() => copyAsCurl(selectedEntry)}
-                >
-                  {copied ? '✓ Copied' : 'Copy as cURL'}
-                </button>
-                {copied && (
-                  <div className="sr-only" role="status" aria-live="polite">
-                    Copied to clipboard
-                  </div>
-                )}
+                <div>
+                  <h3>
+                    {selectedEntry.request.method} {selectedEntry.request.url}
+                  </h3>
+                  <span>
+                    {selectedEntry.resourceType} · {selectedEntry.response.status || 'No status'}
+                  </span>
+                </div>
+                <div className="har-inspector__actions">
+                  <button
+                    className="har-button har-button--quiet"
+                    type="button"
+                    onClick={() => copyRequest('curl')}
+                  >
+                    {copiedFormat === 'curl' ? '✓ Copied' : 'Copy as cURL'}
+                  </button>
+                  <button
+                    className="har-button har-button--quiet"
+                    type="button"
+                    onClick={() => copyRequest('fetch')}
+                  >
+                    {copiedFormat === 'fetch' ? '✓ Copied' : 'Copy as fetch'}
+                  </button>
+                  {copiedFormat && (
+                    <span className="sr-only" role="status" aria-live="polite">
+                      Copied {copiedFormat === 'fetch' ? 'fetch snippet' : 'cURL command'}
+                    </span>
+                  )}
+                </div>
               </div>
               {copyError && <div className="har-error" role="alert">{copyError}</div>}
               <div className="har-inspector__grid">

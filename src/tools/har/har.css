@@ -374,6 +374,12 @@
   font-size: 0.85rem;
 }
 
+.har-inspector__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
 .har-inspector__grid {
   display: grid;
   grid-template-columns: 1fr;
