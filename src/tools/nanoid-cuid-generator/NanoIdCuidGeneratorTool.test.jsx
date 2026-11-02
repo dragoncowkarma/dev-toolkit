@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import NanoIdCuidGenerator from './NanoIdCuidGenerator.jsx';
+import NanoIdCuidGenerator from './NanoIdCuidGeneratorTool.jsx';
 
 afterEach(() => {
   cleanup();
