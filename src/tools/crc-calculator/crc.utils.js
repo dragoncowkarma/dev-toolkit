@@ -11,6 +11,15 @@ export function textToBytes(text) {
 }
 
 /**
+ * Largest file accepted by the CRC calculator.
+ *
+ * Each uploaded byte is processed synchronously by three bit-at-a-time CRC
+ * algorithms. Keeping uploads to 256 KB bounds that work before reading the
+ * file into memory and avoids a multi-second main-thread stall on large files.
+ */
+export const MAX_INPUT_BYTES = 256 * 1024;
+
+/**
  * Calculates CRC-8 using polynomial 0x07, initial value 0x00, and no reflection.
  * @param {Uint8Array} bytes
  * @returns {number}
@@ -74,6 +83,11 @@ export function formatChecksum(checksum, width) {
  * @returns {Promise<Uint8Array>}
  */
 export function fileToBytes(file) {
+  if (file.size > MAX_INPUT_BYTES) {
+    throw new Error(
+      `File is too large. Choose a file up to ${formatFileSize(MAX_INPUT_BYTES)}.`
+    );
+  }
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(new Uint8Array(/** @type {ArrayBuffer} */ (reader.result)));
