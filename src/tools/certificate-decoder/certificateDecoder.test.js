@@ -200,6 +200,55 @@ function withExtensions(der, mapExtension) {
   );
 }
 
+/**
+ * Rebuilds the certificate with every attribute type OID in the first issuer
+ * RDN re-encoded with a leading `80` base-128 group, re-encoding the RDN SET,
+ * the issuer Name and both enclosing SEQUENCE lengths. The padded OID decodes
+ * to the same arcs, so only its canonical form differs.
+ */
+function withNonMinimalIssuerOid(der) {
+  const certificate = parseAsn1(der);
+  const tbs = certificate.children[0];
+  const issuerIndex = tbsVersionFields(der) + 2;
+  const issuer = tbs.children[issuerIndex];
+  const rdns = issuer.children.map((rdn, rdnIndex) => {
+    if (rdnIndex !== 0) return rdn.raw;
+    const attributes = rdn.children.map((attribute) => {
+      const [type, value] = attribute.children;
+      const padded = encodeTlv(
+        ASN1_TAG.OBJECT_IDENTIFIER,
+        concatBytes([Uint8Array.from([0x80]), type.content]),
+      );
+      return encodeSequence(concatBytes([padded, value.raw]));
+    });
+    return encodeTlv(0x31, concatBytes(attributes));
+  });
+  const fields = tbs.children.map((field, index) =>
+    index === issuerIndex ? encodeSequence(concatBytes(rdns)) : field.raw,
+  );
+  return encodeSequence(
+    concatBytes([
+      encodeSequence(concatBytes(fields)),
+      certificate.children[1].raw,
+      certificate.children[2].raw,
+    ]),
+  );
+}
+
+/** Rebuilds the sample certificate with `value` as the basicConstraints extnValue. */
+function withBasicConstraintsValue(der, value) {
+  return withExtensions(der, (extension) => {
+    if (extensionOid(extension) !== '2.5.29.19') return null;
+    return encodeSequence(
+      concatBytes([
+        extension.children[0].raw,
+        extension.children[1].raw,
+        encodeTlv(ASN1_TAG.OCTET_STRING, value),
+      ]),
+    );
+  });
+}
+
 /** Reads an `Extension`'s `extnID` so a mutation can target one extension. */
 function extensionOid(extension) {
   return decodeOid(extension.children[0].content);
@@ -273,6 +322,23 @@ describe('decodeOid', () => {
   it('rejects empty and truncated encodings', () => {
     expect(() => decodeOid(Uint8Array.from([]))).toThrow('is empty');
     expect(() => decodeOid(Uint8Array.from([0x55, 0x81]))).toThrow('truncated');
+  });
+
+  it('rejects a base-128 group padded with a leading zero payload octet', () => {
+    // `80 55 04 06` decodes to the same arcs as the canonical `55 04 06`, so
+    // only the non-minimal encoding distinguishes the two.
+    expect(() => decodeOid(Uint8Array.from([0x80, 0x55, 0x04, 0x06]))).toThrow(
+      'is not minimally encoded',
+    );
+    // A subidentifier after the first is held to the same rule.
+    expect(() => decodeOid(Uint8Array.from([0x55, 0x80, 0x04]))).toThrow(
+      'is not minimally encoded',
+    );
+    // A lone `80` is a padded group that never terminates.
+    expect(() => decodeOid(Uint8Array.from([0x80]))).toThrow('is not minimally encoded');
+    // `81 00` is a legitimate 128 and `86 48` a legitimate continuation.
+    expect(decodeOid(Uint8Array.from([0x55, 0x81, 0x00]))).toBe('2.5.128');
+    expect(decodeOid(Uint8Array.from([0x2a, 0x86, 0x48]))).toBe('1.2.840');
   });
 });
 
@@ -1069,6 +1135,67 @@ describe('parseCertificate error handling', () => {
       'The basicConstraints CA flag is not a valid DER BOOLEAN',
     );
     expect(decodeOne(toPemFromDer(mutated)).error).toMatch('CA flag is not a valid DER BOOLEAN');
+  });
+
+  it('rejects an issuer attribute OID with a non-minimal base-128 group', () => {
+    const mutated = withNonMinimalIssuerOid(sampleDer);
+    expect(() => parseCertificate(mutated)).toThrow(
+      'An OBJECT IDENTIFIER subidentifier is not minimally encoded',
+    );
+    const entry = decodeOne(toPemFromDer(mutated));
+    expect(entry.certificate).toBeUndefined();
+    expect(entry.error).toMatch('is not minimally encoded');
+  });
+
+  it('rejects basicConstraints carrying a surplus field after cA', () => {
+    const mutated = withBasicConstraintsValue(
+      sampleDer,
+      encodeSequence(
+        concatBytes([
+          Uint8Array.from([ASN1_TAG.BOOLEAN, 0x01, 0xff]),
+          Uint8Array.from([ASN1_TAG.NULL, 0x00]),
+        ]),
+      ),
+    );
+    expect(() => parseCertificate(mutated)).toThrow(
+      'The basicConstraints extension is not exactly an optional cA BOOLEAN',
+    );
+    const entry = decodeOne(toPemFromDer(mutated));
+    expect(entry.certificate).toBeUndefined();
+    expect(entry.error).toMatch('not exactly an optional cA BOOLEAN');
+  });
+
+  it('rejects basicConstraints with a duplicated cA BOOLEAN', () => {
+    const mutated = withBasicConstraintsValue(
+      sampleDer,
+      encodeSequence(Uint8Array.from([ASN1_TAG.BOOLEAN, 0x01, 0xff, ASN1_TAG.BOOLEAN, 0x01, 0xff])),
+    );
+    expect(() => parseCertificate(mutated)).toThrow(
+      'followed by an optional pathLenConstraint INTEGER',
+    );
+    expect(decodeOne(toPemFromDer(mutated)).error).toMatch('pathLenConstraint INTEGER');
+  });
+
+  it('rejects basicConstraints whose pathLenConstraint precedes cA', () => {
+    const mutated = withBasicConstraintsValue(
+      sampleDer,
+      encodeSequence(Uint8Array.from([ASN1_TAG.INTEGER, 0x01, 0x00, ASN1_TAG.BOOLEAN, 0x01, 0xff])),
+    );
+    expect(() => parseCertificate(mutated)).toThrow(
+      'The basicConstraints extension is not exactly an optional cA BOOLEAN',
+    );
+    expect(decodeOne(toPemFromDer(mutated)).error).toMatch('not exactly an optional cA BOOLEAN');
+  });
+
+  it('accepts basicConstraints carrying cA followed by pathLenConstraint', () => {
+    const mutated = withBasicConstraintsValue(
+      sampleDer,
+      encodeSequence(Uint8Array.from([ASN1_TAG.BOOLEAN, 0x01, 0xff, ASN1_TAG.INTEGER, 0x01, 0x03])),
+    );
+    expect(parseCertificate(mutated).extensions.basicConstraints).toEqual({
+      isCa: true,
+      pathLength: 3,
+    });
   });
 
   it('rejects an Extension carrying a fourth field after extnValue', () => {

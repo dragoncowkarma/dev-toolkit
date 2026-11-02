@@ -381,7 +381,8 @@ function expectUniversal(node, tagNumber, label) {
  *
  * @param {Uint8Array} content Content octets of the OID element.
  * @returns {string} Dotted-decimal OID.
- * @throws {Error} When the encoding is truncated or an arc is unrepresentable.
+ * @throws {Error} When the encoding is truncated, non-minimal, or an arc is
+ *   unrepresentable.
  */
 export function decodeOid(content) {
   if (content.length === 0) {
@@ -393,6 +394,13 @@ export function decodeOid(content) {
   let pending = false;
 
   for (const byte of content) {
+    // X.690 §8.19.2: every subidentifier uses the shortest base-128 form, so a
+    // group may never start with a continuation octet whose payload is zero.
+    // Without this check `80 55 04 06` decodes as the valid `55 04 06`, letting
+    // a non-canonical certificate present itself as a normal one.
+    if (!pending && byte === 0x80) {
+      throw new Error('An OBJECT IDENTIFIER subidentifier is not minimally encoded.');
+    }
     value = value * 128 + (byte & 0x7f);
     pending = true;
     if (!Number.isSafeInteger(value)) {
@@ -855,15 +863,30 @@ function parseSubjectAltNames(content) {
 function parseBasicConstraints(content) {
   const constraints = parseAsn1(content);
   expectUniversal(constraints, ASN1_TAG.SEQUENCE, 'The basicConstraints extension');
+  const fields = constraints.children;
+  let cursor = 0;
   let isCa = false;
   let pathLength = null;
 
-  for (const child of constraints.children) {
-    if (isUniversal(child, ASN1_TAG.BOOLEAN)) {
-      isCa = decodeAsn1Boolean(child, 'The basicConstraints CA flag');
-    } else if (isUniversal(child, ASN1_TAG.INTEGER)) {
-      pathLength = decodeSmallInteger(child, 'The basicConstraints path length');
-    }
+  // RFC 5280 §4.2.1.9: BasicConstraints is exactly an optional `cA` BOOLEAN
+  // followed by an optional `pathLenConstraint` INTEGER. Scanning for known
+  // tags instead would accept duplicates, a reversed order, and arbitrary
+  // surplus fields such as a trailing NULL, all while still reporting `cA`.
+  if (isUniversal(fields[cursor], ASN1_TAG.BOOLEAN)) {
+    isCa = decodeAsn1Boolean(fields[cursor], 'The basicConstraints CA flag');
+    cursor += 1;
+  }
+
+  if (isUniversal(fields[cursor], ASN1_TAG.INTEGER)) {
+    pathLength = decodeSmallInteger(fields[cursor], 'The basicConstraints path length');
+    cursor += 1;
+  }
+
+  if (cursor !== fields.length) {
+    throw new Error(
+      'The basicConstraints extension is not exactly an optional cA BOOLEAN ' +
+        'followed by an optional pathLenConstraint INTEGER.',
+    );
   }
 
   return { isCa, pathLength };
