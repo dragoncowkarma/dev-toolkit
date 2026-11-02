@@ -183,22 +183,45 @@ function escapeRegExpLiteral(segment) {
 const UNRESERVED_CHAR = /^[A-Za-z0-9\-._~]$/;
 
 /**
- * Normalizes percent-encoded octets in a path or path-pattern so semantically-identical forms
- * compare equal, per RFC 9309 §2.2.2 (which defers to RFC 3986 §2.3/§6.2.2.2): a `%XX` escape
- * that decodes to an RFC 3986 "unreserved" character is folded back to that literal character
- * (so `%69` and `i` compare equal); every other escape - reserved characters such as `%2F`
- * (which must stay distinct from a literal `/` path separator), non-ASCII bytes, and malformed
- * `%` sequences - is left as-is, only with its hex digits upper-cased for a stable comparison
- * form. This intentionally decodes octet-by-octet rather than as UTF-8: non-ASCII bytes never
- * match `UNRESERVED_CHAR`, so multi-byte sequences safely pass through unchanged.
+ * Normalizes percent-encoded octets - and literal non-ASCII characters - in a path or
+ * path-pattern so semantically-identical forms compare equal, per RFC 9309 §2.2.2 (which defers
+ * to RFC 3986 §2.3/§6.2.2.2 for escaped octets and to RFC 3986 §2.5 for non-ASCII characters,
+ * both of which RFC 9309 requires to be percent-encoded before comparison).
+ *
+ * This runs in two passes:
+ * 1. Every existing `%XX` escape that decodes to an RFC 3986 "unreserved" character is folded
+ *    back to that literal character (so `%69` and `i` compare equal); every other escape -
+ *    reserved characters such as `%2F` (which must stay distinct from a literal `/` path
+ *    separator), non-ASCII bytes, and malformed `%` sequences - is left as-is, only with its hex
+ *    digits upper-cased for a stable comparison form.
+ * 2. Any literal character left over from step 1 that is not ASCII (e.g. a literal `é` typed
+ *    directly into a `Disallow` value) is encoded to its UTF-8 byte sequence and each byte
+ *    written as an upper-cased `%XX` escape, so it lines up with how a URI path would already
+ *    carry that character (e.g. `/caf%C3%A9`). Iterating by code point (rather than UTF-16 code
+ *    unit) keeps surrogate pairs - characters outside the Basic Multilingual Plane - intact.
+ *
+ * Because step 1 only ever produces ASCII output (either a folded unreserved character or an
+ * upper-cased `%XX` escape, both of which are ASCII text), step 2 never re-touches anything step
+ * 1 already normalized - so a literal `/café` and an already-escaped `/caf%C3%A9` converge on
+ * the same `/caf%C3%A9` representation.
  * @param {string} value Raw path or path-pattern value.
- * @returns {string} The value with safe percent-escapes decoded and the rest normalized.
+ * @returns {string} The value with percent-escapes and non-ASCII characters normalized to one
+ *   upper-cased, percent-encoded-octet comparison form.
  */
 function normalizePercentEncoding(value) {
-  return value.replace(/%([0-9A-Fa-f]{2})/g, (match, hex) => {
+  const decoded = value.replace(/%([0-9A-Fa-f]{2})/g, (match, hex) => {
     const char = String.fromCharCode(parseInt(hex, 16));
     return UNRESERVED_CHAR.test(char) ? char : `%${hex.toUpperCase()}`;
   });
+
+  return Array.from(decoded)
+    .map((char) => {
+      if (char.codePointAt(0) <= 0x7f) return char;
+      return Array.from(new TextEncoder().encode(char))
+        .map((byte) => `%${byte.toString(16).toUpperCase().padStart(2, '0')}`)
+        .join('');
+    })
+    .join('');
 }
 
 /**

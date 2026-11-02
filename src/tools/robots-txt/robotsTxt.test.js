@@ -340,6 +340,19 @@ describe('evaluatePath percent-encoding normalization', () => {
     expect(result.verdict).toBe('ALLOWED');
   });
 
+  it('matches a literal non-ASCII rule path against its percent-encoded UTF-8 equivalent', () => {
+    const { groups } = parseRobotsTxt([
+      'User-agent: *',
+      'Disallow: /café',
+    ].join('\n'));
+
+    // "é" is U+00E9, whose UTF-8 encoding is the two octets 0xC3 0xA9, so a URI path that spells
+    // it as "%C3%A9" must still be caught by the literal, unescaped rule above.
+    const result = evaluatePath(groups, { userAgent: '*', path: '/caf%C3%A9' });
+    expect(result.verdict).toBe('DISALLOWED');
+    expect(result.matchedRule).toEqual({ type: 'disallow', value: '/café', line: 2 });
+  });
+
   it('implicitly allows /robots.txt even under a blanket Disallow: /', () => {
     const { groups } = parseRobotsTxt([
       'User-agent: *',
