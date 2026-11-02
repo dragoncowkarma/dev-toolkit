@@ -706,6 +706,13 @@ export function parseName(node, label = 'A distinguished name') {
       if (!attribute.children || attribute.children.length < 2) {
         throw new Error(`${label} attribute is missing its type or value.`);
       }
+      // X.501 defines AttributeTypeAndValue as exactly `{ type, value }`. Reading
+      // the first two children and ignoring the rest would let arbitrary surplus
+      // fields ride along inside an attribute whose type and value still decode,
+      // so the exact arity is required here rather than a lower bound.
+      if (attribute.children.length > 2) {
+        throw new Error(`${label} attribute has more fields than its type and value.`);
+      }
       const oid = readOid(attribute.children[0], `${label} attribute type`);
       const valueNode = attribute.children[1];
       const descriptor = DN_ATTRIBUTES[oid];
@@ -895,6 +902,7 @@ function parseBasicConstraints(content) {
 function parseExtensions(node) {
   expectUniversal(node, ASN1_TAG.SEQUENCE, 'The certificate extensions');
   const all = [];
+  const seenOids = new Set();
   let subjectAltNames = [];
   let basicConstraints = null;
 
@@ -919,6 +927,15 @@ function parseExtensions(node) {
     if (cursor !== extension.children.length) {
       throw new Error(`Extension ${oid} has more fields than an X.509 extension allows.`);
     }
+
+    // RFC 5280 §4.2: "A certificate MUST NOT include more than one instance of a
+    // particular extension." A duplicate is not merely cosmetic — the last copy
+    // of a known extension would win below, so the displayed subject
+    // alternative names or basic constraints would depend on encoding order.
+    if (seenOids.has(oid)) {
+      throw new Error(`Extension ${oid} appears more than once.`);
+    }
+    seenOids.add(oid);
 
     all.push({ oid, name: EXTENSION_NAMES[oid] ?? null, critical });
 
