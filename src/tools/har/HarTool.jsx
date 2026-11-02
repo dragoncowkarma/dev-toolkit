@@ -8,6 +8,7 @@ import {
   parseHar,
   toCurlCommand,
   toFetchSnippet,
+  toHttpieCommand,
 } from './har.utils.js';
 import { useCopyFeedback } from '../../hooks/useCopyFeedback.js';
 import './har.css';
@@ -206,14 +207,21 @@ export default function HarTool() {
 
     const snippet = format === 'fetch'
       ? toFetchSnippet(selectedEntry)
-      : toCurlCommand(selectedEntry);
+      : format === 'httpie'
+        ? toHttpieCommand(selectedEntry)
+        : toCurlCommand(selectedEntry);
 
     try {
       await navigator.clipboard.writeText(snippet);
       showCopiedFormat(format);
       setCopyError('');
     } catch {
-      setCopyError(`Failed to copy ${format === 'fetch' ? 'fetch snippet' : 'cURL command'}.`);
+      const formatName = format === 'fetch'
+        ? 'fetch snippet'
+        : format === 'httpie'
+          ? 'HTTPie command'
+          : 'cURL command';
+      setCopyError(`Failed to copy ${formatName}.`);
     }
   }
 
@@ -473,9 +481,20 @@ export default function HarTool() {
                   >
                     {copiedFormat === 'fetch' ? '✓ Copied' : 'Copy as fetch'}
                   </button>
+                  <button
+                    className="har-button har-button--quiet"
+                    type="button"
+                    onClick={() => copyRequest('httpie')}
+                  >
+                    {copiedFormat === 'httpie' ? '✓ Copied' : 'Copy as HTTPie'}
+                  </button>
                   {copiedFormat && (
                     <span className="sr-only" role="status" aria-live="polite">
-                      Copied {copiedFormat === 'fetch' ? 'fetch snippet' : 'cURL command'}
+                      Copied {copiedFormat === 'fetch'
+                        ? 'fetch snippet'
+                        : copiedFormat === 'httpie'
+                          ? 'HTTPie command'
+                          : 'cURL command'}
                     </span>
                   )}
                 </div>

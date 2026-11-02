@@ -196,3 +196,40 @@ describe('HarTool Copy as fetch', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Failed to copy fetch snippet.');
   });
 });
+
+describe('HarTool Copy as HTTPie', () => {
+  it('copies an HTTPie command for the selected request', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    render(<HarTool />);
+
+    fireEvent.change(screen.getByLabelText('Paste raw HAR JSON'), { target: { value: harText } });
+    fireEvent.click(screen.getByRole('button', { name: 'Analyze HAR' }));
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy as HTTPie' }));
+    });
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    expect(writeText).toHaveBeenCalledWith(expect.stringContaining('http POST'));
+    expect(screen.getByRole('status')).toHaveTextContent('Copied HTTPie command');
+  });
+
+  it('reports an HTTPie copy failure when the clipboard write is denied', async () => {
+    Object.assign(navigator, {
+      clipboard: { writeText: vi.fn().mockRejectedValue(new Error('denied')) },
+    });
+
+    render(<HarTool />);
+
+    fireEvent.change(screen.getByLabelText('Paste raw HAR JSON'), { target: { value: harText } });
+    fireEvent.click(screen.getByRole('button', { name: 'Analyze HAR' }));
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy as HTTPie' }));
+    });
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Failed to copy HTTPie command.');
+  });
+});

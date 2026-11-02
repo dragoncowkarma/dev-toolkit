@@ -262,6 +262,66 @@ export function toCurlCommand(entry) {
 }
 
 /**
+ * Builds an equivalent HTTPie command for a normalized HAR entry.
+ * @param {object} entry
+ * @returns {string}
+ */
+export function toHttpieCommand(entry) {
+  const request = entry?.request ?? {};
+  const method = String(request.method ?? 'GET').toUpperCase();
+  const url = String(request.url ?? '');
+  const headers = Array.isArray(request.headers)
+    ? request.headers.filter((header) => header?.name)
+    : [];
+  const postData = request.postData ?? {};
+  const body = typeof postData.text === 'string' ? postData.text : null;
+  const parts = ['http'];
+
+  if (method !== 'GET') {
+    parts.push(formatHttpieMethod(method));
+  }
+  parts.push(toShellSingleQuoted(url));
+
+  if (body !== null && postData.mimeType && !hasHeader(headers, 'content-type')) {
+    headers.push({ name: 'Content-Type', value: String(postData.mimeType) });
+  }
+
+  headers.forEach(({ name, value }) => {
+    parts.push(toShellSingleQuoted(`${name}:${value ?? ''}`));
+  });
+
+  const jsonArguments = getHttpieJsonArguments(body, postData.mimeType);
+  if (jsonArguments) {
+    parts.push(...jsonArguments.map(toShellSingleQuoted));
+  } else if (body !== null) {
+    parts.push('--raw', toShellSingleQuoted(body));
+  }
+
+  return parts.join(' ');
+}
+
+function formatHttpieMethod(method) {
+  return /^[!#$%&*+.^_`|~0-9A-Z-]+$/.test(method)
+    ? method
+    : toShellSingleQuoted(method);
+}
+
+function getHttpieJsonArguments(body, mimeType) {
+  if (body === null || !/json/i.test(mimeType ?? '')) return null;
+
+  try {
+    const parsed = JSON.parse(body);
+    if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') return null;
+
+    return Object.entries(parsed).map(([key, value]) => (
+      typeof value === 'string' ? `${key}=${value}` : `${key}:=${JSON.stringify(value)}`
+    ));
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Formats a byte count for the interface.
  * @param {number} bytes
  * @returns {string}
