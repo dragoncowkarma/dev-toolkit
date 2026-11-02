@@ -9,6 +9,7 @@ import {
   toCurlCommand,
   toFetchSnippet,
   toHttpieCommand,
+  toPythonRequestsSnippet,
 } from './har.utils.js';
 import { useCopyFeedback } from '../../hooks/useCopyFeedback.js';
 import './har.css';
@@ -209,6 +210,8 @@ export default function HarTool() {
       ? toFetchSnippet(selectedEntry)
       : format === 'httpie'
         ? toHttpieCommand(selectedEntry)
+        : format === 'python'
+          ? toPythonRequestsSnippet(selectedEntry)
         : toCurlCommand(selectedEntry);
 
     try {
@@ -220,6 +223,8 @@ export default function HarTool() {
         ? 'fetch snippet'
         : format === 'httpie'
           ? 'HTTPie command'
+          : format === 'python'
+            ? 'Python snippet'
           : 'cURL command';
       setCopyError(`Failed to copy ${formatName}.`);
     }
@@ -488,12 +493,21 @@ export default function HarTool() {
                   >
                     {copiedFormat === 'httpie' ? '✓ Copied' : 'Copy as HTTPie'}
                   </button>
+                  <button
+                    className="har-button har-button--quiet"
+                    type="button"
+                    onClick={() => copyRequest('python')}
+                  >
+                    {copiedFormat === 'python' ? '✓ Copied' : 'Copy as Python'}
+                  </button>
                   {copiedFormat && (
                     <span className="sr-only" role="status" aria-live="polite">
                       Copied {copiedFormat === 'fetch'
                         ? 'fetch snippet'
                         : copiedFormat === 'httpie'
                           ? 'HTTPie command'
+                          : copiedFormat === 'python'
+                            ? 'Python snippet'
                           : 'cURL command'}
                     </span>
                   )}
