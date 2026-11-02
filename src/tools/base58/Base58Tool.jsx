@@ -5,8 +5,9 @@ import {
   encodeToBase58,
   encodeToBase58Check,
   fileToBase58,
+  formatExactSize,
   formatFileSize,
-  MAX_FILE_SIZE,
+  MAX_INPUT_BYTES,
 } from './base58.utils.js';
 import './base58.css';
 
@@ -46,10 +47,15 @@ export default function Base58Tool() {
   const [copied, setCopied] = useState(false);
 
   const fileInputRef = useRef(null);
+  const skipEmptyInputResetRef = useRef(false);
 
   useEffect(() => {
     if (file) return;
     if (input === '') {
+      if (skipEmptyInputResetRef.current) {
+        skipEmptyInputResetRef.current = false;
+        return;
+      }
       setOutput('');
       setError('');
       setNotice('');
@@ -270,13 +276,15 @@ export default function Base58Tool() {
   function handleFileChange(event) {
     const selected = event.target.files?.[0];
     if (!selected) return;
-    if (selected.size > MAX_FILE_SIZE) {
+    if (selected.size > MAX_INPUT_BYTES) {
+      skipEmptyInputResetRef.current = true;
       setFile(null);
       setInput('');
       setOutput('');
       setError(
-        'File is too large for Base58 (max 16 KB). ' +
-          'Base58 is intended for short payloads such as addresses and keys.'
+        `File is ${formatExactSize(selected.size)}, which exceeds the ` +
+          `${formatExactSize(MAX_INPUT_BYTES)} Base58 limit. Base58 is intended for ` +
+          'short identifiers and keys (e.g. addresses, public keys), not large payloads.'
       );
       setNotice('');
       setNoticeType('info');
