@@ -353,7 +353,7 @@ describe('evaluatePath percent-encoding normalization', () => {
     expect(result.matchedRule).toEqual({ type: 'disallow', value: '/café', line: 2 });
   });
 
-  it('ranks a wildcard pattern with a non-ASCII literal by octets, not by the expanded escape\'s character length', () => {
+  it('ranks a non-ASCII wildcard pattern by octets, not by expanded escape length', () => {
     const { groups } = parseRobotsTxt([
       'User-agent: *',
       'Disallow: /*é',
