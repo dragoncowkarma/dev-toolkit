@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   decodeCertificates,
   formatDuration,
@@ -14,6 +14,9 @@ const STATUS_LABELS = {
   invalid: 'Parse error',
 };
 
+/** How often a decoded card re-reads the clock, so the status stays current. */
+const VALIDITY_TICK_MS = 1000;
+
 /**
  * Renders a browser-only PEM/X.509 certificate inspector.
  *
@@ -21,8 +24,8 @@ const STATUS_LABELS = {
  */
 export default function CertificateDecoderTool() {
   const [input, setInput] = useState('');
-  // Captured once per input change so every card in a chain is compared against
-  // the same instant instead of drifting between renders.
+  // One instant shared by every card in a chain, so the cards never disagree
+  // about "now" the way a per-render `Date.now()` would.
   const [referenceTime, setReferenceTime] = useState(() => Date.now());
 
   const result = useMemo(() => {
@@ -33,6 +36,19 @@ export default function CertificateDecoderTool() {
       return { state: 'invalid', error: error.message };
     }
   }, [input]);
+
+  const isDecoded = result.state === 'decoded';
+
+  // The badge is presented as current-time status, so it has to keep moving: a
+  // card left open must cross Valid into Expired, or Not yet valid into Valid,
+  // without the user touching the textarea. A single interval drives the whole
+  // chain and is cleared whenever the decoded state ends or the tool unmounts.
+  useEffect(() => {
+    if (!isDecoded) return undefined;
+    setReferenceTime(Date.now());
+    const timer = setInterval(() => setReferenceTime(Date.now()), VALIDITY_TICK_MS);
+    return () => clearInterval(timer);
+  }, [isDecoded]);
 
   function handleInputChange(event) {
     setInput(event.target.value);
