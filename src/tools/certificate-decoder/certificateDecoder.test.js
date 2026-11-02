@@ -235,6 +235,54 @@ function withNonMinimalIssuerOid(der) {
   );
 }
 
+/**
+ * Rebuilds the certificate with its first `Extension` emitted twice inside the
+ * same `[3]` wrapper, re-encoding only the enclosing DER lengths. Both copies
+ * are byte-identical, so the only defect is the repeated `extnID`.
+ */
+function withDuplicatedFirstExtension(der) {
+  let duplicated = false;
+  return withExtensions(der, (extension) => {
+    if (duplicated) return null;
+    duplicated = true;
+    return concatBytes([extension.raw, extension.raw]);
+  });
+}
+
+/**
+ * Rebuilds the certificate with one surplus `NULL` appended to the first issuer
+ * `AttributeTypeAndValue`, re-encoding the RDN SET, the issuer Name and both
+ * enclosing SEQUENCE lengths. Its type and value are untouched, so the only
+ * defect is the extra field.
+ */
+function withSurplusIssuerAttributeField(der) {
+  const certificate = parseAsn1(der);
+  const tbs = certificate.children[0];
+  const issuerIndex = tbsVersionFields(der) + 2;
+  const issuer = tbs.children[issuerIndex];
+  const rdns = issuer.children.map((rdn, rdnIndex) => {
+    if (rdnIndex !== 0) return rdn.raw;
+    return encodeTlv(
+      0x31,
+      concatBytes(
+        rdn.children.map((attribute, index) =>
+          index === 0 ? withSurplusField(attribute) : attribute.raw,
+        ),
+      ),
+    );
+  });
+  const fields = tbs.children.map((field, index) =>
+    index === issuerIndex ? encodeSequence(concatBytes(rdns)) : field.raw,
+  );
+  return encodeSequence(
+    concatBytes([
+      encodeSequence(concatBytes(fields)),
+      certificate.children[1].raw,
+      certificate.children[2].raw,
+    ]),
+  );
+}
+
 /** Rebuilds the sample certificate with `value` as the basicConstraints extnValue. */
 function withBasicConstraintsValue(der, value) {
   return withExtensions(der, (extension) => {
@@ -1145,6 +1193,40 @@ describe('parseCertificate error handling', () => {
     const entry = decodeOne(toPemFromDer(mutated));
     expect(entry.certificate).toBeUndefined();
     expect(entry.error).toMatch('is not minimally encoded');
+  });
+
+  it('rejects a repeated extension OID instead of letting the last copy win', () => {
+    const mutated = withDuplicatedFirstExtension(sampleDer);
+    const firstOid = extensionOid(tbsExtensionsField(sampleDer).children[0].children[0]);
+    expect(firstOid).toBe('2.5.29.14');
+    expect(() => parseCertificate(mutated)).toThrow(
+      'Extension 2.5.29.14 appears more than once',
+    );
+    const entry = decodeOne(toPemFromDer(mutated));
+    expect(entry.certificate).toBeUndefined();
+    expect(entry.error).toMatch('appears more than once');
+  });
+
+  it('rejects a repeated subjectAltName whose last copy would change the result', () => {
+    const duplicate = withExtensions(sampleDer, (extension) =>
+      extensionOid(extension) === '2.5.29.17'
+        ? concatBytes([extension.raw, extension.raw])
+        : null,
+    );
+    expect(() => parseCertificate(duplicate)).toThrow(
+      'Extension 2.5.29.17 appears more than once',
+    );
+    expect(decodeOne(toPemFromDer(duplicate)).error).toMatch('appears more than once');
+  });
+
+  it('rejects an issuer attribute carrying a surplus field after its value', () => {
+    const mutated = withSurplusIssuerAttributeField(sampleDer);
+    expect(() => parseCertificate(mutated)).toThrow(
+      'The issuer name attribute has more fields than its type and value',
+    );
+    const entry = decodeOne(toPemFromDer(mutated));
+    expect(entry.certificate).toBeUndefined();
+    expect(entry.error).toMatch('has more fields than its type and value');
   });
 
   it('rejects basicConstraints carrying a surplus field after cA', () => {
