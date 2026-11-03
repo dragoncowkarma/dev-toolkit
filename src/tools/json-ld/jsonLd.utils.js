@@ -60,6 +60,18 @@ export function extractJsonLdContent(input) {
   };
 }
 
+export const ENTITY_CONTAINER_KEYWORDS = new Set(['@graph', '@included']);
+
+/**
+ * Determines whether a JSON-LD property or keyword represents an entity container.
+ *
+ * @param {string} key - Property key to test.
+ * @returns {boolean} True if the key is a recognized entity container keyword.
+ */
+export function isEntityContainerKeyword(key) {
+  return ENTITY_CONTAINER_KEYWORDS.has(key);
+}
+
 function isIdReference(value, isNested) {
   if (!isNested || !isRecord(value) || !('@id' in value)) return false;
   return Object.keys(value).every((key) => key === '@id');
@@ -110,7 +122,7 @@ function inspectEntity(value, path, entities, issues, references = [], isNested 
 
   Object.entries(value).forEach(([key, child]) => {
     if (key !== '@context' && key !== '@type' && key !== '@id') {
-      const childIsNested = key !== '@graph' && key !== '@included';
+      const childIsNested = !isEntityContainerKeyword(key);
       inspectEntity(child, formatPath(path, key), entities, issues, references, childIsNested);
     }
   });

@@ -1,5 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { extractJsonLdContent, inspectJsonLd } from './jsonLd.utils.js';
+import {
+  ENTITY_CONTAINER_KEYWORDS,
+  extractJsonLdContent,
+  inspectJsonLd,
+  isEntityContainerKeyword,
+} from './jsonLd.utils.js';
+
+describe('isEntityContainerKeyword', () => {
+  it('recognizes only @graph and @included as entity container keywords', () => {
+    expect(Array.from(ENTITY_CONTAINER_KEYWORDS).sort()).toEqual(['@graph', '@included']);
+    expect(isEntityContainerKeyword('@graph')).toBe(true);
+    expect(isEntityContainerKeyword('@included')).toBe(true);
+    expect(isEntityContainerKeyword('@id')).toBe(false);
+    expect(isEntityContainerKeyword('@type')).toBe(false);
+    expect(isEntityContainerKeyword('@context')).toBe(false);
+    expect(isEntityContainerKeyword('@nest')).toBe(false);
+    expect(isEntityContainerKeyword('author')).toBe(false);
+  });
+});
 
 describe('extractJsonLdContent', () => {
   it('returns plain JSON-LD unchanged except for surrounding whitespace', () => {
@@ -359,6 +377,59 @@ describe('inspectJsonLd', () => {
         message:
           'Duplicate @id "https://example.com/#included-node" is already defined at ' +
           '$.@included[0].',
+      },
+    ]);
+  });
+
+  it('collects direct bare @id entries under root @graph and @included as entities', () => {
+    const result = inspectJsonLd(JSON.stringify({
+      '@context': 'https://schema.org',
+      '@graph': [
+        { '@id': 'https://example.com/#node-graph' },
+      ],
+      '@included': [
+        { '@id': 'https://example.com/#node-included' },
+      ],
+    }));
+
+    expect(result.entities).toEqual([
+      expect.objectContaining({ path: '$' }),
+      expect.objectContaining({ path: '$.@graph[0]', id: 'https://example.com/#node-graph' }),
+      expect.objectContaining({
+        path: '$.@included[0]',
+        id: 'https://example.com/#node-included',
+      }),
+    ]);
+    expect(result.issues).toEqual([]);
+  });
+
+  it('treats bare @id objects in ordinary nested properties as references in @included', () => {
+    const result = inspectJsonLd(JSON.stringify({
+      '@context': 'https://schema.org',
+      '@included': [
+        {
+          '@type': 'Article',
+          '@id': 'https://example.com/#article-1',
+          author: { '@id': 'https://example.com/#author-1' },
+          publisher: { '@id': 'https://example.com/#missing-org' },
+        },
+        {
+          '@id': 'https://example.com/#author-1',
+        },
+      ],
+    }));
+
+    expect(result.entities).toEqual([
+      expect.objectContaining({ path: '$' }),
+      expect.objectContaining({ path: '$.@included[0]', id: 'https://example.com/#article-1' }),
+      expect.objectContaining({ path: '$.@included[1]', id: 'https://example.com/#author-1' }),
+    ]);
+    expect(result.issues).toEqual([
+      {
+        severity: 'warning',
+        path: '$.@included[0].publisher',
+        message: 'Unresolved @id reference "https://example.com/#missing-org" does not match ' +
+          'any entity in this document.',
       },
     ]);
   });
