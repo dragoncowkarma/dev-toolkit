@@ -361,6 +361,18 @@ describe('toPythonRequestsSnippet', () => {
     expect(snippet).toContain('data="""line one\nline two"""');
   });
 
+  it('escapes trailing quotes in non-JSON request bodies', () => {
+    const snippet = toPythonRequestsSnippet({
+      request: {
+        method: 'POST',
+        url: 'https://example.test/quoted',
+        postData: { mimeType: 'text/plain', text: 'ends with a quote"' },
+      },
+    });
+
+    expect(snippet).toContain('data="""ends with a quote\\""""');
+  });
+
   it('keeps named non-pseudo headers and skips malformed header entries', () => {
     const snippet = toPythonRequestsSnippet({
       request: {

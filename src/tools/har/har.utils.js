@@ -445,7 +445,7 @@ function formatPythonDictionary(headers) {
 function formatPythonRequestBody(body, mimeType) {
   if (/json/i.test(String(mimeType ?? ''))) {
     try {
-      return `json=${formatPythonValue(JSON.parse(body))}`;
+      return `json=${formatPythonValue(JSON.parse(body), 1)}`;
     } catch {
       // A JSON content type with invalid text must retain the captured request body.
     }
@@ -478,6 +478,6 @@ function formatPythonValue(value, indentation = 0) {
 function escapePythonTripleQuotedString(value) {
   return String(value)
     .replace(/\\/g, '\\\\')
-    .replace(/"""/g, '\\"""')
+    .replace(/"/g, '\\"')
     .replace(/\r/g, '\\r');
 }
