@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DEFAULT_STOPS,
   addStop,
   generateCssGradient,
   normalizeHexForPicker,
@@ -34,14 +35,66 @@ describe('cssGradient.utils', () => {
       expect(validateColor('hsla(180, 50%, 50%, 0.8)')).toBe(true);
     });
 
-    it('validates named colors and transparent', () => {
-      expect(validateColor('transparent')).toBe(true);
-      expect(validateColor('red')).toBe(true);
-      expect(validateColor('blue')).toBe(true);
+    it('validates previously missing named colors like indigo, coral, rebeccapurple', () => {
+      expect(validateColor('indigo')).toBe(true);
+      expect(validateColor('coral')).toBe(true);
+      expect(validateColor('rebeccapurple')).toBe(true);
+      expect(validateColor('aliceblue')).toBe(true);
+      expect(validateColor('chartreuse')).toBe(true);
     });
 
-    it('rejects invalid color strings', () => {
+    it('validates named colors, currentcolor, and transparent case-insensitively', () => {
+      expect(validateColor('transparent')).toBe(true);
+      expect(validateColor('TRANSPARENT')).toBe(true);
+      expect(validateColor('currentColor')).toBe(true);
+      expect(validateColor('CURRENTCOLOR')).toBe(true);
+      expect(validateColor('REBECCAPURPLE')).toBe(true);
+      expect(validateColor('CoRaL')).toBe(true);
+    });
+
+    it('validates all standard CSS named colors systematically for completeness', () => {
+      const allKeywords = [
+        'aliceblue', 'antiquewhite', 'aqua', 'aquamarine', 'azure',
+        'beige', 'bisque', 'black', 'blanchedalmond', 'blue',
+        'blueviolet', 'brown', 'burlywood', 'cadetblue', 'chartreuse',
+        'chocolate', 'coral', 'cornflowerblue', 'cornsilk', 'crimson',
+        'currentcolor', 'cyan', 'darkblue', 'darkcyan', 'darkgoldenrod',
+        'darkgray', 'darkgreen', 'darkgrey', 'darkkhaki', 'darkmagenta',
+        'darkolivegreen', 'darkorange', 'darkorchid', 'darkred', 'darksalmon',
+        'darkseagreen', 'darkslateblue', 'darkslategray', 'darkslategrey', 'darkturquoise',
+        'darkviolet', 'deeppink', 'deepskyblue', 'dimgray', 'dimgrey',
+        'dodgerblue', 'firebrick', 'floralwhite', 'forestgreen', 'fuchsia',
+        'gainsboro', 'ghostwhite', 'gold', 'goldenrod', 'gray',
+        'green', 'greenyellow', 'grey', 'honeydew', 'hotpink',
+        'indianred', 'indigo', 'ivory', 'khaki', 'lavender',
+        'lavenderblush', 'lawngreen', 'lemonchiffon', 'lightblue', 'lightcoral',
+        'lightcyan', 'lightgoldenrodyellow', 'lightgray', 'lightgreen', 'lightgrey',
+        'lightpink', 'lightsalmon', 'lightseagreen', 'lightskyblue', 'lightslategray',
+        'lightslategrey', 'lightsteelblue', 'lightyellow', 'lime', 'limegreen',
+        'linen', 'magenta', 'maroon', 'mediumaquamarine', 'mediumblue',
+        'mediumorchid', 'mediumpurple', 'mediumseagreen', 'mediumslateblue', 'mediumspringgreen',
+        'mediumturquoise', 'mediumvioletred', 'midnightblue', 'mintcream', 'mistyrose',
+        'moccasin', 'navajowhite', 'navy', 'oldlace', 'olive',
+        'olivedrab', 'orange', 'orangered', 'orchid', 'palegoldenrod',
+        'palegreen', 'paleturquoise', 'palevioletred', 'papayawhip', 'peachpuff',
+        'peru', 'pink', 'plum', 'powderblue', 'purple',
+        'rebeccapurple', 'red', 'rosybrown', 'royalblue', 'saddlebrown',
+        'salmon', 'sandybrown', 'seagreen', 'seashell', 'sienna',
+        'silver', 'skyblue', 'slateblue', 'slategray', 'slategrey',
+        'snow', 'springgreen', 'steelblue', 'tan', 'teal',
+        'thistle', 'tomato', 'transparent', 'turquoise', 'violet',
+        'wheat', 'white', 'whitesmoke', 'yellow', 'yellowgreen',
+      ];
+
+      for (const kw of allKeywords) {
+        expect(validateColor(kw)).toBe(true);
+      }
+    });
+
+    it('rejects invalid color strings and unknown identifiers', () => {
       expect(validateColor('invalid-color')).toBe(false);
+      expect(validateColor('not-a-color')).toBe(false);
+      expect(validateColor('rebeccapurple-extra')).toBe(false);
       expect(validateColor('#12')).toBe(false);
       expect(validateColor('#12345')).toBe(false);
       expect(validateColor('rgba(300, 0, 0, 1)')).toBe(false);
@@ -213,6 +266,165 @@ describe('cssGradient.utils', () => {
     });
   });
 
+  describe('addStop collision-free insertion', () => {
+    it('inserts new stop at index 1 between 0 and 100 when adding to [0, 100, 100]', () => {
+      const repeatedStops = [
+        { id: 's1', color: '#ff0000', position: 0 },
+        { id: 's2', color: '#00ff00', position: 100 },
+        { id: 's3', color: '#0000ff', position: 100 },
+      ];
+      const updated = addStop(repeatedStops);
+      expect(updated.length).toBe(4);
+      // Spliced at index 1 after stop 1 (pos 0), not appended at array end
+      expect(updated[1].position).toBe(50);
+      expect(updated[1].color).toBe('#818cf8');
+      expect(updated[1].position).toBeGreaterThan(0);
+      expect(updated[1].position).toBeLessThan(100);
+      // Existing stops preserve their relative order
+      expect(updated[0].id).toBe('s1');
+      expect(updated[2].id).toBe('s2');
+      expect(updated[3].id).toBe('s3');
+    });
+
+    it('generates CSS gradient with ascending stops after adding to DEFAULT_STOPS', () => {
+      const updated = addStop(DEFAULT_STOPS);
+      expect(updated.length).toBe(4);
+      expect(updated.map((s) => Number(s.position))).toEqual([0, 25, 50, 100]);
+      const gradient = generateCssGradient({
+        type: 'linear',
+        angle: 90,
+        stops: updated,
+      });
+      expect(gradient.valid).toBe(true);
+      expect(gradient.css).toBe(
+        'linear-gradient(90deg, #6366f1 0%, #818cf8 25%, #a78bfa 50%, #34d399 100%)'
+      );
+    });
+
+    it('selects largest interval correctly for unsorted stops', () => {
+      const unsortedStops = [
+        { id: 's1', color: '#fff', position: 100 },
+        { id: 's2', color: '#000', position: 0 },
+        { id: 's3', color: '#888', position: 80 },
+      ];
+      const updated = addStop(unsortedStops);
+      // Largest interval is [0, 80] with midpoint 40; spliced after s2 (pos 0) at index 2
+      expect(updated[2].position).toBe(40);
+      expect(updated.map((s) => s.id)).toEqual(['s1', 's2', updated[2].id, 's3']);
+    });
+
+    it('applies stable tie-breaking when multiple max-width intervals exist', () => {
+      const tieStops = [
+        { id: 's1', color: '#111', position: 0 },
+        { id: 's2', color: '#222', position: 50 },
+        { id: 's3', color: '#333', position: 100 },
+      ];
+      const updated = addStop(tieStops);
+      // First max-width interval [0, 50] chosen; midpoint 25 spliced after s1 at index 1
+      expect(updated[1].position).toBe(25);
+      expect(updated.map((s) => s.id)).toEqual(['s1', updated[1].id, 's2', 's3']);
+    });
+
+    it('uses fallback position when all valid stop positions are identical', () => {
+      const all100Stops = [
+        { id: 's1', color: '#ff0000', position: 100 },
+        { id: 's2', color: '#00ff00', position: 100 },
+      ];
+      const updated100 = addStop(all100Stops);
+      // All valid positions are 100, fallback is 50, spliced before 100 at index 0
+      expect(updated100[0].position).toBe(50);
+      expect(updated100[1].id).toBe('s1');
+      expect(updated100[2].id).toBe('s2');
+
+      const all50Stops = [
+        { id: 's1', color: '#ff0000', position: 50 },
+        { id: 's2', color: '#00ff00', position: 50 },
+      ];
+      const updated50 = addStop(all50Stops);
+      expect(updated50[2].position).toBe(100);
+
+      const all0Stops = [
+        { id: 's1', color: '#ff0000', position: 0 },
+        { id: 's2', color: '#00ff00', position: 0 },
+      ];
+      const updated0 = addStop(all0Stops);
+      expect(updated0[2].position).toBe(100);
+    });
+
+    it('uses fallback position when no valid positions exist or stops array is empty', () => {
+      const emptyUpdated = addStop([]);
+      expect(emptyUpdated.length).toBe(1);
+      expect(emptyUpdated[0].position).toBe(50);
+
+      const invalidStops = [{ id: 's1', color: 'red', position: 'invalid' }];
+      const invalidUpdated = addStop(invalidStops);
+      expect(invalidUpdated.length).toBe(2);
+      expect(invalidUpdated[1].position).toBe(50);
+    });
+
+    it('guarantees position is strictly inside small integer intervals', () => {
+      const smallInterval = [
+        { id: 's1', color: '#111', position: 50 },
+        { id: 's2', color: '#222', position: 51 },
+      ];
+      const updated = addStop(smallInterval);
+      expect(updated[1].position).toBe(50.5);
+    });
+
+    it('places position strictly inside narrow intervals without endpoint duplication', () => {
+      const cases = [
+        {
+          stops: [
+            { id: 's1', color: '#111', position: 99.99 },
+            { id: 's2', color: '#222', position: 100 },
+          ],
+          start: 99.99,
+          end: 100,
+        },
+        {
+          stops: [
+            { id: 's1', color: '#111', position: 12.5 },
+            { id: 's2', color: '#222', position: 12.51 },
+          ],
+          start: 12.5,
+          end: 12.51,
+        },
+        {
+          stops: [
+            { id: 's1', color: '#111', position: 0 },
+            { id: 's2', color: '#222', position: 0.001 },
+            { id: 's3', color: '#333', position: 0.002 },
+          ],
+          start: 0,
+          end: 0.001,
+        },
+      ];
+
+      for (const { stops, start, end } of cases) {
+        const updated = addStop(stops);
+        const newStop = updated.find((s) => !stops.some((orig) => orig.id === s.id));
+        expect(newStop).toBeDefined();
+        const newPos = newStop.position;
+        expect(newPos).toBeGreaterThan(start);
+        expect(newPos).toBeLessThan(end);
+        for (const stop of stops) {
+          expect(newPos).not.toBe(stop.position);
+        }
+      }
+    });
+
+    it('preserves existing stops and their relative order', () => {
+      const initialStops = [
+        { id: 's1', color: '#ff0000', position: 100 },
+        { id: 's2', color: '#00ff00', position: 0 },
+      ];
+      const updated = addStop(initialStops);
+      expect(updated[0]).toEqual(initialStops[0]);
+      expect(updated[1]).toEqual(initialStops[1]);
+      expect(updated.length).toBe(3);
+    });
+  });
+
   describe('stop manipulation utilities', () => {
     const initialStops = [
       { id: 's1', color: '#ff0000', position: 0 },
@@ -222,8 +434,8 @@ describe('cssGradient.utils', () => {
     it('adds a stop with default values', () => {
       const updated = addStop(initialStops);
       expect(updated.length).toBe(3);
-      expect(updated[2].id).toBeTruthy();
-      expect(updated[2].color).toBe('#818cf8');
+      expect(updated[1].id).toBeTruthy();
+      expect(updated[1].color).toBe('#818cf8');
     });
 
     it('removes a stop by id or index', () => {

@@ -17,12 +17,18 @@ describe('CssGradientTool Component', () => {
     expect(screen.getByText(/background: linear-gradient/i)).toBeInTheDocument();
   });
 
-  it('adds a new color stop and updates generated CSS', () => {
+  it('adds a new color stop and updates generated CSS in ascending position order', () => {
     render(<CssGradientTool />);
     const addBtn = screen.getByRole('button', { name: /\+ Add Stop/i });
     fireEvent.click(addBtn);
 
     expect(screen.getByText(/Color Stops \(4\)/i)).toBeInTheDocument();
+    const expected = [
+      'background: linear-gradient(',
+      '90deg, #6366f1 0%, #818cf8 25%, #a78bfa 50%, #34d399 100%',
+      ');',
+    ].join('');
+    expect(screen.getByText(expected)).toBeInTheDocument();
   });
 
   it('switches between linear, radial, and conic gradient types', () => {
@@ -74,5 +80,28 @@ describe('CssGradientTool Component', () => {
     fireEvent.click(oceanPresetBtn);
 
     expect(screen.getByText(/background: radial-gradient/i)).toBeInTheDocument();
+  });
+
+  it('inserts stop strictly inside interval on repeated positions and updates CSS', () => {
+    render(<CssGradientTool />);
+    const posInputs = screen.getAllByLabelText(/Position percentage for stop/i);
+
+    fireEvent.change(posInputs[0], { target: { value: '0' } });
+    fireEvent.change(posInputs[1], { target: { value: '100' } });
+    fireEvent.change(posInputs[2], { target: { value: '100' } });
+
+    const addBtn = screen.getByRole('button', { name: /\+ Add Stop/i });
+    fireEvent.click(addBtn);
+
+    expect(screen.getByText(/Color Stops \(4\)/i)).toBeInTheDocument();
+    const updatedPosInputs = screen.getAllByLabelText(/Position percentage for stop/i);
+    expect(updatedPosInputs[1].value).toBe('50');
+
+    const expected = [
+      'background: linear-gradient(',
+      '90deg, #6366f1 0%, #818cf8 50%, #a78bfa 100%, #34d399 100%',
+      ');',
+    ].join('');
+    expect(screen.getByText(expected)).toBeInTheDocument();
   });
 });

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  DEFAULT_STOPS,
   addStop,
   generateCssGradient,
   normalizeHexForPicker,
@@ -8,12 +9,6 @@ import {
   sortStopsByPosition,
 } from './cssGradient.utils.js';
 import './cssGradient.css';
-
-const DEFAULT_STOPS = [
-  { id: 'stop-1', color: '#6366f1', position: 0 },
-  { id: 'stop-2', color: '#a78bfa', position: 50 },
-  { id: 'stop-3', color: '#34d399', position: 100 },
-];
 
 const PRESETS = [
   {
@@ -419,6 +414,7 @@ export default function CssGradientTool() {
                       aria-label={`Position percentage for stop ${index + 1}`}
                       min="0"
                       max="100"
+                      step="any"
                       value={stop.position}
                       onChange={(e) => handleUpdateStop(index, 'position', e.target.value)}
                     />
@@ -429,6 +425,7 @@ export default function CssGradientTool() {
                       aria-label={`Position slider for stop ${index + 1}`}
                       min="0"
                       max="100"
+                      step="any"
                       value={stop.position !== '' ? stop.position : 0}
                       onChange={(e) => handleUpdateStop(index, 'position', e.target.value)}
                     />
