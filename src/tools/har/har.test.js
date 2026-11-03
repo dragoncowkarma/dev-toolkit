@@ -9,6 +9,7 @@ import {
   toCurlCommand,
   toFetchSnippet,
   toHttpieCommand,
+  toPythonRequestsSnippet,
 } from './har.utils.js';
 
 const sampleHar = {
@@ -325,5 +326,70 @@ describe('toHttpieCommand', () => {
     expect(command).toContain('http POST');
     expect(command).toContain("'Content-Type:text/plain'");
     expect(command).toContain("--raw 'O'\\''Brien'");
+  });
+});
+
+describe('toPythonRequestsSnippet', () => {
+  it('builds a bodyless GET request with the default method', () => {
+    expect(toPythonRequestsSnippet({ request: { url: 'https://example.test/items' } }))
+      .toBe('import requests\n\nresponse = requests.get("https://example.test/items")');
+  });
+
+  it('uses a pretty-printed Python dictionary for a valid JSON body', () => {
+    const snippet = toPythonRequestsSnippet({
+      request: {
+        method: 'POST',
+        url: 'https://api.example.test/items',
+        postData: { mimeType: 'application/json', text: '{"name":"Ada","active":true}' },
+      },
+    });
+
+    expect(snippet).toContain('requests.post(');
+    expect(snippet).toContain('json={\n    "name": "Ada",\n    "active": True\n  }');
+  });
+
+  it('uses a triple-quoted data argument for non-JSON request bodies', () => {
+    const snippet = toPythonRequestsSnippet({
+      request: {
+        method: 'PATCH',
+        url: 'https://example.test/items/1',
+        postData: { mimeType: 'text/plain', text: 'line one\nline two' },
+      },
+    });
+
+    expect(snippet).toContain('requests.patch(');
+    expect(snippet).toContain('data="""line one\nline two"""');
+  });
+
+  it('escapes trailing quotes in non-JSON request bodies', () => {
+    const snippet = toPythonRequestsSnippet({
+      request: {
+        method: 'POST',
+        url: 'https://example.test/quoted',
+        postData: { mimeType: 'text/plain', text: 'ends with a quote"' },
+      },
+    });
+
+    expect(snippet).toContain('data="""ends with a quote\\""""');
+  });
+
+  it('keeps named non-pseudo headers and skips malformed header entries', () => {
+    const snippet = toPythonRequestsSnippet({
+      request: {
+        url: 'https://example.test/profile',
+        headers: [
+          null,
+          { value: 'missing name' },
+          { name: '', value: 'empty name' },
+          { name: ':method', value: 'GET' },
+          { name: 'Authorization', value: 'Bearer token' },
+        ],
+      },
+    });
+
+    expect(snippet).toContain('"Authorization": "Bearer token"');
+    expect(snippet).not.toContain('missing name');
+    expect(snippet).not.toContain('empty name');
+    expect(snippet).not.toContain(':method');
   });
 });

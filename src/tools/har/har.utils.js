@@ -379,8 +379,43 @@ export function toFetchSnippet(entry) {
   return `fetch(${JSON.stringify(url)}, {\n  ${options.join(',\n  ')}\n})`;
 }
 
+/**
+ * Converts a captured HAR request into a runnable Python requests call.
+ * @param {object} entry
+ * @returns {string}
+ */
+export function toPythonRequestsSnippet(entry) {
+  const request = entry?.request ?? {};
+  const method = String(request.method ?? 'GET').toLowerCase();
+  const url = String(request.url ?? '');
+  const postData = request.postData ?? {};
+  const headers = Array.isArray(request.headers)
+    ? request.headers.filter((header) => hasHeaderName(header) && !header.name.startsWith(':'))
+    : [];
+  const body = typeof postData.text === 'string' ? postData.text : null;
+  const argumentsList = [JSON.stringify(url)];
+
+  if (headers.length > 0) {
+    argumentsList.push(`headers=${formatPythonDictionary(headers)}`);
+  }
+
+  if (body !== null) {
+    argumentsList.push(formatPythonRequestBody(body, postData.mimeType));
+  }
+
+  const call = argumentsList.length === 1
+    ? `requests.${method}(${argumentsList[0]})`
+    : `requests.${method}(\n  ${argumentsList.join(',\n  ')}\n)`;
+
+  return `import requests\n\nresponse = ${call}`;
+}
+
 function hasHeader(headers, name) {
   return headers.some((header) => String(header?.name ?? '').toLowerCase() === name);
+}
+
+function hasHeaderName(header) {
+  return typeof header?.name === 'string' && header.name.trim() !== '';
 }
 
 function formatHeaders(headers) {
@@ -397,4 +432,52 @@ function formatRequestBody(body) {
   } catch {
     return JSON.stringify(body);
   }
+}
+
+function formatPythonDictionary(headers) {
+  const properties = headers.map(({ name, value }) => (
+    `${JSON.stringify(String(name))}: ${JSON.stringify(String(value ?? ''))}`
+  ));
+
+  return `{\n    ${properties.join(',\n    ')}\n  }`;
+}
+
+function formatPythonRequestBody(body, mimeType) {
+  if (/json/i.test(String(mimeType ?? ''))) {
+    try {
+      return `json=${formatPythonValue(JSON.parse(body), 1)}`;
+    } catch {
+      // A JSON content type with invalid text must retain the captured request body.
+    }
+  }
+
+  return `data="""${escapePythonTripleQuotedString(body)}"""`;
+}
+
+function formatPythonValue(value, indentation = 0) {
+  const indent = '  '.repeat(indentation);
+  const childIndent = '  '.repeat(indentation + 1);
+
+  if (value === null) return 'None';
+  if (typeof value === 'boolean') return value ? 'True' : 'False';
+  if (typeof value === 'number' || typeof value === 'string') return JSON.stringify(value);
+
+  if (Array.isArray(value)) {
+    if (value.length === 0) return '[]';
+    return `[\n${value.map((item) => `${childIndent}${formatPythonValue(item, indentation + 1)}`)
+      .join(',\n')}\n${indent}]`;
+  }
+
+  const properties = Object.entries(value);
+  if (properties.length === 0) return '{}';
+  return `{\n${properties.map(([key, item]) => (
+    `${childIndent}${JSON.stringify(key)}: ${formatPythonValue(item, indentation + 1)}`
+  )).join(',\n')}\n${indent}}`;
+}
+
+function escapePythonTripleQuotedString(value) {
+  return String(value)
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\r/g, '\\r');
 }
