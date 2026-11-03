@@ -3,6 +3,7 @@ import {
   buildQueryString,
   buildUrlOrQuery,
   detectDuplicates,
+  moveParam,
   parseUrlOrQuery,
 } from './urlQuery.utils.js';
 
@@ -149,5 +150,104 @@ describe('urlQuery.utils - parseUrlOrQuery', () => {
     expect(resColonParam.urlParts).toBeNull();
     expect(resColonParam.params).toHaveLength(1);
     expect(resColonParam.params[0]).toMatchObject({ key: 'foo:bar', value: 'baz' });
+  });
+});
+
+describe('urlQuery.utils - moveParam', () => {
+  const baseParams = [
+    { id: 'p0', key: 'a', value: '1', isDuplicate: false },
+    { id: 'p1', key: 'b', value: '2', isDuplicate: false },
+    { id: 'p2', key: 'c', value: '3', isDuplicate: false },
+  ];
+
+  it('moves first row to middle or last position', () => {
+    const movedToMiddle = moveParam(baseParams, 0, 1);
+    expect(movedToMiddle.map((p) => p.key)).toEqual(['b', 'a', 'c']);
+    expect(movedToMiddle[1]).toMatchObject({ id: 'p0', key: 'a', value: '1' });
+
+    const movedToEnd = moveParam(baseParams, 0, 2);
+    expect(movedToEnd.map((p) => p.key)).toEqual(['b', 'c', 'a']);
+    expect(movedToEnd[2]).toMatchObject({ id: 'p0', key: 'a', value: '1' });
+  });
+
+  it('moves middle row up or down', () => {
+    const movedUp = moveParam(baseParams, 1, 0);
+    expect(movedUp.map((p) => p.key)).toEqual(['b', 'a', 'c']);
+    expect(movedUp[0]).toMatchObject({ id: 'p1', key: 'b', value: '2' });
+
+    const movedDown = moveParam(baseParams, 1, 2);
+    expect(movedDown.map((p) => p.key)).toEqual(['a', 'c', 'b']);
+    expect(movedDown[2]).toMatchObject({ id: 'p1', key: 'b', value: '2' });
+  });
+
+  it('moves last row to middle or first position', () => {
+    const movedToMiddle = moveParam(baseParams, 2, 1);
+    expect(movedToMiddle.map((p) => p.key)).toEqual(['a', 'c', 'b']);
+    expect(movedToMiddle[1]).toMatchObject({ id: 'p2', key: 'c', value: '3' });
+
+    const movedToFirst = moveParam(baseParams, 2, 0);
+    expect(movedToFirst.map((p) => p.key)).toEqual(['c', 'a', 'b']);
+    expect(movedToFirst[0]).toMatchObject({ id: 'p2', key: 'c', value: '3' });
+  });
+
+  it('handles boundary no-op conditions without mutating input', () => {
+    const clone = [...baseParams];
+
+    // First row up (out of bounds)
+    const noOpFirstUp = moveParam(baseParams, 0, -1);
+    expect(noOpFirstUp.map((p) => p.key)).toEqual(['a', 'b', 'c']);
+
+    // Last row down (out of bounds)
+    const noOpLastDown = moveParam(baseParams, 2, 3);
+    expect(noOpLastDown.map((p) => p.key)).toEqual(['a', 'b', 'c']);
+
+    // Negative or out of bounds fromIndex
+    expect(moveParam(baseParams, -1, 1).map((p) => p.key)).toEqual(['a', 'b', 'c']);
+    expect(moveParam(baseParams, 5, 1).map((p) => p.key)).toEqual(['a', 'b', 'c']);
+    expect(moveParam(baseParams, 1, 10).map((p) => p.key)).toEqual(['a', 'b', 'c']);
+
+    // Same index
+    expect(moveParam(baseParams, 1, 1).map((p) => p.key)).toEqual(['a', 'b', 'c']);
+
+    // Empty array or non-array
+    expect(moveParam([], 0, 1)).toEqual([]);
+    expect(moveParam(null, 0, 1)).toEqual([]);
+    expect(moveParam(undefined, 0, 1)).toEqual([]);
+
+    // Confirms baseParams was not mutated
+    expect(baseParams).toEqual(clone);
+  });
+
+  it('preserves duplicate keys, their relative order, and updates duplicate flags', () => {
+    const dupParams = [
+      { id: 'd0', key: 'q', value: 'apple' },
+      { id: 'd1', key: 'sort', value: 'asc' },
+      { id: 'd2', key: 'q', value: 'banana' },
+      { id: 'd3', key: 'page', value: '1' },
+    ];
+
+    // Move second duplicate 'q' up to become adjacent to first duplicate
+    const moved = moveParam(dupParams, 2, 1);
+    expect(moved.map((p) => `${p.key}=${p.value}`)).toEqual([
+      'q=apple',
+      'q=banana',
+      'sort=asc',
+      'page=1',
+    ]);
+    expect(moved[0]).toMatchObject({ id: 'd0', isDuplicate: true });
+    expect(moved[1]).toMatchObject({ id: 'd2', isDuplicate: true });
+    expect(moved[2]).toMatchObject({ id: 'd1', isDuplicate: false });
+    expect(moved[3]).toMatchObject({ id: 'd3', isDuplicate: false });
+
+    // Move first duplicate 'q' to the end
+    const movedToEnd = moveParam(moved, 0, 3);
+    expect(movedToEnd.map((p) => `${p.key}=${p.value}`)).toEqual([
+      'q=banana',
+      'sort=asc',
+      'page=1',
+      'q=apple',
+    ]);
+    expect(movedToEnd[0]).toMatchObject({ id: 'd2', isDuplicate: true });
+    expect(movedToEnd[3]).toMatchObject({ id: 'd0', isDuplicate: true });
   });
 });

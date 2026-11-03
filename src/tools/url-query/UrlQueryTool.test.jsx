@@ -201,3 +201,124 @@ describe('UrlQueryTool invalid input & clear', () => {
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 });
+
+describe('UrlQueryTool parameter reordering & accessibility', () => {
+  it('renders distinct accessible button labels identifying direction and position', async () => {
+    render(<UrlQueryTool />);
+
+    const input = screen.getByLabelText('URL or query string input');
+    fireEvent.change(input, { target: { value: '?a=1&b=2&c=3' } });
+
+    expect(screen.getByRole('button', { name: 'Move parameter 1 up' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Move parameter 1 down' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Move parameter 2 up' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Move parameter 2 down' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Move parameter 3 up' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Move parameter 3 down' })).toBeInTheDocument();
+  });
+
+  it('disables boundary move controls correctly for multi-row and single-row params', async () => {
+    render(<UrlQueryTool />);
+
+    const input = screen.getByLabelText('URL or query string input');
+    fireEvent.change(input, { target: { value: '?a=1&b=2&c=3' } });
+
+    // First row: up disabled, down enabled
+    expect(screen.getByRole('button', { name: 'Move parameter 1 up' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Move parameter 1 down' })).toBeEnabled();
+
+    // Middle row: both enabled
+    expect(screen.getByRole('button', { name: 'Move parameter 2 up' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Move parameter 2 down' })).toBeEnabled();
+
+    // Last row: up enabled, down disabled
+    expect(screen.getByRole('button', { name: 'Move parameter 3 up' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Move parameter 3 down' })).toBeDisabled();
+
+    // Single row edge case
+    fireEvent.change(input, { target: { value: '?single=val' } });
+    expect(screen.getByRole('button', { name: 'Move parameter 1 up' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Move parameter 1 down' })).toBeDisabled();
+  });
+
+  it('moves rows and updates normalized output preserving duplicate keys', async () => {
+    render(<UrlQueryTool />);
+
+    const input = screen.getByLabelText('URL or query string input');
+    fireEvent.change(input, {
+      target: { value: 'https://example.com/search?q=apple&page=1&q=banana' },
+    });
+
+    const normalizedResult = screen.getByLabelText('Normalized URL result');
+    expect(normalizedResult).toHaveValue(
+      'https://example.com/search?q=apple&page=1&q=banana'
+    );
+
+    // Move first row down (q=apple moves to row 2)
+    const moveDown1 = screen.getByRole('button', { name: 'Move parameter 1 down' });
+    fireEvent.click(moveDown1);
+
+    expect(screen.getByLabelText('Parameter 1 key')).toHaveValue('page');
+    expect(screen.getByLabelText('Parameter 1 value')).toHaveValue('1');
+    expect(screen.getByLabelText('Parameter 2 key')).toHaveValue('q');
+    expect(screen.getByLabelText('Parameter 2 value')).toHaveValue('apple');
+    expect(screen.getByLabelText('Parameter 3 key')).toHaveValue('q');
+    expect(screen.getByLabelText('Parameter 3 value')).toHaveValue('banana');
+    expect(normalizedResult).toHaveValue(
+      'https://example.com/search?page=1&q=apple&q=banana'
+    );
+
+    // Move row 2 up (q=apple moves back to row 1)
+    const moveUp2 = screen.getByRole('button', { name: 'Move parameter 2 up' });
+    fireEvent.click(moveUp2);
+
+    expect(screen.getByLabelText('Parameter 1 key')).toHaveValue('q');
+    expect(screen.getByLabelText('Parameter 1 value')).toHaveValue('apple');
+    expect(screen.getByLabelText('Parameter 2 key')).toHaveValue('page');
+    expect(screen.getByLabelText('Parameter 2 value')).toHaveValue('1');
+    expect(normalizedResult).toHaveValue(
+      'https://example.com/search?q=apple&page=1&q=banana'
+    );
+
+    // Move last row (q=banana) up to row 2
+    const moveUp3 = screen.getByRole('button', { name: 'Move parameter 3 up' });
+    fireEvent.click(moveUp3);
+
+    expect(screen.getByLabelText('Parameter 1 key')).toHaveValue('q');
+    expect(screen.getByLabelText('Parameter 1 value')).toHaveValue('apple');
+    expect(screen.getByLabelText('Parameter 2 key')).toHaveValue('q');
+    expect(screen.getByLabelText('Parameter 2 value')).toHaveValue('banana');
+    expect(screen.getByLabelText('Parameter 3 key')).toHaveValue('page');
+    expect(screen.getByLabelText('Parameter 3 value')).toHaveValue('1');
+    expect(normalizedResult).toHaveValue(
+      'https://example.com/search?q=apple&q=banana&page=1'
+    );
+
+    // Both duplicate "q" parameters should retain duplicate badges
+    const dupBadges = screen.getAllByText('Duplicate');
+    expect(dupBadges).toHaveLength(2);
+  });
+
+  it('preserves stable row identity and focus without avoidable focus loss', async () => {
+    render(<UrlQueryTool />);
+
+    const input = screen.getByLabelText('URL or query string input');
+    fireEvent.change(input, { target: { value: '?first=1&second=2&third=3' } });
+
+    // Focus Move down on row 1 and click it
+    const moveDownBtn = screen.getByRole('button', { name: 'Move parameter 1 down' });
+    moveDownBtn.focus();
+    expect(document.activeElement).toBe(moveDownBtn);
+
+    fireEvent.click(moveDownBtn);
+
+    // After moving, row 1 moved to row 2. The button that was clicked was inside that moved row
+    // and remains in the document and focused (not unmounted).
+    expect(document.activeElement).toBeInTheDocument();
+    expect(document.activeElement.tagName).toBe('BUTTON');
+
+    // Values of the rows are now swapped
+    expect(screen.getByLabelText('Parameter 1 key')).toHaveValue('second');
+    expect(screen.getByLabelText('Parameter 2 key')).toHaveValue('first');
+  });
+});
