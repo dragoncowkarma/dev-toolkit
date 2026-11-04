@@ -490,6 +490,19 @@ describe('cssGradient.utils', () => {
       expect(interiorPos).toBeLessThan(1e-14);
     });
 
+    it('breaks width ties by selecting the lower start interval regardless of order', () => {
+      const reversedIntervals = [
+        { start: 50, end: 100, width: 50 },
+        { start: 0, end: 50, width: 50 },
+      ];
+      const chosen = findLargestSelectableInterval(reversedIntervals);
+      expect(chosen).toEqual({
+        start: 0,
+        end: 50,
+        width: 50,
+      });
+    });
+
     it('selects selectable interval when non-representable intervals coexist in stops', () => {
       const mixedStops = [
         { id: 's1', color: '#111', position: 0 },

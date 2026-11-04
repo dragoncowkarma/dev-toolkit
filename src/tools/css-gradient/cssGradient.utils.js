@@ -456,7 +456,7 @@ export function findLargestSelectableInterval(intervals) {
     if (isIntervalSelectable(start, end)) {
       const width = typeof interval.width === 'number' ? interval.width : end - start;
       if (width > 0) {
-        if (!best || width > best.width) {
+        if (!best || width > best.width || (width === best.width && start < best.start)) {
           best = { start, end, width };
         }
       }
