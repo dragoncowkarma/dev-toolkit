@@ -9,6 +9,7 @@ import {
   decodeBech32,
   encodeBech32,
   hexToBytes,
+  parseFiveBitWords,
   utf8ToBytes,
 } from './bech32.utils.js';
 import './bech32.css';
@@ -18,6 +19,12 @@ const PRESETS = [
   { label: 'BIP-173: a12uel5l', value: 'a12uel5l' },
   { label: 'BIP-350: a1lqfn3a', value: 'a1lqfn3a' },
 ];
+const HRP_PRESETS = ['bc', 'tb', 'bcrt', 'lnbc', 'npub', 'nsec'];
+const PAYLOAD_TYPES = {
+  TEXT: 'text',
+  HEX: 'hex',
+  WORDS: 'words',
+};
 
 function formatWords(words) {
   return words.join(' ');
@@ -42,8 +49,7 @@ export default function Bech32Tool() {
   useEffect(() => {
     if (mode === MODES.ENCODE) {
       try {
-        const bytes = payloadType === 'text' ? utf8ToBytes(payload) : hexToBytes(payload);
-        const words = convertBits(bytes, 8, 5, true);
+        const words = getPayloadWords(payload, payloadType);
         const encoded = encodeBech32(hrp, words, variant);
         setResult({ encoded, words, checksum: encoded.slice(-6) });
         setError('');
@@ -79,6 +85,11 @@ export default function Bech32Tool() {
   function loadPreset(value) {
     setMode(MODES.DECODE);
     setEncodedInput(value);
+    setCopyError('');
+  }
+
+  function selectHrpPreset(value) {
+    setHrp(value);
     setCopyError('');
   }
 
@@ -136,11 +147,25 @@ export default function Bech32Tool() {
               spellCheck={false}
             />
           </label>
+          <div className="bech32-tool__hrp-presets" role="group" aria-label="HRP presets">
+            <span>Common HRPs</span>
+            {HRP_PRESETS.map((preset) => (
+              <button
+                key={preset}
+                type="button"
+                aria-pressed={hrp === preset}
+                onClick={() => selectHrpPreset(preset)}
+              >
+                {preset}
+              </button>
+            ))}
+          </div>
           <label>
             Payload format
             <select value={payloadType} onChange={(event) => setPayloadType(event.target.value)}>
-              <option value="text">UTF-8 text</option>
-              <option value="hex">Hexadecimal bytes</option>
+              <option value={PAYLOAD_TYPES.TEXT}>UTF-8 Text</option>
+              <option value={PAYLOAD_TYPES.HEX}>Hex Bytes</option>
+              <option value={PAYLOAD_TYPES.WORDS}>5-bit Words</option>
             </select>
           </label>
           <label>
@@ -151,12 +176,13 @@ export default function Bech32Tool() {
             </select>
           </label>
           <label className="bech32-tool__wide-label">
-            {payloadType === 'text' ? 'UTF-8 payload' : 'Hexadecimal payload'}
+            {payloadType === PAYLOAD_TYPES.TEXT && 'UTF-8 payload'}
+            {payloadType === PAYLOAD_TYPES.HEX && 'Hexadecimal payload'}
+            {payloadType === PAYLOAD_TYPES.WORDS && '5-bit data words (0-31)'}
             <textarea
               value={payload}
               onChange={(event) => setPayload(event.target.value)}
-              maxLength="89"
-              placeholder={payloadType === 'text' ? 'Type text to encode…' : '48656c6c6f'}
+              placeholder={payloadPlaceholder(payloadType)}
               spellCheck={false}
             />
           </label>
@@ -228,6 +254,18 @@ export default function Bech32Tool() {
       )}
     </section>
   );
+}
+
+function getPayloadWords(payload, payloadType) {
+  if (payloadType === PAYLOAD_TYPES.WORDS) return parseFiveBitWords(payload);
+  const bytes = payloadType === PAYLOAD_TYPES.TEXT ? utf8ToBytes(payload) : hexToBytes(payload);
+  return convertBits(bytes, 8, 5, true);
+}
+
+function payloadPlaceholder(payloadType) {
+  if (payloadType === PAYLOAD_TYPES.TEXT) return 'Type text to encode…';
+  if (payloadType === PAYLOAD_TYPES.HEX) return '48656c6c6f';
+  return '[0, 1, 2] or 0x00 0x01 0x02';
 }
 
 function ResultField({ label, value, onCopy, copied = false }) {

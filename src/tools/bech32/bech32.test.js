@@ -11,6 +11,7 @@ import {
   decodeBech32,
   encodeBech32,
   hexToBytes,
+  parseFiveBitWords,
   utf8ToBytes,
   verifyChecksum,
 } from './bech32.utils.js';
@@ -91,6 +92,20 @@ describe('Bech32 utilities', () => {
     expect(() => convertBits([1], 5, 8, false)).toThrow(/trailing padding/i);
   });
 
+  it('parses decimal and hexadecimal 5-bit word lists for direct encoding', () => {
+    const words = parseFiveBitWords('[0 , 1, 0x1f, 31]');
+    expect(words).toEqual([0, 1, 31, 31]);
+    expect(parseFiveBitWords('0 1 0x1f')).toEqual([0, 1, 31]);
+    expect(encodeBech32('npub', words)).toBe('npub1qpllawg7hy');
+  });
+
+  it('rejects invalid 5-bit word syntax and values', () => {
+    expect(() => parseFiveBitWords('[0, 32]')).toThrow(/between 0 and 31/);
+    expect(() => parseFiveBitWords('0 -1')).toThrow(/decimal or 0x hexadecimal/);
+    expect(() => parseFiveBitWords('[0, 0xgg]')).toThrow(/decimal or 0x hexadecimal/);
+    expect(() => parseFiveBitWords('[0, 1')).toThrow(/matching square brackets/);
+  });
+
   it('parses hexadecimal bytes and exposes the checksum result independently', () => {
     expect(bytesToHex(hexToBytes('48 65 6c 6c 6f'))).toBe('48656c6c6f');
     expect(() => hexToBytes('0')).toThrow(/complete pairs/i);
@@ -133,6 +148,43 @@ describe('Bech32Tool', () => {
     await waitFor(() => expect(resultValue('Detected variant')).toHaveTextContent(BECH32M));
     expect(resultValue('Human-readable part')).toHaveTextContent('a');
     expect(resultValue('Decoded hex bytes')).toHaveTextContent('Empty');
+  });
+
+  it('uses HRP presets and directly encodes 5-bit data words', async () => {
+    render(createElement(Bech32Tool));
+    fireEvent.click(screen.getByRole('button', { name: 'npub' }));
+    fireEvent.change(screen.getByLabelText('Payload format'), {
+      target: { value: 'words' },
+    });
+    fireEvent.change(screen.getByLabelText('5-bit data words (0-31)'), {
+      target: { value: '0 1 0x1f' },
+    });
+
+    await waitFor(() => expect(resultValue('Bech32 string')).toHaveTextContent(
+      encodeBech32('npub', [0, 1, 31], BECH32)
+    ));
+    expect(screen.getByLabelText('Human-readable part (HRP)')).toHaveValue('npub');
+  });
+
+  it('reports invalid HRPs and 5-bit words through accessible alerts', async () => {
+    render(createElement(Bech32Tool));
+    fireEvent.change(screen.getByLabelText('Human-readable part (HRP)'), {
+      target: { value: 'bad value' },
+    });
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'US-ASCII characters 33 through 126'
+    );
+
+    fireEvent.change(screen.getByLabelText('Human-readable part (HRP)'), {
+      target: { value: 'bc' },
+    });
+    fireEvent.change(screen.getByLabelText('Payload format'), {
+      target: { value: 'words' },
+    });
+    fireEvent.change(screen.getByLabelText('5-bit data words (0-31)'), {
+      target: { value: '32' },
+    });
+    expect(await screen.findByRole('alert')).toHaveTextContent('between 0 and 31');
   });
 
   it('reports invalid Decode input through an accessible alert', async () => {
