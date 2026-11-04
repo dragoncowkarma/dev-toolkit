@@ -397,22 +397,98 @@ export const DEFAULT_STOPS = [
 ];
 
 /**
+ * Determines whether an adjacent interval [start, end] is selectable by verifying that
+ * start < end and at least one IEEE-754 representable numeric value exists strictly between
+ * the endpoints.
+ *
+ * @param {number} start - Interval start position.
+ * @param {number} end - Interval end position.
+ * @returns {boolean} True if a representable numeric value exists strictly inside (start, end).
+ */
+export function isIntervalSelectable(start, end) {
+  if (typeof start !== 'number' || typeof end !== 'number') return false;
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return false;
+  if (start >= end) return false;
+  const exactMid = (start + end) / 2;
+  return exactMid > start && exactMid < end;
+}
+
+/**
+ * Calculates a strictly interior position within a selectable interval [start, end].
+ * Prefers integer midpoint, then 2-decimal midpoint, then exact midpoint.
+ * Returns null if the interval is not selectable or if no candidate is strictly interior.
+ *
+ * @param {number} start - Interval start position.
+ * @param {number} end - Interval end position.
+ * @returns {number|null} Strictly interior position, or null if unselectable.
+ */
+export function calculateInteriorMidpoint(start, end) {
+  if (!isIntervalSelectable(start, end)) return null;
+  const exactMid = (start + end) / 2;
+  const rounded = Math.round(exactMid);
+  const twoDecimals = Number(exactMid.toFixed(2));
+  if (rounded > start && rounded < end) {
+    return rounded;
+  }
+  if (twoDecimals > start && twoDecimals < end) {
+    return twoDecimals;
+  }
+  if (exactMid > start && exactMid < end) {
+    return exactMid;
+  }
+  return null;
+}
+
+/**
+ * Selects the largest selectable interval by width from an array of interval objects.
+ * Ties are broken by choosing the interval starting at the lower position.
+ * Non-selectable intervals (including ones with larger nominal width) are skipped.
+ *
+ * @param {Array<{start: number, end: number, width?: number}>} intervals - Candidate intervals.
+ * @returns {{start: number, end: number, width: number}|null} Selected interval or null.
+ */
+export function findLargestSelectableInterval(intervals) {
+  if (!Array.isArray(intervals) || intervals.length === 0) return null;
+  let best = null;
+  for (const interval of intervals) {
+    if (!interval || typeof interval !== 'object') continue;
+    const { start, end } = interval;
+    if (isIntervalSelectable(start, end)) {
+      const width = typeof interval.width === 'number' ? interval.width : end - start;
+      if (width > 0) {
+        if (!best || width > best.width || (width === best.width && start < best.start)) {
+          best = { start, end, width };
+        }
+      }
+    }
+  }
+  return best;
+}
+
+/**
  * Adds a new stop to the stops array at a collision-free default position.
  *
  * Position selection algorithm:
  * 1. Collect all valid numeric positions in range [0, 100] from current stops.
  * 2. Sort unique valid positions in ascending order.
- * 3. Find all adjacent positive intervals (end - start > 0).
- * 4. Select the largest interval by width (end - start).
- * 5. Tie-break rule: If multiple intervals share the maximum width, pick the first interval
- *    (the one starting at the lowest position).
+ * 3. Find all adjacent positive intervals (end - start > 0) that have a representable numeric
+ *    value strictly between their endpoints. An interval is selectable only when
+ *    ((start + end) / 2 > start && (start + end) / 2 < end).
+ * 4. Select the largest selectable interval by width (end - start). If the largest positive
+ *    interval cannot accommodate an interior value, deterministically choose the next-largest
+ *    selectable interval.
+ * 5. Tie-break rule: If multiple selectable intervals share the maximum width, pick the first
+ *    interval (the one starting at the lowest position).
  * 6. Calculate position strictly inside the selected interval:
  *    Try rounded integer midpoint Math.round((start + end) / 2); if strictly inside, use it.
  *    Otherwise try 2-decimal midpoint Number(((start + end) / 2).toFixed(2)); if strictly inside,
  *    use it. Otherwise fall back to exact midpoint (start + end) / 2.
- * 7. Fallback strategy (when no positive interval exists or all valid positions are equal):
- *    If all valid positions equal X, choose 100 if X < 100 else 50.
+ * 7. Fallback strategy (when no selectable interval exists, all positions are equal, or no
+ *    valid positions exist):
  *    If no valid positions exist, choose 50.
+ *    Otherwise, choose the first available position from candidate list [100, 50, 0, 75, 25]
+ *    that does not duplicate any existing valid stop. If all candidates exist, search
+ *    ascending integers [0, 100] for the first unused position.
  * 8. Insertion index:
  *    Insert new stop immediately after the last existing stop whose position <= defaultPosition
  *    (or at index 0 if all existing valid stops have position > defaultPosition).
@@ -438,40 +514,50 @@ export function addStop(stops, newStopProps = {}) {
   if (validPositions.length > 0) {
     const uniqueSorted = Array.from(new Set(validPositions)).sort((a, b) => a - b);
 
-    let maxInterval = null;
+    const intervals = [];
     for (let i = 0; i < uniqueSorted.length - 1; i += 1) {
       const start = uniqueSorted[i];
       const end = uniqueSorted[i + 1];
       const width = end - start;
       if (width > 0) {
-        if (!maxInterval || width > maxInterval.width) {
-          maxInterval = { start, end, width };
-        }
+        intervals.push({ start, end, width });
       }
     }
 
-    if (maxInterval) {
-      const exactMid = (maxInterval.start + maxInterval.end) / 2;
-      const rounded = Math.round(exactMid);
-      const twoDecimals = Number(exactMid.toFixed(2));
-      if (rounded > maxInterval.start && rounded < maxInterval.end) {
-        defaultPosition = rounded;
-      } else if (twoDecimals > maxInterval.start && twoDecimals < maxInterval.end) {
-        defaultPosition = twoDecimals;
-      } else {
-        defaultPosition = exactMid;
-      }
+    const selectedInterval = findLargestSelectableInterval(intervals);
+
+    let chosenPosition = null;
+    if (selectedInterval) {
+      chosenPosition = calculateInteriorMidpoint(selectedInterval.start, selectedInterval.end);
+    }
+
+    if (chosenPosition !== null) {
+      defaultPosition = chosenPosition;
     } else {
-      const x = uniqueSorted[0];
-      defaultPosition = x < 100 ? 100 : 50;
+      const existingSet = new Set(validPositions);
+      const candidates = [100, 50, 0, 75, 25];
+      const available = candidates.find((c) => !existingSet.has(c));
+      if (available !== undefined) {
+        defaultPosition = available;
+      } else {
+        let found = null;
+        for (let p = 0; p <= 100; p += 1) {
+          if (!existingSet.has(p)) {
+            found = p;
+            break;
+          }
+        }
+        defaultPosition = found !== null ? found : 50;
+      }
     }
   }
 
+  const safeProps = newStopProps && typeof newStopProps === 'object' ? newStopProps : {};
   const newStop = {
     id: nextId,
     color: '#818cf8',
     position: defaultPosition,
-    ...newStopProps,
+    ...safeProps,
   };
 
   const insertAt =
