@@ -1,0 +1,197 @@
+.sitemap-validator {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.sitemap-validator__toolbar,
+.sitemap-validator__samples,
+.sitemap-validator__actions,
+.sitemap-validator__filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.sitemap-validator__toolbar {
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.sitemap-validator__button,
+.sitemap-validator__filters input,
+.sitemap-validator__filters select {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.875rem;
+  padding: 0.5rem 0.75rem;
+}
+
+.sitemap-validator__button {
+  cursor: pointer;
+}
+
+.sitemap-validator__button:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.sitemap-validator__upload {
+  position: relative;
+  overflow: hidden;
+}
+
+.sitemap-validator__upload input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.sitemap-validator__button:focus-visible,
+.sitemap-validator__input:focus,
+.sitemap-validator__filters input:focus,
+.sitemap-validator__filters select:focus {
+  outline: 2px solid var(--color-primary-light);
+  outline-offset: 2px;
+}
+
+.sitemap-validator__label {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.sitemap-validator__input {
+  min-height: 220px;
+  resize: vertical;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: 0.875rem/1.5 'SF Mono', 'Fira Code', Consolas, monospace;
+  padding: 1rem;
+}
+
+.sitemap-validator__hint {
+  margin: -0.5rem 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
+.sitemap-validator__alert {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+}
+
+.sitemap-validator__stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.sitemap-validator__stats > div {
+  padding: 0.85rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+.sitemap-validator__stats dt {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
+.sitemap-validator__stats dd {
+  margin: 0.25rem 0 0;
+  color: var(--color-text);
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+
+.sitemap-validator__filters {
+  gap: 0.6rem;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.sitemap-validator__filters input {
+  min-width: min(100%, 16rem);
+}
+
+.sitemap-validator__table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+.sitemap-validator__table {
+  width: 100%;
+  min-width: 740px;
+  border-collapse: collapse;
+  background: var(--color-surface);
+  text-align: left;
+}
+.sitemap-validator__table th,
+.sitemap-validator__table td {
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: top;
+  font-size: 0.85rem;
+}
+.sitemap-validator__table th {
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.sitemap-validator__table tr:last-child td {
+  border-bottom: 0;
+}
+
+.sitemap-validator__url {
+  max-width: 390px;
+  overflow-wrap: anywhere;
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+}
+.sitemap-validator__badge {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.sitemap-validator__badge--valid {
+  background: color-mix(in srgb, var(--color-primary) 20%, transparent);
+  color: var(--color-primary-light);
+}
+.sitemap-validator__badge--issue {
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+}
+.sitemap-validator__empty {
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+@media (min-width: 700px) {
+  .sitemap-validator {
+    padding: 0 2rem 3rem;
+  }
+
+  .sitemap-validator__stats {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
