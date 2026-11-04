@@ -38,12 +38,13 @@ export default function UrlQueryTool() {
   }, [copiedId]);
 
   function handleInputChange(e) {
+    isTableUpdateRef.current = false;
     setInput(e.target.value);
     setCopyError('');
   }
 
   function handleClear() {
-    isTableUpdateRef.current = true;
+    isTableUpdateRef.current = false;
     setInput('');
     setParseState(parseUrlOrQuery(''));
     setCopyError('');
@@ -58,8 +59,12 @@ export default function UrlQueryTool() {
       hasLeadingQuestionMark: parseState.hasLeadingQuestionMark,
       params: updatedParams,
     });
-    isTableUpdateRef.current = true;
-    setInput(newNormalized);
+    if (newNormalized !== input) {
+      isTableUpdateRef.current = true;
+      setInput(newNormalized);
+    } else {
+      isTableUpdateRef.current = false;
+    }
     setParseState((prev) => ({
       ...prev,
       params: updatedParams,

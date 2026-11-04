@@ -200,6 +200,47 @@ describe('UrlQueryTool invalid input & clear', () => {
     expect(input).toHaveValue('');
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
+
+  it(
+    'parses input correctly when Clear is clicked from empty state followed by query entry',
+    async () => {
+      render(<UrlQueryTool />);
+
+      const input = screen.getByLabelText('URL or query string input');
+      expect(input).toHaveValue('');
+
+      const clearBtn = screen.getByRole('button', { name: 'Clear' });
+      fireEvent.click(clearBtn);
+
+      fireEvent.change(input, { target: { value: '?q=test&page=1' } });
+
+      expect(await screen.findByRole('table')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('test')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('1')).toBeInTheDocument();
+      expect(screen.getByLabelText('Normalized URL result')).toHaveValue('?q=test&page=1');
+    }
+  );
+
+  it(
+    'updates parsed state when input changes after reordering duplicate rows',
+    async () => {
+      render(<UrlQueryTool />);
+
+      const input = screen.getByLabelText('URL or query string input');
+      fireEvent.change(input, { target: { value: '?a=1&a=1' } });
+
+      expect(await screen.findByRole('table')).toBeInTheDocument();
+
+      const moveDownBtn = screen.getByRole('button', { name: 'Move parameter 1 down' });
+      fireEvent.click(moveDownBtn);
+
+      fireEvent.change(input, { target: { value: '?a=1&a=1&b=2' } });
+
+      expect(await screen.findByDisplayValue('b')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('2')).toBeInTheDocument();
+      expect(screen.getByLabelText('Normalized URL result')).toHaveValue('?a=1&a=1&b=2');
+    }
+  );
 });
 
 describe('UrlQueryTool parameter reordering & accessibility', () => {
