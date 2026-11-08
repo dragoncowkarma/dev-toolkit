@@ -47,6 +47,36 @@ export function detectDuplicates(params) {
 }
 
 /**
+ * Moves a parameter item from fromIndex to toIndex, returning a new array
+ * with duplicate flags recalculated while preserving identities and untouched order.
+ *
+ * @param {QueryParamItem[]} params
+ * @param {number} fromIndex
+ * @param {number} toIndex
+ * @returns {QueryParamItem[]}
+ */
+export function moveParam(params, fromIndex, toIndex) {
+  if (!Array.isArray(params)) {
+    return [];
+  }
+  if (
+    fromIndex < 0 ||
+    fromIndex >= params.length ||
+    toIndex < 0 ||
+    toIndex >= params.length ||
+    fromIndex === toIndex
+  ) {
+    return detectDuplicates([...params]);
+  }
+
+  const result = [...params];
+  const [movedItem] = result.splice(fromIndex, 1);
+  result.splice(toIndex, 0, movedItem);
+
+  return detectDuplicates(result);
+}
+
+/**
  * Builds a query string from key-value parameter objects.
  *
  * @param {Array<{ key: string, value: string }>} params

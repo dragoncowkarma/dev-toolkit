@@ -82,6 +82,8 @@
 
 .btn-icon {
   padding: 0.25rem 0.5rem;
+  min-width: 2rem;
+  line-height: 1;
 }
 
 /* === Panel Styles === */

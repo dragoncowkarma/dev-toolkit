@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import './urlQuery.css';
 import {
   buildUrlOrQuery,
   detectDuplicates,
+  moveParam,
   parseUrlOrQuery,
 } from './urlQuery.utils.js';
 
@@ -17,9 +18,14 @@ export default function UrlQueryTool() {
   const [parseState, setParseState] = useState(() => parseUrlOrQuery(''));
   const [copiedId, setCopiedId] = useState(null);
   const [copyError, setCopyError] = useState('');
+  const isTableUpdateRef = useRef(false);
 
   // Re-parse input whenever raw input string changes
   useEffect(() => {
+    if (isTableUpdateRef.current) {
+      isTableUpdateRef.current = false;
+      return;
+    }
     const res = parseUrlOrQuery(input);
     setParseState(res);
   }, [input]);
@@ -32,12 +38,15 @@ export default function UrlQueryTool() {
   }, [copiedId]);
 
   function handleInputChange(e) {
+    isTableUpdateRef.current = false;
     setInput(e.target.value);
     setCopyError('');
   }
 
   function handleClear() {
+    isTableUpdateRef.current = false;
     setInput('');
+    setParseState(parseUrlOrQuery(''));
     setCopyError('');
     setCopiedId(null);
   }
@@ -50,7 +59,18 @@ export default function UrlQueryTool() {
       hasLeadingQuestionMark: parseState.hasLeadingQuestionMark,
       params: updatedParams,
     });
-    setInput(newNormalized);
+    if (newNormalized !== input) {
+      isTableUpdateRef.current = true;
+      setInput(newNormalized);
+    } else {
+      isTableUpdateRef.current = false;
+    }
+    setParseState((prev) => ({
+      ...prev,
+      params: updatedParams,
+      normalizedUrl: newNormalized,
+      error: null,
+    }));
     setCopyError('');
   }
 
@@ -65,6 +85,18 @@ export default function UrlQueryTool() {
     const newParams = parseState.params.map((p, i) =>
       i === index ? { ...p, value: newValue } : p
     );
+    updateParams(newParams);
+  }
+
+  function handleMoveUp(index) {
+    if (index <= 0) return;
+    const newParams = moveParam(parseState.params, index, index - 1);
+    updateParams(newParams);
+  }
+
+  function handleMoveDown(index) {
+    if (index >= parseState.params.length - 1) return;
+    const newParams = moveParam(parseState.params, index, index + 1);
     updateParams(newParams);
   }
 
@@ -227,6 +259,26 @@ export default function UrlQueryTool() {
                       </td>
                       <td>
                         <div className="param-actions">
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-icon"
+                            onClick={() => handleMoveUp(index)}
+                            disabled={index === 0}
+                            aria-label={`Move parameter ${index + 1} up`}
+                            title={`Move parameter ${index + 1} up`}
+                          >
+                            ↑
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-icon"
+                            onClick={() => handleMoveDown(index)}
+                            disabled={index === params.length - 1}
+                            aria-label={`Move parameter ${index + 1} down`}
+                            title={`Move parameter ${index + 1} down`}
+                          >
+                            ↓
+                          </button>
                           <button
                             type="button"
                             className="btn btn-sm"
