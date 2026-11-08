@@ -1,0 +1,82 @@
+.crc-checksum-tool {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  color: var(--color-text);
+}
+
+.crc-checksum-toolbar,
+.crc-checksum-mode,
+.crc-checksum-algorithms,
+.crc-checksum-result {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.crc-checksum-toolbar {
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.crc-checksum-mode, .crc-checksum-algorithms {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+}
+
+.crc-checksum-mode legend,
+.crc-checksum-algorithms legend,
+.crc-checksum-label {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.crc-checksum-label { display: block; margin-bottom: 0.5rem; }
+.crc-checksum-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 180px;
+  padding: 1rem;
+  resize: vertical;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  font: 0.95rem/1.5 'SF Mono', Consolas, monospace;
+}
+.crc-checksum-input:focus { outline: none; border-color: var(--color-primary); }
+.crc-checksum-algorithms { margin: 1rem 0; }
+.crc-checksum-button {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  padding: 0.45rem 0.8rem;
+}
+.crc-checksum-button:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+.crc-checksum-alert {
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  color: var(--color-error-light);
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+}
+.crc-checksum-results { display: grid; gap: 0.75rem; }
+.crc-checksum-result {
+  justify-content: space-between;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+}
+.crc-checksum-result output { font-family: 'SF Mono', Consolas, monospace; font-weight: 700; }
+
+@media (min-width: 768px) { .crc-checksum-tool { padding: 0 2rem 3rem; } }
