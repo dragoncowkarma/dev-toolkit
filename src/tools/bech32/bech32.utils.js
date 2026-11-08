@@ -30,6 +30,44 @@ export function validateHrp(hrp) {
 }
 
 /**
+ * Parses decimal or hexadecimal 5-bit data words from a comma- or space-delimited value.
+ * @param {string} value The word list, optionally wrapped in square brackets.
+ * @returns {number[]} Parsed data words.
+ * @throws {Error} When a word is malformed or outside the 0 through 31 range.
+ */
+export function parseFiveBitWords(value) {
+  if (typeof value !== 'string') throw new Error('5-bit words must be entered as text.');
+
+  const trimmed = value.trim();
+  if (trimmed === '') return [];
+
+  const hasOpeningBracket = trimmed.startsWith('[');
+  const hasClosingBracket = trimmed.endsWith(']');
+  if (hasOpeningBracket !== hasClosingBracket) {
+    throw new Error('5-bit word arrays must use matching square brackets.');
+  }
+
+  const wordList = hasOpeningBracket ? trimmed.slice(1, -1).trim() : trimmed;
+  if (wordList === '') return [];
+
+  const wordPattern = '(?:0[xX][0-9a-fA-F]+|[0-9]+)';
+  const separatorPattern = '(?:\\s*,\\s*|\\s+)';
+  const listPattern = new RegExp(`^${wordPattern}(?:${separatorPattern}${wordPattern})*$`);
+  if (!listPattern.test(wordList)) {
+    throw new Error(
+      '5-bit words must be decimal or 0x hexadecimal values separated by spaces or commas.'
+    );
+  }
+
+  const words = wordList.split(/\s*,\s*|\s+/).map((word) => {
+    const radix = word.toLowerCase().startsWith('0x') ? 16 : 10;
+    return Number.parseInt(word, radix);
+  });
+  validateWords(words);
+  return words;
+}
+
+/**
  * Converts values between fixed-width bit groups.
  * @param {number[]|Uint8Array} values The input values to convert.
  * @param {number} fromBits Width of input values.

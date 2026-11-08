@@ -17,6 +17,7 @@
 .bech32-tool__toolbar,
 .bech32-tool__toggle,
 .bech32-tool__presets,
+.bech32-tool__hrp-presets,
 .bech32-tool__result {
   display: flex;
   align-items: center;
@@ -65,6 +66,17 @@
 
 .bech32-tool__presets {
   flex-wrap: wrap;
+}
+
+.bech32-tool__hrp-presets {
+  grid-column: 1 / -1;
+  flex-wrap: wrap;
+}
+
+.bech32-tool__hrp-presets span {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  font-weight: 600;
 }
 
 .bech32-tool__inputs {
