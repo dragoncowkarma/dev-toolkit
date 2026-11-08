@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_STOPS,
   addStop,
+  calculateInteriorMidpoint,
+  findLargestSelectableInterval,
   generateCssGradient,
+  isIntervalSelectable,
   normalizeHexForPicker,
   removeStop,
   reorderStops,
@@ -422,6 +425,161 @@ describe('cssGradient.utils', () => {
       expect(updated[0]).toEqual(initialStops[0]);
       expect(updated[1]).toEqual(initialStops[1]);
       expect(updated.length).toBe(3);
+    });
+
+    it('handles IEEE-754 limit [99.99999999999999, 100] without duplicating endpoints', () => {
+      const limitStops = [
+        { id: 's1', color: '#111', position: 99.99999999999999 },
+        { id: 's2', color: '#222', position: 100 },
+      ];
+      const updated = addStop(limitStops);
+      expect(updated.length).toBe(3);
+
+      const newStop = updated.find((s) => s.id !== 's1' && s.id !== 's2');
+      expect(newStop).toBeDefined();
+      expect(newStop.position).not.toBe(99.99999999999999);
+      expect(newStop.position).not.toBe(100);
+      expect(newStop.position).toBe(50);
+
+      // Spliced at index 0 because 50 is less than both existing stop positions
+      expect(updated[0].id).toBe(newStop.id);
+      expect(updated[1].id).toBe('s1');
+      expect(updated[2].id).toBe('s2');
+      expect(validatePosition(newStop.position)).toBe(true);
+    });
+
+    it('handles IEEE-754 limit [0.1, 0.10000000000000002] without duplicating endpoints', () => {
+      const limitStops = [
+        { id: 's1', color: '#111', position: 0.1 },
+        { id: 's2', color: '#222', position: 0.10000000000000002 },
+      ];
+      const updated = addStop(limitStops);
+      expect(updated.length).toBe(3);
+
+      const newStop = updated.find((s) => s.id !== 's1' && s.id !== 's2');
+      expect(newStop).toBeDefined();
+      expect(newStop.position).not.toBe(0.1);
+      expect(newStop.position).not.toBe(0.10000000000000002);
+      expect(newStop.position).toBe(100);
+
+      // Spliced at index 2 after s2 (both 0.1 and 0.10000000000000002 <= 100)
+      expect(updated[0].id).toBe('s1');
+      expect(updated[1].id).toBe('s2');
+      expect(updated[2].id).toBe(newStop.id);
+      expect(validatePosition(newStop.position)).toBe(true);
+    });
+
+    it('skips non-representable largest interval for next-largest selectable one', () => {
+      const nonRepresentableWidth = 100 - 99.99999999999999; // 1.4210854715202004e-14
+      const smallerSelectableWidth = 1e-14; // 1e-14 < 1.4210854715202004e-14
+      expect(nonRepresentableWidth).toBeGreaterThan(smallerSelectableWidth);
+
+      const intervals = [
+        { start: 99.99999999999999, end: 100, width: nonRepresentableWidth },
+        { start: 0, end: 1e-14, width: smallerSelectableWidth },
+      ];
+      const chosen = findLargestSelectableInterval(intervals);
+      expect(chosen).toEqual({
+        start: 0,
+        end: 1e-14,
+        width: smallerSelectableWidth,
+      });
+
+      const interiorPos = calculateInteriorMidpoint(chosen.start, chosen.end);
+      expect(interiorPos).toBeGreaterThan(0);
+      expect(interiorPos).toBeLessThan(1e-14);
+    });
+
+    it('breaks width ties by selecting the lower start interval regardless of order', () => {
+      const reversedIntervals = [
+        { start: 50, end: 100, width: 50 },
+        { start: 0, end: 50, width: 50 },
+      ];
+      const chosen = findLargestSelectableInterval(reversedIntervals);
+      expect(chosen).toEqual({
+        start: 0,
+        end: 50,
+        width: 50,
+      });
+    });
+
+    it('selects selectable interval when non-representable intervals coexist in stops', () => {
+      const mixedStops = [
+        { id: 's1', color: '#111', position: 0 },
+        { id: 's2', color: '#222', position: 50 },
+        { id: 's3', color: '#333', position: 99.99999999999999 },
+        { id: 's4', color: '#444', position: 100 },
+      ];
+      const updated = addStop(mixedStops);
+      expect(updated.length).toBe(5);
+
+      const newStop = updated.find((s) => !mixedStops.some((orig) => orig.id === s.id));
+      expect(newStop).toBeDefined();
+      // Largest selectable interval is [0, 50], midpoint 25
+      expect(newStop.position).toBe(25);
+      expect(updated.map((s) => s.id)).toEqual(['s1', newStop.id, 's2', 's3', 's4']);
+    });
+
+    it('uses deterministic in-range fallback when candidate positions are already present', () => {
+      const existing = new Set([100, 50, 0, 75]);
+      const candidates = [100, 50, 0, 75, 25];
+      const nextCandidate = candidates.find((c) => !existing.has(c));
+      expect(nextCandidate).toBe(25);
+
+      // Verify addStop fallback chooses 50 when 100 is already present in repeated stops
+      const all100 = [{ id: 's1', position: 100 }, { id: 's2', position: 100 }];
+      const updated100 = addStop(all100);
+      expect(updated100[0].position).toBe(50);
+    });
+
+    it('does not throw for null, malformed, repeated, or boundary-only stop inputs', () => {
+      expect(() => addStop(null)).not.toThrow();
+      expect(() => addStop(undefined)).not.toThrow();
+      expect(() => addStop('not-an-array')).not.toThrow();
+      expect(() => addStop([null, undefined, {}])).not.toThrow();
+
+      const nullUpdated = addStop(null);
+      expect(nullUpdated.length).toBe(1);
+      expect(nullUpdated[0].position).toBe(50);
+
+      const repeatedBoundary0 = [
+        { id: 'b1', position: 0 },
+        { id: 'b2', position: 0 },
+      ];
+      const updatedB0 = addStop(repeatedBoundary0);
+      expect(updatedB0.length).toBe(3);
+      expect(updatedB0[2].position).toBe(100);
+
+      const repeatedBoundary100 = [
+        { id: 'b1', position: 100 },
+        { id: 'b2', position: 100 },
+      ];
+      const updatedB100 = addStop(repeatedBoundary100);
+      expect(updatedB100.length).toBe(3);
+      expect(updatedB100[0].position).toBe(50);
+    });
+
+    it('does not mutate caller-owned stop arrays', () => {
+      const originalStops = Object.freeze([
+        Object.freeze({ id: 's1', color: '#ff0000', position: 10 }),
+        Object.freeze({ id: 's2', color: '#00ff00', position: 90 }),
+      ]);
+      const updated = addStop(originalStops);
+      expect(updated.length).toBe(3);
+      expect(originalStops.length).toBe(2);
+      expect(originalStops[0].position).toBe(10);
+      expect(originalStops[1].position).toBe(90);
+    });
+
+    it('validates selectable status via isIntervalSelectable correctly', () => {
+      expect(isIntervalSelectable(99.99999999999999, 100)).toBe(false);
+      expect(isIntervalSelectable(0.1, 0.10000000000000002)).toBe(false);
+      expect(isIntervalSelectable(50, 50)).toBe(false);
+      expect(isIntervalSelectable(100, 0)).toBe(false);
+      expect(isIntervalSelectable(null, 50)).toBe(false);
+      expect(isIntervalSelectable(0, NaN)).toBe(false);
+      expect(isIntervalSelectable(0, 100)).toBe(true);
+      expect(isIntervalSelectable(0, 1e-14)).toBe(true);
     });
   });
 

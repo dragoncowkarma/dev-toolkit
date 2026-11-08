@@ -104,4 +104,25 @@ describe('CssGradientTool Component', () => {
     ].join('');
     expect(screen.getByText(expected)).toBeInTheDocument();
   });
+
+  it('places stop at fallback position without duplicating endpoints at precision limit', () => {
+    render(<CssGradientTool />);
+    const posInputs = screen.getAllByLabelText(/Position percentage for stop/i);
+
+    // Paste floating-point limit values into the position inputs
+    fireEvent.change(posInputs[0], { target: { value: '99.99999999999999' } });
+    fireEvent.change(posInputs[1], { target: { value: '100' } });
+    fireEvent.change(posInputs[2], { target: { value: '100' } });
+
+    const addBtn = screen.getByRole('button', { name: /\+ Add Stop/i });
+    fireEvent.click(addBtn);
+
+    expect(screen.getByText(/Color Stops \(4\)/i)).toBeInTheDocument();
+    const updatedPosInputs = screen.getAllByLabelText(/Position percentage for stop/i);
+    // Fallback 50 is placed before the existing limit values at index 0
+    expect(updatedPosInputs[0].value).toBe('50');
+    expect(updatedPosInputs[1].value).toBe('99.99999999999999');
+    expect(updatedPosInputs[2].value).toBe('100');
+    expect(updatedPosInputs[3].value).toBe('100');
+  });
 });
