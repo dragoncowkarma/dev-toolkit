@@ -7,10 +7,15 @@ import {
 } from './jsonLd.utils.js';
 
 describe('isEntityContainerKeyword', () => {
-  it('recognizes only @graph and @included as entity container keywords', () => {
-    expect(Array.from(ENTITY_CONTAINER_KEYWORDS).sort()).toEqual(['@graph', '@included']);
+  it('recognizes @graph, @included, and @reverse as entity container keywords', () => {
+    expect(Array.from(ENTITY_CONTAINER_KEYWORDS).sort()).toEqual([
+      '@graph',
+      '@included',
+      '@reverse',
+    ]);
     expect(isEntityContainerKeyword('@graph')).toBe(true);
     expect(isEntityContainerKeyword('@included')).toBe(true);
+    expect(isEntityContainerKeyword('@reverse')).toBe(true);
     expect(isEntityContainerKeyword('@id')).toBe(false);
     expect(isEntityContainerKeyword('@type')).toBe(false);
     expect(isEntityContainerKeyword('@context')).toBe(false);
@@ -401,6 +406,43 @@ describe('inspectJsonLd', () => {
       }),
     ]);
     expect(result.issues).toEqual([]);
+  });
+
+  it('collects a bare @id directly under @reverse as an entity definition', () => {
+    const result = inspectJsonLd(JSON.stringify({
+      '@context': 'https://schema.org',
+      '@reverse': { '@id': 'https://example.com/#reverse-node' },
+      mainEntity: { '@id': 'https://example.com/#reverse-node' },
+    }));
+
+    expect(result.entities).toEqual([
+      expect.objectContaining({ path: '$' }),
+      expect.objectContaining({ path: '$.@reverse', id: 'https://example.com/#reverse-node' }),
+    ]);
+    expect(result.issues).toEqual([]);
+  });
+
+  it('preserves nested reference handling before a non-direct @reverse container', () => {
+    const result = inspectJsonLd(JSON.stringify({
+      '@context': 'https://schema.org',
+      wrapper: {
+        related: { '@id': 'https://example.com/#missing-related' },
+        '@reverse': { '@id': 'https://example.com/#reverse-node' },
+      },
+    }));
+
+    expect(result.entities).toEqual([
+      expect.objectContaining({ path: '$' }),
+      expect.objectContaining({ path: '$.wrapper.@reverse', id: 'https://example.com/#reverse-node' }),
+    ]);
+    expect(result.issues).toEqual([
+      {
+        severity: 'warning',
+        path: '$.wrapper.related',
+        message: 'Unresolved @id reference "https://example.com/#missing-related" does not match ' +
+          'any entity in this document.',
+      },
+    ]);
   });
 
   it('treats bare @id objects in ordinary nested properties as references in @included', () => {
