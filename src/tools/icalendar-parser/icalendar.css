@@ -1,0 +1,120 @@
+.icalendar-tool {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+}
+
+.icalendar-tool__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.icalendar-tool__button {
+  position: relative;
+  overflow: hidden;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.icalendar-tool__button:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.icalendar-tool__button input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.icalendar-tool__label {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.icalendar-tool textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 230px;
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.icalendar-tool textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.icalendar-errors {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+}
+
+.icalendar-errors ul,
+.icalendar-tree,
+.icalendar-raw-list {
+  padding-left: 1.25rem;
+}
+
+.icalendar-tree {
+  list-style: none;
+  padding-left: 0;
+}
+
+.icalendar-tree__item {
+  margin-top: 1rem;
+  padding: 1rem;
+  border-left: 3px solid var(--color-primary);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.icalendar-table {
+  width: 100%;
+  margin: 0.75rem 0;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.icalendar-table th,
+.icalendar-table td {
+  padding: 0.4rem;
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: top;
+}
+
+.icalendar-table th {
+  width: 8rem;
+  color: var(--color-text-muted);
+}
+
+.icalendar-raw-list {
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+  font-size: 0.85rem;
+  word-break: break-word;
+}
+@media (min-width: 768px) { .icalendar-tool { padding: 0 2rem 3rem; } }
