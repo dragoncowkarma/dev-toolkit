@@ -358,7 +358,7 @@ export function generateCssGradient(config) {
   } = config;
 
   const stopListStr = stops
-    .map((s) => `${s.color.trim()} ${Number(s.position)}%`)
+    .map((s) => `${s.color.trim()} ${Number(Number(s.position).toFixed(2))}%`)
     .join(', ');
 
   let cssValue = '';
