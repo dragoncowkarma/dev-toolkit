@@ -28,6 +28,11 @@
   color: var(--color-primary-light);
 }
 
+.icalendar-tool__button:focus-within {
+  outline: 2px solid var(--color-primary-light);
+  outline-offset: 3px;
+}
+
 .icalendar-tool__button input {
   position: absolute;
   inset: 0;
@@ -117,4 +122,8 @@
   font-size: 0.85rem;
   word-break: break-word;
 }
-@media (min-width: 768px) { .icalendar-tool { padding: 0 2rem 3rem; } }
+@media (min-width: 768px) {
+  .icalendar-tool {
+    padding: 0 2rem 3rem;
+  }
+}

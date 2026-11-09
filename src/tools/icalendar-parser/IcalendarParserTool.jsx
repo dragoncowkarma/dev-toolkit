@@ -1,21 +1,39 @@
-/* eslint-disable max-len */
 import { useEffect, useRef, useState } from 'react';
 import { parseIcalendar } from './icalendar.utils.js';
 import './icalendar.css';
 
-const EXAMPLE = `BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:team-sync@example.com\r\nDTSTAMP:20261109T010000Z\r\nDTSTART;TZID=Asia/Seoul:20261110T090000\r\nDTEND;TZID=Asia/Seoul:20261110T093000\r\nSUMMARY:Team sync\r\nEND:VEVENT\r\nEND:VCALENDAR`;
+const EXAMPLE = [
+  'BEGIN:VCALENDAR',
+  'VERSION:2.0',
+  'BEGIN:VEVENT',
+  'UID:team-sync@example.com',
+  'DTSTAMP:20261109T010000Z',
+  'DTSTART;TZID=Asia/Seoul:20261110T090000',
+  'DTEND;TZID=Asia/Seoul:20261110T093000',
+  'SUMMARY:Team sync',
+  'END:VEVENT',
+  'END:VCALENDAR',
+].join('\r\n');
 
-function ComponentTree({ component, depth = 0 }) {
+function ComponentTree({ component }) {
   const summary = component.properties.find((property) => property.name === 'SUMMARY');
   const fields = ['DTSTART', 'DTEND', 'SUMMARY', 'RRULE', 'UID', 'STATUS'];
   return (
-    <li className="icalendar-tree__item" style={{ '--tree-depth': depth }}>
-      <strong>{component.name}</strong>{summary ? ` — ${summary.displayValue ?? summary.value}` : ''}
+    <li className="icalendar-tree__item">
+      <strong>{component.name}</strong>
+      {summary ? ` — ${summary.displayValue ?? summary.value}` : ''}
       <table className="icalendar-table">
         <tbody>
           {fields.map((name) => {
             const property = component.properties.find((item) => item.name === name);
-            return property ? <tr key={name}><th>{name}</th><td>{property.displayValue ?? property.value}</td></tr> : null;
+            if (!property) return null;
+
+            return (
+              <tr key={name}>
+                <th>{name}</th>
+                <td>{property.displayValue ?? property.value}</td>
+              </tr>
+            );
           })}
         </tbody>
       </table>
@@ -23,11 +41,21 @@ function ComponentTree({ component, depth = 0 }) {
         <details>
           <summary>Raw properties ({component.properties.length})</summary>
           <ul className="icalendar-raw-list">
-            {component.properties.map((property) => <li key={`${property.lineNumber}-${property.raw}`}>Line {property.lineNumber}: {property.raw}</li>)}
+            {component.properties.map((property) => (
+              <li key={`${property.lineNumber}-${property.raw}`}>
+                Line {property.lineNumber}: {property.raw}
+              </li>
+            ))}
           </ul>
         </details>
       )}
-      {component.children.length > 0 && <ul className="icalendar-tree">{component.children.map((child) => <ComponentTree key={`${child.lineNumber}-${child.name}`} component={child} depth={depth + 1} />)}</ul>}
+      {component.children.length > 0 && (
+        <ul className="icalendar-tree">
+          {component.children.map((child) => (
+            <ComponentTree key={`${child.lineNumber}-${child.name}`} component={child} />
+          ))}
+        </ul>
+      )}
     </li>
   );
 }
@@ -56,7 +84,10 @@ export default function IcalendarParserTool() {
       if (requestId === requestRef.current) setInput(text);
     } catch {
       if (requestId === requestRef.current) {
-        setResult({ components: [], errors: [{ lineNumber: 0, message: 'Could not read this file.', line: '' }] });
+        setResult({
+          components: [],
+          errors: [{ lineNumber: 0, message: 'Could not read this file.', line: '' }],
+        });
       }
     }
   }
@@ -72,15 +103,62 @@ export default function IcalendarParserTool() {
       <div className="icalendar-tool__actions">
         <label className="icalendar-tool__button">
           Upload .ics file
-          <input ref={inputRef} type="file" accept=".ics,text/calendar" onChange={handleFileChange} aria-label="Upload iCalendar file" />
+          <input
+            ref={inputRef}
+            type="file"
+            accept=".ics,text/calendar"
+            onChange={handleFileChange}
+            aria-label="Upload iCalendar file"
+          />
         </label>
-        <button type="button" className="icalendar-tool__button" onClick={() => setInput(EXAMPLE)}>Load example</button>
+        <button
+          type="button"
+          className="icalendar-tool__button"
+          onClick={() => setInput(EXAMPLE)}
+        >
+          Load example
+        </button>
         <button type="button" className="icalendar-tool__button" onClick={clearInput}>Clear</button>
       </div>
-      <label className="icalendar-tool__label" htmlFor="icalendar-input">iCalendar text</label>
-      <textarea id="icalendar-input" value={input} onChange={(event) => { requestRef.current += 1; setInput(event.target.value); }} placeholder="Paste RFC 5545 .ics content here…" spellCheck={false} />
-      {result.errors.length > 0 && <section className="icalendar-errors" aria-label="Validation errors" role="alert"><strong>Validation errors</strong><ul>{result.errors.map((error, index) => <li key={`${error.lineNumber}-${index}`}>Line {error.lineNumber}: {error.message}{error.line ? ` (${error.line})` : ''}</li>)}</ul></section>}
-      {result.components.length > 0 && <section aria-labelledby="icalendar-results"><h3 id="icalendar-results">Parsed components</h3><ul className="icalendar-tree">{result.components.map((component) => <ComponentTree key={`${component.lineNumber}-${component.name}`} component={component} />)}</ul></section>}
+      <label className="icalendar-tool__label" htmlFor="icalendar-input">
+        iCalendar text
+      </label>
+      <textarea
+        id="icalendar-input"
+        value={input}
+        onChange={(event) => {
+          requestRef.current += 1;
+          setInput(event.target.value);
+        }}
+        placeholder="Paste RFC 5545 .ics content here…"
+        spellCheck={false}
+      />
+      {result.errors.length > 0 && (
+        <section className="icalendar-errors" aria-label="Validation errors" role="alert">
+          <strong>Validation errors</strong>
+          <ul>
+            {result.errors.map((error, index) => (
+              <li key={`${error.lineNumber}-${index}`}>
+                Line {error.lineNumber}: {error.message}
+                {error.line ? ` (${error.line})` : ''}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {result.components.length > 0 && (
+        <section aria-labelledby="icalendar-results">
+          <h3 id="icalendar-results">Parsed components</h3>
+          <ul className="icalendar-tree">
+            {result.components.map((component) => (
+              <ComponentTree
+                key={`${component.lineNumber}-${component.name}`}
+                component={component}
+              />
+            ))}
+          </ul>
+        </section>
+      )}
     </section>
   );
 }

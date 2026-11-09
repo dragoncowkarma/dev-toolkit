@@ -1,4 +1,3 @@
-/* eslint-disable max-len */
 /**
  * Unfolds RFC 5545 content lines while retaining the first physical line number.
  *
@@ -38,6 +37,17 @@ function splitOutsideQuotes(value, delimiter) {
   return parts;
 }
 
+function findOutsideQuotes(value, delimiter) {
+  let quoted = false;
+
+  for (let index = 0; index < value.length; index += 1) {
+    if (value[index] === '"') quoted = !quoted;
+    if (value[index] === delimiter && !quoted) return index;
+  }
+
+  return -1;
+}
+
 function decodeText(value) {
   return value.replace(/\\(?:n|N|,|;|\\)/g, (escape) => {
     const character = escape[1];
@@ -50,10 +60,12 @@ function decodeText(value) {
  *
  * @param {string} line An unfolded iCalendar content line.
  * @param {number} lineNumber Source line number for diagnostics.
- * @returns {{name: string, params: Record<string, string>, value: string, raw: string, lineNumber: number}|null}
+ * @returns {{
+ *   name: string, params: Record<string, string>, value: string, raw: string, lineNumber: number
+ * }|null}
  */
 export function parseIcalendarProperty(line, lineNumber) {
-  const colonIndex = line.indexOf(':');
+  const colonIndex = findOutsideQuotes(line, ':');
   if (colonIndex < 1) return null;
 
   const headerParts = splitOutsideQuotes(line.slice(0, colonIndex), ';');
@@ -139,7 +151,9 @@ function inspectComponent(component, errors) {
       const decoded = decodeIcalendarDate(property);
       property.displayValue = decoded.display;
       if (decoded.error) {
-        errors.push(makeError(property.lineNumber, `${property.name}: ${decoded.error}`, property.raw));
+        errors.push(
+          makeError(property.lineNumber, `${property.name}: ${decoded.error}`, property.raw),
+        );
       }
     } else if (['SUMMARY', 'UID', 'STATUS', 'RRULE'].includes(property.name)) {
       property.displayValue = decodeText(property.value);
@@ -188,7 +202,9 @@ export function parseIcalendar(source) {
       if (!expected) {
         errors.push(makeError(lineNumber, `END:${actual} has no matching BEGIN.`, value));
       } else if (expected.name !== actual) {
-        errors.push(makeError(lineNumber, `END:${actual} does not match BEGIN:${expected.name}.`, value));
+        errors.push(
+          makeError(lineNumber, `END:${actual} does not match BEGIN:${expected.name}.`, value),
+        );
       } else {
         stack.pop();
       }
