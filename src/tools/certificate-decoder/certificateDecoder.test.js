@@ -14,6 +14,7 @@ import {
   getValidityStatus,
   parseAsn1,
   parseCertificate,
+  parseName,
   toHex,
 } from './certificateDecoder.utils.js';
 import {
@@ -166,9 +167,52 @@ function toPemFromDer(der) {
   return toPem(btoa(String.fromCharCode(...der)));
 }
 
-/** An IMPLICIT `UniqueIdentifier` BIT STRING under the given context tag. */
-function uniqueIdField(tagNumber) {
-  return Uint8Array.from([0x80 | tagNumber, 0x02, 0x00, 0xff]);
+/**
+ * An IMPLICIT `UniqueIdentifier` BIT STRING under the given context tag.
+ * `content` defaults to a valid single-octet value declaring no unused bits.
+ */
+function uniqueIdField(tagNumber, content = [0x00, 0xff]) {
+  return encodeTlv(0x80 | tagNumber, Uint8Array.from(content));
+}
+
+/**
+ * Rebuilds the certificate with `name` replacing its issuer or subject `Name`,
+ * re-encoding both enclosing SEQUENCE lengths so every other field and the
+ * signature bytes stay byte-identical. Only the chosen name differs.
+ */
+function withName(der, which, name) {
+  const certificate = parseAsn1(der);
+  const tbs = certificate.children[0];
+  const nameIndex = tbsVersionFields(der) + (which === 'issuer' ? 2 : 4);
+  const fields = tbs.children.map((field, index) => (index === nameIndex ? name : field.raw));
+  return encodeSequence(
+    concatBytes([
+      encodeSequence(concatBytes(fields)),
+      certificate.children[1].raw,
+      certificate.children[2].raw,
+    ]),
+  );
+}
+
+/** Rebuilds the certificate with its issuer or subject as an empty `SEQUENCE {}`. */
+function withEmptyName(der, which) {
+  return withName(der, which, encodeSequence(new Uint8Array(0)));
+}
+
+/**
+ * Rebuilds the certificate with an empty RDN `SET {}` appended to its issuer or
+ * subject. Every original RDN is preserved, so the only defect is the empty set.
+ */
+function withEmptyRdn(der, which) {
+  const certificate = parseAsn1(der);
+  const tbs = certificate.children[0];
+  const nameIndex = tbsVersionFields(der) + (which === 'issuer' ? 2 : 4);
+  const rdns = tbs.children[nameIndex].children.map((rdn) => rdn.raw);
+  return withName(
+    der,
+    which,
+    encodeSequence(concatBytes([...rdns, encodeTlv(0x31, new Uint8Array(0))])),
+  );
 }
 
 /** Encodes text as the content octets of a printable ASN.1 element. */
@@ -1227,6 +1271,127 @@ describe('parseCertificate error handling', () => {
     const entry = decodeOne(toPemFromDer(mutated));
     expect(entry.certificate).toBeUndefined();
     expect(entry.error).toMatch('has more fields than its type and value');
+  });
+
+  it('rejects an empty Name directly, since RDNSequence is SIZE (1..MAX)', () => {
+    const empty = parseAsn1(encodeSequence(new Uint8Array(0)));
+    expect(() => parseName(empty, 'The issuer name')).toThrow(
+      'The issuer name holds no relative distinguished names',
+    );
+  });
+
+  it('rejects an empty RDN directly, since each RDN is a non-empty SET', () => {
+    const name = encodeSequence(encodeTlv(0x31, new Uint8Array(0)));
+    expect(() => parseName(parseAsn1(name), 'The subject name')).toThrow(
+      'The subject name component holds no attributes',
+    );
+  });
+
+  it('rejects an empty issuer Name instead of reporting an identity-free issuer', () => {
+    const mutated = withEmptyName(sampleDer, 'issuer');
+    expect(parseAsn1(mutated).children[0].children[tbsVersionFields(mutated) + 2].children)
+      .toHaveLength(0);
+    expect(() => parseCertificate(mutated)).toThrow(
+      'The issuer name holds no relative distinguished names',
+    );
+    const entry = decodeOne(toPemFromDer(mutated));
+    expect(entry.certificate).toBeUndefined();
+    expect(entry.error).toMatch('holds no relative distinguished names');
+  });
+
+  it('rejects an empty subject Name instead of reporting an identity-free subject', () => {
+    const mutated = withEmptyName(sampleDer, 'subject');
+    expect(() => parseCertificate(mutated)).toThrow(
+      'The subject name holds no relative distinguished names',
+    );
+    const entry = decodeOne(toPemFromDer(mutated));
+    expect(entry.certificate).toBeUndefined();
+    expect(entry.error).toMatch('holds no relative distinguished names');
+  });
+
+  it('rejects an empty RDN SET appended to the issuer Name', () => {
+    const mutated = withEmptyRdn(sampleDer, 'issuer');
+    expect(() => parseCertificate(mutated)).toThrow(
+      'The issuer name component holds no attributes',
+    );
+    const entry = decodeOne(toPemFromDer(mutated));
+    expect(entry.certificate).toBeUndefined();
+    expect(entry.error).toMatch('component holds no attributes');
+  });
+
+  it('rejects an empty RDN SET appended to the subject Name', () => {
+    const mutated = withEmptyRdn(sampleDer, 'subject');
+    expect(() => parseCertificate(mutated)).toThrow(
+      'The subject name component holds no attributes',
+    );
+    expect(decodeOne(toPemFromDer(mutated)).error).toMatch('component holds no attributes');
+  });
+
+  it('re-encodes the sample certificate unchanged when a Name is rebuilt as-is', () => {
+    const issuer = parseAsn1(sampleDer).children[0].children[tbsVersionFields(sampleDer) + 2];
+    expect(Array.from(withName(sampleDer, 'issuer', issuer.raw))).toEqual(Array.from(sampleDer));
+  });
+
+  it('rejects an issuerUniqueID declaring an unused-bit count above seven', () => {
+    const mutated = withTbsTail(sampleDer, [
+      uniqueIdField(1, [0x08, 0xff]),
+      tbsExtensionsField(sampleDer).raw,
+    ]);
+    expect(() => parseCertificate(mutated)).toThrow(
+      'The certificate issuer unique ID declares an invalid unused-bit count',
+    );
+    const entry = decodeOne(toPemFromDer(mutated));
+    expect(entry.certificate).toBeUndefined();
+    expect(entry.error).toMatch('declares an invalid unused-bit count');
+  });
+
+  it('rejects an issuerUniqueID whose declared unused bits are not zero', () => {
+    const mutated = withTbsTail(sampleDer, [
+      uniqueIdField(1, [0x04, 0xff]),
+      tbsExtensionsField(sampleDer).raw,
+    ]);
+    expect(() => parseCertificate(mutated)).toThrow(
+      'The certificate issuer unique ID declares unused bits that are not zero',
+    );
+    expect(decodeOne(toPemFromDer(mutated)).error).toMatch('unused bits that are not zero');
+  });
+
+  it('rejects an empty issuerUniqueID BIT STRING', () => {
+    const mutated = withTbsTail(sampleDer, [uniqueIdField(1, [])]);
+    expect(() => parseCertificate(mutated)).toThrow(
+      'The certificate issuer unique ID is an empty BIT STRING',
+    );
+    expect(decodeOne(toPemFromDer(mutated)).error).toMatch('is an empty BIT STRING');
+  });
+
+  it('rejects an issuerUniqueID declaring unused bits with no content octets', () => {
+    const mutated = withTbsTail(sampleDer, [uniqueIdField(1, [0x03])]);
+    expect(() => parseCertificate(mutated)).toThrow(
+      'The certificate issuer unique ID declares unused bits but carries no content octets',
+    );
+    expect(decodeOne(toPemFromDer(mutated)).error).toMatch('carries no content octets');
+  });
+
+  it('rejects a subjectUniqueID with an invalid unused-bit count', () => {
+    const mutated = withTbsTail(sampleDer, [
+      uniqueIdField(1),
+      uniqueIdField(2, [0x09, 0x00]),
+      tbsExtensionsField(sampleDer).raw,
+    ]);
+    expect(() => parseCertificate(mutated)).toThrow(
+      'The certificate subject unique ID declares an invalid unused-bit count',
+    );
+    const entry = decodeOne(toPemFromDer(mutated));
+    expect(entry.certificate).toBeUndefined();
+    expect(entry.error).toMatch('The certificate subject unique ID');
+  });
+
+  it('accepts a unique identifier that declares non-zero unused bits correctly', () => {
+    const mutated = withTbsTail(sampleDer, [
+      uniqueIdField(1, [0x04, 0xf0]),
+      tbsExtensionsField(sampleDer).raw,
+    ]);
+    expect(parseCertificate(mutated).subject.commonName).toBe('devtoolkit.example');
   });
 
   it('rejects basicConstraints carrying a surplus field after cA', () => {

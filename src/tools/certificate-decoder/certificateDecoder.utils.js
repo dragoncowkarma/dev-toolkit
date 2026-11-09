@@ -656,16 +656,28 @@ export function getIntegerBitLength(content) {
   return (content.length - index - 1) * 8 + (32 - Math.clz32(content[index]));
 }
 
-function readBitStringBytes(node, label) {
-  expectUniversal(node, ASN1_TAG.BIT_STRING, label);
-  if (node.content.length === 0) {
+/**
+ * Validates BIT STRING content octets and returns the value bytes.
+ *
+ * Split out from `readBitStringBytes` because `UniqueIdentifier` is an IMPLICIT
+ * BIT STRING: the `[1]`/`[2]` tbsCertificate fields carry exactly these content
+ * octets under a context tag, so they must obey the same rules even though
+ * their tag is not UNIVERSAL 3.
+ *
+ * @param {Uint8Array} content Raw content octets of the BIT STRING value.
+ * @param {string} label Human-readable label used in error messages.
+ * @returns {Uint8Array} The value bytes after the unused-bit count octet.
+ * @throws {Error} When the content does not form a valid DER BIT STRING value.
+ */
+function readBitStringContent(content, label) {
+  if (content.length === 0) {
     throw new Error(`${label} is an empty BIT STRING.`);
   }
-  const unusedBitCount = node.content[0];
+  const unusedBitCount = content[0];
   if (unusedBitCount > 7) {
     throw new Error(`${label} declares an invalid unused-bit count.`);
   }
-  const bits = node.content.subarray(1);
+  const bits = content.subarray(1);
   // X.690 §11.2 pins down the two remaining degrees of freedom DER removes from
   // BER: a BIT STRING with no content octets must declare zero unused bits, and
   // the bits the final octet declares unused must themselves be zero. Without
@@ -681,6 +693,11 @@ function readBitStringBytes(node, label) {
     throw new Error(`${label} declares unused bits that are not zero.`);
   }
   return bits;
+}
+
+function readBitStringBytes(node, label) {
+  expectUniversal(node, ASN1_TAG.BIT_STRING, label);
+  return readBitStringContent(node.content, label);
 }
 
 function formatDistinguishedName(fields) {
@@ -699,8 +716,21 @@ export function parseName(node, label = 'A distinguished name') {
   expectUniversal(node, ASN1_TAG.SEQUENCE, label);
   const fields = [];
 
+  // X.501 defines Name as `RDNSequence ::= SEQUENCE OF RelativeDistinguishedName`
+  // which RFC 5280 §4.1.2.4 constrains to `SIZE (1..MAX)`, and each
+  // RelativeDistinguishedName is a `SET SIZE (1..MAX) OF AttributeTypeAndValue`.
+  // Iterating the children alone accepts `SEQUENCE {}` and `SET {}`, which would
+  // decode as an issuer or subject with no attributes at all — an identity-free
+  // name the UI would render as an empty string.
+  if (!node.children || node.children.length === 0) {
+    throw new Error(`${label} holds no relative distinguished names.`);
+  }
+
   for (const rdn of node.children) {
     expectUniversal(rdn, ASN1_TAG.SET, `${label} component`);
+    if (!rdn.children || rdn.children.length === 0) {
+      throw new Error(`${label} component holds no attributes.`);
+    }
     for (const attribute of rdn.children) {
       expectUniversal(attribute, ASN1_TAG.SEQUENCE, `${label} attribute`);
       if (!attribute.children || attribute.children.length < 2) {
@@ -981,6 +1011,18 @@ function readTbsOptionalFields(fields) {
       throw new Error('The certificate body has an unexpected field after its public key.');
     }
     lowestAllowedTag = field.tagNumber + 1;
+    if (field.tagNumber === 1 || field.tagNumber === 2) {
+      // `UniqueIdentifier ::= BIT STRING` is IMPLICIT here, so the context tag
+      // replaces UNIVERSAL 3 but the content octets are still a BIT STRING
+      // value. Checking only the tag and the primitive form would accept an
+      // unused-bit count above 7, or non-zero unused trailing bits, giving the
+      // same identifier several encodings inside the signed body.
+      const uniqueIdLabel =
+        field.tagNumber === 1
+          ? 'The certificate issuer unique ID'
+          : 'The certificate subject unique ID';
+      readBitStringContent(field.content, uniqueIdLabel);
+    }
     if (field.tagNumber === 3) {
       if (field.children.length !== 1) {
         throw new Error('The certificate extensions wrapper does not hold exactly one element.');
