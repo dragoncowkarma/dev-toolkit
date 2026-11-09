@@ -1,0 +1,12 @@
+.barcode-scanner { --scanner-gap: 1rem; max-width: 760px; margin: 0 auto; padding: 0 1.25rem 2rem; display: grid; gap: var(--scanner-gap); }
+.barcode-scanner__input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.barcode-scanner__dropzone { min-height: 220px; display: grid; place-content: center; gap: .5rem; padding: 2rem; text-align: center; cursor: pointer; color: var(--color-text-muted); background: var(--color-surface); border: 2px dashed var(--color-border); border-radius: var(--radius); }
+.barcode-scanner__dropzone strong { color: var(--color-text); font-size: 1.1rem; }
+.barcode-scanner__dropzone:focus, .barcode-scanner__dropzone.is-dragging { outline: none; border-color: var(--color-primary); background: var(--color-bg); }
+.barcode-scanner__error { padding: .75rem 1rem; color: var(--color-error-light); background: var(--color-error-bg); border: 1px solid var(--color-error-border); border-radius: var(--radius); }
+.barcode-scanner__result { display: grid; gap: .5rem; padding: 1.25rem; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); }
+.barcode-scanner__result > span, .barcode-scanner dt { color: var(--color-text-muted); font-size: .8rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+.barcode-scanner output { color: var(--color-text); font: 600 1.5rem/1.3 'SF Mono', 'Fira Code', Consolas, monospace; overflow-wrap: anywhere; }
+.barcode-scanner dl { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; margin: .5rem 0 0; }
+.barcode-scanner dd { margin: .25rem 0 0; color: var(--color-text); }.barcode-scanner__valid { color: var(--color-success, #22c55e) !important; }
+@media (min-width: 768px) { .barcode-scanner { padding: 0 2rem 3rem; } }
