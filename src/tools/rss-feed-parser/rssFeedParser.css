@@ -1,0 +1,123 @@
+.rss-feed-parser-tool {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+}
+
+.rss-feed-parser-tool__actions,
+.rss-feed-parser-tool__feed-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.rss-feed-parser-tool__button {
+  display: inline-flex;
+  align-items: center;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  padding: 0.5rem 1rem;
+}
+
+.rss-feed-parser-tool__button:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.rss-feed-parser-tool__file-button {
+  overflow: hidden;
+  position: relative;
+}
+
+.rss-feed-parser-tool__file-input {
+  cursor: pointer;
+  inset: 0;
+  opacity: 0;
+  position: absolute;
+}
+
+.rss-feed-parser-tool__label,
+.rss-feed-parser-tool__format {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.rss-feed-parser-tool__input {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-sizing: border-box;
+  color: var(--color-text);
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+  line-height: 1.5;
+  margin-top: 0.5rem;
+  min-height: 280px;
+  padding: 1rem;
+  resize: vertical;
+  width: 100%;
+}
+
+.rss-feed-parser-tool__input:focus {
+  border-color: var(--color-primary);
+  outline: none;
+}
+
+.rss-feed-parser-tool__errors,
+.rss-feed-parser-tool__results {
+  border-radius: var(--radius);
+  margin-top: 1rem;
+  padding: 1rem;
+}
+
+.rss-feed-parser-tool__errors {
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  color: var(--color-error-light);
+}
+
+.rss-feed-parser-tool__errors ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1.25rem;
+}
+
+.rss-feed-parser-tool__results {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+}
+
+.rss-feed-parser-tool__feed-header h2,
+.rss-feed-parser-tool__entries h4 {
+  margin: 0.25rem 0;
+}
+
+.rss-feed-parser-tool__entries {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+  padding-left: 1.5rem;
+}
+
+.rss-feed-parser-tool__entries article {
+  border-left: 3px solid var(--color-primary);
+  padding-left: 0.75rem;
+}
+
+.rss-feed-parser-tool__entries p {
+  margin: 0.35rem 0;
+}
+
+@media (min-width: 768px) {
+  .rss-feed-parser-tool {
+    padding: 0 2rem 3rem;
+  }
+}
