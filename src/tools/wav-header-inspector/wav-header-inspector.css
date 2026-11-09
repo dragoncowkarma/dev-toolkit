@@ -1,0 +1,127 @@
+.wav-inspector {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  color: var(--color-text);
+}
+
+.wav-inspector__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+.wav-inspector__dropzone {
+  display: flex;
+  min-height: 180px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  text-align: center;
+  transition: border-color var(--transition), background var(--transition);
+}
+
+.wav-inspector__dropzone strong {
+  color: var(--color-text);
+}
+
+.wav-inspector__dropzone:hover,
+.wav-inspector__dropzone:focus-visible,
+.wav-inspector__dropzone--dragging {
+  border-color: var(--color-primary);
+  background: var(--color-bg);
+  outline: none;
+}
+
+.wav-inspector__filename {
+  margin: 1rem 0;
+  color: var(--color-text-muted);
+}
+
+.wav-inspector__error {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+}
+
+.wav-inspector__results {
+  display: grid;
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+.wav-inspector__results section {
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.wav-inspector__results h3 {
+  margin-top: 0;
+}
+
+.wav-inspector__metadata {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.wav-inspector__metadata div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.wav-inspector__metadata dt {
+  color: var(--color-text-muted);
+}
+
+.wav-inspector__metadata dd {
+  margin: 0;
+  text-align: right;
+}
+
+.wav-inspector__table-wrap {
+  overflow-x: auto;
+}
+
+.wav-inspector table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.wav-inspector th,
+.wav-inspector td {
+  padding: 0.65rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.wav-inspector th {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+}
+
+@media (min-width: 640px) {
+  .wav-inspector {
+    padding: 0 2rem 3rem;
+  }
+
+  .wav-inspector__metadata {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
