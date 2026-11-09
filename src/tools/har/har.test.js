@@ -406,7 +406,7 @@ describe('toGoRequestsSnippet', () => {
     });
 
     expect(snippet).toContain('"bytes"');
-    expect(snippet).toContain('body := []byte("{\\\"name\\\":\\\"Ada\\\",\\\"active\\\":true}")');
+    expect(snippet).toContain('body := []byte("{\\"name\\":\\"Ada\\",\\"active\\":true}")');
     expect(snippet).toContain('requestBody := bytes.NewReader(body)');
   });
 

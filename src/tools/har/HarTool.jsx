@@ -215,7 +215,7 @@ export default function HarTool() {
           ? toPythonRequestsSnippet(selectedEntry)
           : format === 'go'
             ? toGoRequestsSnippet(selectedEntry)
-          : toCurlCommand(selectedEntry);
+            : toCurlCommand(selectedEntry);
 
     try {
       await navigator.clipboard.writeText(snippet);
@@ -230,7 +230,7 @@ export default function HarTool() {
             ? 'Python snippet'
             : format === 'go'
               ? 'Go snippet'
-            : 'cURL command';
+              : 'cURL command';
       setCopyError(`Failed to copy ${formatName}.`);
     }
   }
@@ -522,7 +522,7 @@ export default function HarTool() {
                             ? 'Python snippet'
                             : copiedFormat === 'go'
                               ? 'Go snippet'
-                            : 'cURL command'}
+                              : 'cURL command'}
                     </span>
                   )}
                 </div>
