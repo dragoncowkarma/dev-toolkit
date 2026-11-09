@@ -213,6 +213,53 @@ describe('cssGradient.utils', () => {
       );
     });
 
+    it('rounds repeating-decimal stop positions in CSS and declarations', () => {
+      const result = generateCssGradient({
+        type: 'linear',
+        angle: 90,
+        stops: [
+          { color: '#f43f5e', position: 0 },
+          { color: '#eab308', position: 100 / 3 },
+          { color: '#06b6d4', position: (100 / 3) * 2 },
+        ],
+      });
+
+      expect(result.css).toBe(
+        'linear-gradient(90deg, #f43f5e 0%, #eab308 33.33%, #06b6d4 66.67%)'
+      );
+      expect(result.declaration).toBe(`background: ${result.css};`);
+    });
+
+    it('removes trailing floating-point noise from stop positions', () => {
+      const result = generateCssGradient({
+        type: 'linear',
+        angle: 90,
+        stops: [
+          { color: '#f43f5e', position: 0.1 + 0.2 },
+          { color: '#06b6d4', position: 100 },
+        ],
+      });
+
+      expect(result.css).toBe('linear-gradient(90deg, #f43f5e 0.3%, #06b6d4 100%)');
+    });
+
+    it('keeps clean positions free of trailing decimal zeros', () => {
+      const result = generateCssGradient({
+        type: 'linear',
+        angle: 90,
+        stops: [
+          { color: '#f43f5e', position: 0 },
+          { color: '#eab308', position: 33 },
+          { color: '#06b6d4', position: 50.3 },
+          { color: '#f43f5e', position: 100 },
+        ],
+      });
+
+      expect(result.css).toBe(
+        'linear-gradient(90deg, #f43f5e 0%, #eab308 33%, #06b6d4 50.3%, #f43f5e 100%)'
+      );
+    });
+
     it('generates linear-gradient CSS with keyword direction', () => {
       const result = generateCssGradient({
         type: 'linear',
