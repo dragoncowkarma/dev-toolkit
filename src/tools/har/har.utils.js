@@ -410,12 +410,84 @@ export function toPythonRequestsSnippet(entry) {
   return `import requests\n\nresponse = ${call}`;
 }
 
+/**
+ * Converts a captured HAR request into a runnable Go net/http program.
+ * @param {object} entry
+ * @returns {string}
+ */
+export function toGoRequestsSnippet(entry) {
+  const request = entry?.request ?? {};
+  const method = String(request.method ?? 'GET').toUpperCase();
+  const url = String(request.url ?? '');
+  const postData = request.postData ?? {};
+  const headers = Array.isArray(request.headers)
+    ? request.headers.filter((header) => hasHeaderName(header) && !header.name.startsWith(':'))
+    : [];
+  const body = typeof postData.text === 'string' ? postData.text : null;
+  const hasJsonBody = body !== null && /json/i.test(String(postData.mimeType ?? '')) &&
+    isValidJson(body);
+  const imports = ['"net/http"'];
+  const statements = [];
+
+  if (hasJsonBody) {
+    imports.unshift('"bytes"');
+    statements.push(`body := []byte(${JSON.stringify(JSON.stringify(JSON.parse(body)))})`);
+    statements.push('requestBody := bytes.NewReader(body)');
+  } else if (body !== null) {
+    imports.push('"strings"');
+    statements.push(`requestBody := strings.NewReader(${formatGoRawString(body)})`);
+  }
+
+  statements.push(
+    `request, err := http.NewRequest(${JSON.stringify(method)}, ${JSON.stringify(url)}, ${
+      body === null ? 'nil' : 'requestBody'
+    })`,
+    'if err != nil {',
+    '  panic(err)',
+    '}'
+  );
+
+  headers.forEach(({ name, value }) => {
+    statements.push(
+      `request.Header.Set(${JSON.stringify(String(name))}, ${JSON.stringify(String(value ?? ''))})`
+    );
+  });
+
+  statements.push(
+    'client := &http.Client{}',
+    'response, err := client.Do(request)',
+    'if err != nil {',
+    '  panic(err)',
+    '}',
+    'defer response.Body.Close()'
+  );
+
+  return `package main\n\nimport (\n${imports.map((item) => `  ${item}`).join('\n')}\n)\n\n` +
+    `func main() {\n${statements.map((statement) => `  ${statement}`).join('\n')}\n}`;
+}
+
 function hasHeader(headers, name) {
   return headers.some((header) => String(header?.name ?? '').toLowerCase() === name);
 }
 
 function hasHeaderName(header) {
   return typeof header?.name === 'string' && header.name.trim() !== '';
+}
+
+function isValidJson(value) {
+  try {
+    JSON.parse(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function formatGoRawString(value) {
+  return String(value).split(/(`|\r)/).map((part) => {
+    if (part === '`' || part === '\r') return JSON.stringify(part);
+    return `\`${part}\``;
+  }).join(' + ');
 }
 
 function formatHeaders(headers) {
