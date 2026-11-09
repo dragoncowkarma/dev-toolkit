@@ -93,6 +93,8 @@ export default function CrcChecksumTool() {
         onChange={(event) => setInput(event.target.value)}
         placeholder={mode === 'text' ? 'Type or paste UTF-8 text…' : 'Example: 31 32 33'}
         spellCheck={false}
+        aria-invalid={Boolean(calculation.error)}
+        aria-describedby={calculation.error ? 'crc-checksum-error' : undefined}
       />
 
       <fieldset className="crc-checksum-algorithms">
@@ -106,7 +108,11 @@ export default function CrcChecksumTool() {
         ))}
       </fieldset>
 
-      {alertMessage && <div className="crc-checksum-alert" role="alert">{alertMessage}</div>}
+      {alertMessage && (
+        <div id="crc-checksum-error" className="crc-checksum-alert" role="alert">
+          {alertMessage}
+        </div>
+      )}
 
       {!calculation.error && (
         <div className="crc-checksum-results" aria-label="Checksum results">
