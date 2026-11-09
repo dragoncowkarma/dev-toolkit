@@ -651,8 +651,8 @@ function assertCanonicalInteger(content, label) {
  * Asserts that an INTEGER is canonical and not negative.
  *
  * Every X.509 integer this decoder displays comes from a non-negative subtype
- * (`Version`, `pathLenConstraint (0..MAX)`, a positive `serialNumber`, an RSA
- * modulus), so a set sign bit is a defect rather than a value to render.
+ * (`Version`, `pathLenConstraint (0..MAX)`, a non-negative `serialNumber`, an
+ * RSA modulus), so a set sign bit is a defect rather than a value to render.
  *
  * @param {Uint8Array} content INTEGER content octets.
  * @param {string} label Human-readable field name used in the error message.
@@ -1221,23 +1221,25 @@ export function parseCertificate(der) {
 /**
  * Validates `serialNumber` against the RFC 5280 §4.1.2.2 profile.
  *
- * The serial number must be a *positive* integer of at most 20 octets. A
- * negative encoding such as `80 FA ...` is otherwise rendered as the hex string
- * `80:FA:...`, which misreports the certificate's identity: those digits are
+ * The serial number must be a *non-negative* integer of at most 20 octets, so
+ * the canonical `00` encoding of zero decodes normally. A negative encoding
+ * such as `80 FA ...` is otherwise rendered as the hex string `80:FA:...`,
+ * which misreports the certificate's identity: those digits are
  * two's-complement bytes, not the number a CA issued, so no CRL or OCSP lookup
  * keyed on them would match.
  *
  * @param {Uint8Array} content `serialNumber` INTEGER content octets.
- * @throws {Error} When the encoding is not a minimal positive integer of at
+ * @throws {Error} When the encoding is not a minimal non-negative integer of at
  *   most 20 octets.
  */
 function assertSerialNumber(content) {
   const label = 'The certificate serial number';
+  // RFC 5280 §4.1.2.2 requires a CA-issued serial number to be a *non-negative*
+  // integer, so the canonical `00` encoding of zero is a valid serial and is
+  // decoded rather than rejected. The same section asks certificate users to
+  // handle even non-conforming serials gracefully, so only encodings that are
+  // not valid DER, or that exceed the 20-octet profile bound, are refused.
   assertNonNegativeInteger(content, label);
-  // After the minimality check, zero has the single spelling `00`.
-  if (content.length === 1 && content[0] === 0x00) {
-    throw new Error(`${label} is zero, but RFC 5280 requires a positive integer.`);
-  }
   if (content.length > SERIAL_NUMBER_MAX_OCTETS) {
     throw new Error(
       `${label} is ${content.length} octets, but RFC 5280 limits it to ` +

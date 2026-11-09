@@ -1216,10 +1216,14 @@ describe('parseCertificate error handling', () => {
     expect(decodeOne(toPemFromDer(mutated)).error).toMatch('not a minimally encoded DER INTEGER');
   });
 
-  it('rejects a zero serial number, which RFC 5280 does not allow', () => {
+  it('decodes the canonical zero serial number RFC 5280 permits', () => {
+    // RFC 5280 §4.1.2.2 requires a *non-negative* serial, so `00` is
+    // conforming; `openssl req -x509 ... -set_serial 0` emits exactly this.
     const mutated = withSerialContent(sampleDer, [0x00]);
-    expect(() => parseCertificate(mutated)).toThrow('The certificate serial number is zero');
-    expect(decodeOne(toPemFromDer(mutated)).error).toMatch('serial number is zero');
+    expect(parseCertificate(mutated).serialNumber).toBe('00');
+    const entry = decodeOne(toPemFromDer(mutated));
+    expect(entry.error).toBeUndefined();
+    expect(entry.certificate.serialNumber).toBe('00');
   });
 
   it('rejects a serial number longer than the RFC 5280 limit of 20 octets', () => {
