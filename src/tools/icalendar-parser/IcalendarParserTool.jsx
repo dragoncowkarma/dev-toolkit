@@ -1,164 +1,134 @@
-import { useEffect, useRef, useState } from 'react';
-import { parseIcalendar } from './icalendar.utils.js';
-import './icalendar.css';
+import { useMemo, useRef, useState } from 'react';
+import { getComponentValue, parseIcalendar } from './icalendarParser.utils.js';
+import './icalendar-parser.css';
 
-const EXAMPLE = [
-  'BEGIN:VCALENDAR',
-  'VERSION:2.0',
-  'BEGIN:VEVENT',
-  'UID:team-sync@example.com',
-  'DTSTAMP:20261109T010000Z',
-  'DTSTART;TZID=Asia/Seoul:20261110T090000',
-  'DTEND;TZID=Asia/Seoul:20261110T093000',
-  'SUMMARY:Team sync',
-  'END:VEVENT',
-  'END:VCALENDAR',
-].join('\r\n');
-
-function ComponentTree({ component }) {
-  const summary = component.properties.find((property) => property.name === 'SUMMARY');
-  const fields = ['DTSTART', 'DTEND', 'SUMMARY', 'RRULE', 'UID', 'STATUS'];
-  return (
-    <li className="icalendar-tree__item">
-      <strong>{component.name}</strong>
-      {summary ? ` — ${summary.displayValue ?? summary.value}` : ''}
-      <table className="icalendar-table">
-        <tbody>
-          {fields.map((name) => {
-            const property = component.properties.find((item) => item.name === name);
-            if (!property) return null;
-
-            return (
-              <tr key={name}>
-                <th>{name}</th>
-                <td>{property.displayValue ?? property.value}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-      {component.properties.length > 0 && (
-        <details>
-          <summary>Raw properties ({component.properties.length})</summary>
-          <ul className="icalendar-raw-list">
-            {component.properties.map((property) => (
-              <li key={`${property.lineNumber}-${property.raw}`}>
-                Line {property.lineNumber}: {property.raw}
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
-      {component.children.length > 0 && (
-        <ul className="icalendar-tree">
-          {component.children.map((child) => (
-            <ComponentTree key={`${child.lineNumber}-${child.name}`} component={child} />
-          ))}
-        </ul>
-      )}
-    </li>
-  );
-}
+const SAMPLE_ICALENDAR = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Dev Toolkit//iCalendar Parser//EN
+BEGIN:VEVENT
+UID:team-standup@example.com
+DTSTAMP:20261109T090000Z
+DTSTART;TZID=Asia/Seoul:20261110T100000
+DTEND;TZID=Asia/Seoul:20261110T103000
+SUMMARY:Team standup
+RRULE:FREQ=WEEKLY;INTERVAL=1;COUNT=4
+END:VEVENT
+END:VCALENDAR`;
 
 /**
- * Renders a client-side RFC 5545 iCalendar parser and validator.
- *
- * @returns {React.JSX.Element} The iCalendar parser UI.
+ * Renders an in-browser iCalendar parser and validator.
+ * @returns {React.JSX.Element}
  */
 export default function IcalendarParserTool() {
-  const [input, setInput] = useState('');
-  const [result, setResult] = useState({ components: [], errors: [] });
-  const inputRef = useRef(null);
-  const requestRef = useRef(0);
-
-  useEffect(() => {
-    setResult(input ? parseIcalendar(input) : { components: [], errors: [] });
-  }, [input]);
+  const [input, setInput] = useState(SAMPLE_ICALENDAR);
+  const [query, setQuery] = useState('');
+  const [fileError, setFileError] = useState('');
+  const fileInputRef = useRef(null);
+  const result = useMemo(() => parseIcalendar(input), [input]);
+  const errorCount = result.issues.filter((issue) => issue.severity === 'error').length;
+  const warningCount = result.issues.length - errorCount;
+  const visibleEvents = result.events.filter((event) => {
+    const searchable = ['UID', 'SUMMARY', 'DTSTART', 'DTEND']
+      .map((name) => getComponentValue(event, name))
+      .join(' ')
+      .toLowerCase();
+    return searchable.includes(query.trim().toLowerCase());
+  });
 
   async function handleFileChange(event) {
     const file = event.target.files?.[0];
     if (!file) return;
-    const requestId = ++requestRef.current;
     try {
-      const text = await file.text();
-      if (requestId === requestRef.current) setInput(text);
+      setInput(await file.text());
+      setFileError('');
     } catch {
-      if (requestId === requestRef.current) {
-        setResult({
-          components: [],
-          errors: [{ lineNumber: 0, message: 'Could not read this file.', line: '' }],
-        });
-      }
+      setFileError('The selected file could not be read.');
     }
   }
 
-  function clearInput() {
-    requestRef.current += 1;
-    setInput('');
-    if (inputRef.current) inputRef.current.value = '';
+  function loadSample() {
+    setInput(SAMPLE_ICALENDAR);
+    setFileError('');
   }
 
   return (
-    <section className="icalendar-tool" aria-label="iCalendar Parser">
-      <div className="icalendar-tool__actions">
-        <label className="icalendar-tool__button">
-          Upload .ics file
+    <section className="icalendar-parser" aria-label="iCalendar parser and validator">
+      <div className="icalendar-parser__toolbar">
+        <label className="icalendar-parser__button icalendar-parser__button--file">
+          Upload .ics
           <input
-            ref={inputRef}
+            ref={fileInputRef}
+            className="icalendar-parser__file-input"
             type="file"
             accept=".ics,text/calendar"
             onChange={handleFileChange}
-            aria-label="Upload iCalendar file"
+            aria-label="Upload an iCalendar file"
           />
         </label>
-        <button
-          type="button"
-          className="icalendar-tool__button"
-          onClick={() => setInput(EXAMPLE)}
-        >
-          Load example
+        <button className="icalendar-parser__button" type="button" onClick={loadSample}>
+          Load sample
         </button>
-        <button type="button" className="icalendar-tool__button" onClick={clearInput}>Clear</button>
       </div>
-      <label className="icalendar-tool__label" htmlFor="icalendar-input">
-        iCalendar text
-      </label>
+
+      <label className="icalendar-parser__label" htmlFor="icalendar-input">iCalendar text</label>
       <textarea
         id="icalendar-input"
+        className="icalendar-parser__input"
         value={input}
-        onChange={(event) => {
-          requestRef.current += 1;
-          setInput(event.target.value);
-        }}
-        placeholder="Paste RFC 5545 .ics content here…"
+        onChange={(event) => setInput(event.target.value)}
         spellCheck={false}
+        placeholder="Paste RFC 5545 .ics content here…"
       />
-      {result.errors.length > 0 && (
-        <section className="icalendar-errors" aria-label="Validation errors" role="alert">
-          <strong>Validation errors</strong>
-          <ul>
-            {result.errors.map((error, index) => (
-              <li key={`${error.lineNumber}-${index}`}>
-                Line {error.lineNumber}: {error.message}
-                {error.line ? ` (${error.line})` : ''}
-              </li>
-            ))}
-          </ul>
-        </section>
+
+      {(fileError || errorCount > 0) && (
+        <div className="icalendar-parser__alert" role="alert">
+          {fileError || `${errorCount} validation error${errorCount === 1 ? '' : 's'} found.`}
+        </div>
       )}
-      {result.components.length > 0 && (
-        <section aria-labelledby="icalendar-results">
-          <h3 id="icalendar-results">Parsed components</h3>
-          <ul className="icalendar-tree">
-            {result.components.map((component) => (
-              <ComponentTree
-                key={`${component.lineNumber}-${component.name}`}
-                component={component}
-              />
-            ))}
-          </ul>
-        </section>
-      )}
+
+      <dl className="icalendar-parser__summary" aria-label="Parse summary">
+        <div><dt>Events</dt><dd>{result.events.length}</dd></div>
+        <div><dt>Errors</dt><dd>{errorCount}</dd></div>
+        <div><dt>Warnings</dt><dd>{warningCount}</dd></div>
+      </dl>
+
+      <div className="icalendar-parser__table-header">
+        <label className="icalendar-parser__label" htmlFor="icalendar-filter">Filter events</label>
+        <input
+          id="icalendar-filter"
+          className="icalendar-parser__filter"
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search title, UID, or date"
+        />
+      </div>
+      <div className="icalendar-parser__table-wrap">
+        <table className="icalendar-parser__table">
+          <caption className="sr-only">Parsed iCalendar events and validation issues</caption>
+          <thead><tr><th>Summary</th><th>Start</th><th>End</th><th>UID</th><th>Issues</th></tr></thead>
+          <tbody>
+            {visibleEvents.map((event) => {
+              const eventIssues = result.issues.filter((issue) => issue.line >= event.line &&
+                issue.line <= (event.endLine ?? Number.MAX_SAFE_INTEGER));
+              return (
+                <tr key={`${event.line}-${getComponentValue(event, 'UID')}`}>
+                  <td>{getComponentValue(event, 'SUMMARY') || 'Untitled event'}</td>
+                  <td>{getComponentValue(event, 'DTSTART') || '—'}</td>
+                  <td>{getComponentValue(event, 'DTEND') || '—'}</td>
+                  <td>{getComponentValue(event, 'UID') || '—'}</td>
+                  <td>{eventIssues.length > 0 ? eventIssues.map((issue) => (
+                    <span className={`icalendar-parser__badge icalendar-parser__badge--${issue.severity}`} key={issue.message}>
+                      {issue.severity}
+                    </span>
+                  )) : <span className="icalendar-parser__badge icalendar-parser__badge--valid">Valid</span>}</td>
+                </tr>
+              );
+            })}
+            {visibleEvents.length === 0 && <tr><td colSpan="5">No matching events.</td></tr>}
+          </tbody>
+        </table>
+      </div>
     </section>
   );
 }
