@@ -25,7 +25,8 @@ export default function IcalendarParserTool() {
   const [fileError, setFileError] = useState('');
   const fileInputRef = useRef(null);
   const result = useMemo(() => parseIcalendar(input), [input]);
-  const errorCount = result.issues.filter((issue) => issue.severity === 'error').length;
+  const validationErrors = result.issues.filter((issue) => issue.severity === 'error');
+  const errorCount = validationErrors.length;
   const warningCount = result.issues.length - errorCount;
   const visibleEvents = result.events.filter((event) => {
     const searchable = ['UID', 'SUMMARY', 'DTSTART', 'DTEND']
@@ -49,6 +50,7 @@ export default function IcalendarParserTool() {
   function loadSample() {
     setInput(SAMPLE_ICALENDAR);
     setFileError('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
   return (
@@ -70,7 +72,9 @@ export default function IcalendarParserTool() {
         </button>
       </div>
 
-      <label className="icalendar-parser__label" htmlFor="icalendar-input">iCalendar text</label>
+      <label className="icalendar-parser__label" htmlFor="icalendar-input">
+        iCalendar text
+      </label>
       <textarea
         id="icalendar-input"
         className="icalendar-parser__input"
@@ -82,7 +86,18 @@ export default function IcalendarParserTool() {
 
       {(fileError || errorCount > 0) && (
         <div className="icalendar-parser__alert" role="alert">
-          {fileError || `${errorCount} validation error${errorCount === 1 ? '' : 's'} found.`}
+          {fileError || (
+            <>
+              <p>
+                {errorCount} validation error{errorCount === 1 ? '' : 's'} found.
+              </p>
+              <ul>
+                {validationErrors.map((issue) => (
+                  <li key={`${issue.line}-${issue.message}`}>{issue.message}</li>
+                ))}
+              </ul>
+            </>
+          )}
         </div>
       )}
 
@@ -93,7 +108,9 @@ export default function IcalendarParserTool() {
       </dl>
 
       <div className="icalendar-parser__table-header">
-        <label className="icalendar-parser__label" htmlFor="icalendar-filter">Filter events</label>
+        <label className="icalendar-parser__label" htmlFor="icalendar-filter">
+          Filter events
+        </label>
         <input
           id="icalendar-filter"
           className="icalendar-parser__filter"
@@ -105,27 +122,54 @@ export default function IcalendarParserTool() {
       </div>
       <div className="icalendar-parser__table-wrap">
         <table className="icalendar-parser__table">
-          <caption className="sr-only">Parsed iCalendar events and validation issues</caption>
-          <thead><tr><th>Summary</th><th>Start</th><th>End</th><th>UID</th><th>Issues</th></tr></thead>
+          <caption className="sr-only">
+            Parsed iCalendar events and validation issues
+          </caption>
+          <thead>
+            <tr>
+              <th>Summary</th>
+              <th>Start</th>
+              <th>End</th>
+              <th>UID</th>
+              <th>Issues</th>
+            </tr>
+          </thead>
           <tbody>
             {visibleEvents.map((event) => {
-              const eventIssues = result.issues.filter((issue) => issue.line >= event.line &&
-                issue.line <= (event.endLine ?? Number.MAX_SAFE_INTEGER));
+              const eventIssues = result.issues.filter(
+                (issue) => issue.line >= event.line
+                  && issue.line <= (event.endLine ?? Number.MAX_SAFE_INTEGER)
+              );
               return (
                 <tr key={`${event.line}-${getComponentValue(event, 'UID')}`}>
                   <td>{getComponentValue(event, 'SUMMARY') || 'Untitled event'}</td>
                   <td>{getComponentValue(event, 'DTSTART') || '—'}</td>
                   <td>{getComponentValue(event, 'DTEND') || '—'}</td>
                   <td>{getComponentValue(event, 'UID') || '—'}</td>
-                  <td>{eventIssues.length > 0 ? eventIssues.map((issue) => (
-                    <span className={`icalendar-parser__badge icalendar-parser__badge--${issue.severity}`} key={issue.message}>
-                      {issue.severity}
-                    </span>
-                  )) : <span className="icalendar-parser__badge icalendar-parser__badge--valid">Valid</span>}</td>
+                  <td>
+                    {eventIssues.length > 0 ? eventIssues.map((issue) => (
+                      <span
+                        className={
+                          `icalendar-parser__badge icalendar-parser__badge--${issue.severity}`
+                        }
+                        key={`${issue.line}-${issue.message}`}
+                      >
+                        {issue.message}
+                      </span>
+                    )) : (
+                      <span className="icalendar-parser__badge icalendar-parser__badge--valid">
+                        Valid
+                      </span>
+                    )}
+                  </td>
                 </tr>
               );
             })}
-            {visibleEvents.length === 0 && <tr><td colSpan="5">No matching events.</td></tr>}
+            {visibleEvents.length === 0 && (
+              <tr>
+                <td colSpan="5">No matching events.</td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>

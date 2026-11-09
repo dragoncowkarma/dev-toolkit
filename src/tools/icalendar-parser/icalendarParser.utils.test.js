@@ -6,11 +6,26 @@ import {
   unfoldContentLines,
 } from './icalendarParser.utils.js';
 
-const VALID_ICALENDAR = `BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:one@example.com\r\nDTSTAMP:20261109T090000Z\r\nDTSTART;TZID=Asia/Seoul:20261110T100000\r\nDTEND;TZID=Asia/Seoul:20261110T110000\r\nSUMMARY:Planning\\, review\\; notes\\nnext line\r\nRRULE:FREQ=WEEKLY;INTERVAL=2;COUNT=3\r\nEND:VEVENT\r\nEND:VCALENDAR`;
+const VALID_ICALENDAR = [
+  'BEGIN:VCALENDAR',
+  'VERSION:2.0',
+  'BEGIN:VEVENT',
+  'UID:one@example.com',
+  'DTSTAMP:20261109T090000Z',
+  'DTSTART;TZID=Asia/Seoul:20261110T100000',
+  'DTEND;TZID=Asia/Seoul:20261110T110000',
+  'SUMMARY:Planning\\, review\\; notes\\nnext line',
+  'RRULE:FREQ=WEEKLY;INTERVAL=2;COUNT=3',
+  'END:VEVENT',
+  'END:VCALENDAR',
+].join('\r\n');
 
 describe('iCalendar content parsing', () => {
   it('unfolds CRLF continuation lines', () => {
-    expect(unfoldContentLines('SUMMARY:Long\r\n title\r\nUID:1')).toEqual(['SUMMARY:Longtitle', 'UID:1']);
+    expect(unfoldContentLines('SUMMARY:Long\r\n title\r\nUID:1')).toEqual([
+      'SUMMARY:Longtitle',
+      'UID:1',
+    ]);
   });
 
   it('parses multi-value parameters and escaped text', () => {
@@ -32,7 +47,15 @@ describe('parseIcalendar validation', () => {
   });
 
   it('reports missing fields, invalid dates, and invalid recurrence rules', () => {
-    const result = parseIcalendar(`BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:x\nDTSTART;VALUE=DATE:20261110T100000\nRRULE:FREQ=NEVER;INTERVAL=0;UNTIL=20261201;COUNT=2\nEND:VEVENT\nEND:VCALENDAR`);
+    const result = parseIcalendar([
+      'BEGIN:VCALENDAR',
+      'BEGIN:VEVENT',
+      'UID:x',
+      'DTSTART;VALUE=DATE:20261110T100000',
+      'RRULE:FREQ=NEVER;INTERVAL=0;UNTIL=20261201;COUNT=2',
+      'END:VEVENT',
+      'END:VCALENDAR',
+    ].join('\n'));
     expect(result.issues.map((issue) => issue.message)).toEqual(expect.arrayContaining([
       'VEVENT is missing required DTSTAMP.',
       'DTSTART must use a valid DATE value.',
@@ -43,8 +66,21 @@ describe('parseIcalendar validation', () => {
   });
 
   it('detects duplicate event UIDs', () => {
-    const event = (stamp) => `BEGIN:VEVENT\nUID:duplicate\nDTSTAMP:${stamp}\nDTSTART:20261110T100000Z\nEND:VEVENT`;
-    const result = parseIcalendar(`BEGIN:VCALENDAR\n${event('20261109T090000Z')}\n${event('20261109T100000Z')}\nEND:VCALENDAR`);
-    expect(result.issues.some((issue) => issue.message === 'Duplicate event UID: duplicate.')).toBe(true);
+    const event = (stamp) => [
+      'BEGIN:VEVENT',
+      'UID:duplicate',
+      `DTSTAMP:${stamp}`,
+      'DTSTART:20261110T100000Z',
+      'END:VEVENT',
+    ].join('\n');
+    const result = parseIcalendar([
+      'BEGIN:VCALENDAR',
+      event('20261109T090000Z'),
+      event('20261109T100000Z'),
+      'END:VCALENDAR',
+    ].join('\n'));
+    expect(
+      result.issues.some((issue) => issue.message === 'Duplicate event UID: duplicate.')
+    ).toBe(true);
   });
 });

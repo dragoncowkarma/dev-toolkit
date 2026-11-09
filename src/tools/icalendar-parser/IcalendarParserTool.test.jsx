@@ -17,5 +17,8 @@ describe('IcalendarParserTool', () => {
       target: { value: 'BEGIN:VCALENDAR\nBEGIN:VEVENT\nEND:VEVENT\nEND:VCALENDAR' },
     });
     expect(screen.getByRole('alert')).toHaveTextContent('validation errors found');
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'VEVENT is missing required UID.'
+    );
   });
 });

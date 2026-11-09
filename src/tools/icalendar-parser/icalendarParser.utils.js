@@ -145,7 +145,13 @@ function validateDateProperty(component, property, issues) {
     );
   }
   if (declaredDate && property.params.TZID) {
-    addIssue(issues, 'warning', `${property.name} with VALUE=DATE should not use TZID.`, component, property);
+    addIssue(
+      issues,
+      'warning',
+      `${property.name} with VALUE=DATE should not use TZID.`,
+      component,
+      property
+    );
   }
 }
 
@@ -195,7 +201,8 @@ function validateComponent(component, issues) {
 /**
  * Parses and validates iCalendar text without sending data outside the browser.
  * @param {string} text
- * @returns {{calendar: object|null, events: object[], todos: object[], alarms: object[], issues: object[]}}
+ * @returns {{calendar: object|null, events: object[], todos: object[], alarms: object[],
+ * issues: object[]}}
  */
 export function parseIcalendar(text) {
   const issues = [];
