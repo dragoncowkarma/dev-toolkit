@@ -1,3 +1,4 @@
+/* eslint-disable max-len */
 /**
  * Unfolds RFC 5545 content lines while retaining the first physical line number.
  *

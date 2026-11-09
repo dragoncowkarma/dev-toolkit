@@ -1,3 +1,4 @@
+/* eslint-disable max-len */
 import { describe, expect, it } from 'vitest';
 import { parseIcalendar, parseIcalendarProperty, unfoldIcalendarLines } from './icalendar.utils.js';
 

@@ -1,3 +1,4 @@
+/* eslint-disable max-len */
 import { useEffect, useRef, useState } from 'react';
 import { parseIcalendar } from './icalendar.utils.js';
 import './icalendar.css';
