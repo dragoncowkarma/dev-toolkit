@@ -193,4 +193,70 @@ describe('IsinValidatorTool', () => {
 
     expect(screen.getByRole('alert')).toHaveTextContent(/Failed to copy to clipboard/i);
   });
+
+  it('resets stale copy confirmation on edit, clear, sample load, or error', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    render(<IsinValidatorTool />);
+
+    const input = screen.getByLabelText(
+      'International Securities Identification Number (ISIN)'
+    );
+    fireEvent.change(input, { target: { value: 'US0378331005' } });
+
+    const copyBtn = screen.getByRole('button', { name: 'Copy' });
+    await act(async () => {
+      fireEvent.click(copyBtn);
+    });
+
+    expect(screen.getByRole('button', { name: '✓ Copied' })).toBeInTheDocument();
+    expect(screen.getByText('Copied to clipboard')).toBeInTheDocument();
+
+    // 1. Changing input resets copy confirmation
+    fireEvent.change(input, { target: { value: 'US0378331006' } });
+    expect(screen.getByRole('button', { name: 'Copy' })).toBeInTheDocument();
+    expect(screen.queryByText('Copied to clipboard')).not.toBeInTheDocument();
+
+    // Copy again
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
+    });
+    expect(screen.getByRole('button', { name: '✓ Copied' })).toBeInTheDocument();
+    expect(screen.getByText('Copied to clipboard')).toBeInTheDocument();
+
+    // 2. Loading sample resets copy confirmation
+    const sampleButton = screen.getByRole('button', { name: 'BMW AG (DE)' });
+    fireEvent.click(sampleButton);
+    expect(screen.getByRole('button', { name: 'Copy' })).toBeInTheDocument();
+    expect(screen.queryByText('Copied to clipboard')).not.toBeInTheDocument();
+
+    // Copy again
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
+    });
+    expect(screen.getByRole('button', { name: '✓ Copied' })).toBeInTheDocument();
+    expect(screen.getByText('Copied to clipboard')).toBeInTheDocument();
+
+    // 3. Clearing resets copy confirmation
+    const clearButton = screen.getByRole('button', { name: 'Clear' });
+    fireEvent.click(clearButton);
+    expect(screen.getByRole('button', { name: 'Copy' })).toBeInTheDocument();
+    expect(screen.queryByText('Copied to clipboard')).not.toBeInTheDocument();
+
+    // 4. Failed retry clears prior success indication
+    fireEvent.change(input, { target: { value: 'US0378331005' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
+    });
+    expect(screen.getByRole('button', { name: '✓ Copied' })).toBeInTheDocument();
+
+    writeText.mockRejectedValueOnce(new Error('Write failed'));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '✓ Copied' }));
+    });
+    expect(screen.getByRole('button', { name: 'Copy' })).toBeInTheDocument();
+    expect(screen.queryByText('Copied to clipboard')).not.toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(/Failed to copy to clipboard/i);
+  });
 });

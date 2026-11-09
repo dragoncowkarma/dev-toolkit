@@ -12,23 +12,29 @@ import './isin-validator.css';
 export default function IsinValidatorTool() {
   const [input, setInput] = useState('');
   const [copyError, setCopyError] = useState('');
-  const [copied, showCopied] = useCopyFeedback({ initialValue: false, resetValue: false });
+  const [copied, showCopied, dismissCopyFeedback] = useCopyFeedback({
+    initialValue: false,
+    resetValue: false,
+  });
 
   const result = validateIsin(input);
 
   function handleInputChange(event) {
     setInput(event.target.value);
     setCopyError('');
+    dismissCopyFeedback();
   }
 
   function handleClear() {
     setInput('');
     setCopyError('');
+    dismissCopyFeedback();
   }
 
   function handleLoadSample(sampleValue) {
     setInput(sampleValue);
     setCopyError('');
+    dismissCopyFeedback();
   }
 
   async function handleCopy() {
@@ -39,6 +45,7 @@ export default function IsinValidatorTool() {
       showCopied(true);
       setCopyError('');
     } catch {
+      dismissCopyFeedback();
       setCopyError('Failed to copy to clipboard.');
     }
   }
