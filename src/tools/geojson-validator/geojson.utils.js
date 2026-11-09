@@ -59,7 +59,12 @@ export function validateGeoJson(document) {
   };
 }
 
-/** @typedef {{geometryCounts: Record<string, number>, coordinateCount: number, boundingBox: number[] | null}} GeoJsonSummary */
+/**
+ * @typedef {object} GeoJsonSummary
+ * @property {Record<string, number>} geometryCounts
+ * @property {number} coordinateCount
+ * @property {number[] | null} boundingBox
+ */
 
 function validateNode(node, path, errors, positions, geometryCounts) {
   if (!isPlainObject(node)) {
@@ -95,7 +100,13 @@ function validateFeature(feature, path, errors, positions, geometryCounts) {
     (feature.geometry !== null && !isPlainObject(feature.geometry))) {
     addError(errors, joinPath(path, 'geometry'), 'Expected a GeoJSON object or null.');
   } else if (feature.geometry !== null) {
-    validateNode(feature.geometry, joinPath(path, 'geometry'), errors, positions, geometryCounts);
+    const geometryPath = joinPath(path, 'geometry');
+    if (!GEOMETRY_TYPES.has(feature.geometry.type)) {
+      addError(errors, geometryPath, 'Expected a geometry object.');
+      return;
+    }
+    geometryCounts[feature.geometry.type] = (geometryCounts[feature.geometry.type] ?? 0) + 1;
+    validateGeometry(feature.geometry, geometryPath, errors, positions, geometryCounts);
   }
 }
 
@@ -136,7 +147,13 @@ function validateGeometry(geometry, path, errors, positions, geometryCounts) {
     addError(errors, joinPath(path, 'coordinates'), 'Missing required coordinates member.');
     return;
   }
-  validateCoordinates(geometry.coordinates, geometry.type, joinPath(path, 'coordinates'), errors, positions);
+  validateCoordinates(
+    geometry.coordinates,
+    geometry.type,
+    joinPath(path, 'coordinates'),
+    errors,
+    positions,
+  );
 }
 
 function validateCoordinates(coordinates, type, path, errors, positions) {
@@ -226,7 +243,12 @@ function createBoundingBox(positions) {
   if (positions.length === 0) return null;
   const longitudes = positions.map(([longitude]) => longitude);
   const latitudes = positions.map(([, latitude]) => latitude);
-  return [Math.min(...longitudes), Math.min(...latitudes), Math.max(...longitudes), Math.max(...latitudes)];
+  return [
+    Math.min(...longitudes),
+    Math.min(...latitudes),
+    Math.max(...longitudes),
+    Math.max(...latitudes),
+  ];
 }
 
 function positionsEqual(first, last) {

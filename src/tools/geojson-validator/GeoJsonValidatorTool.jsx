@@ -38,7 +38,11 @@ export default function GeoJsonValidatorTool() {
           <p>Validate RFC 7946 structures and inspect coordinate coverage locally.</p>
         </div>
         <div className="geojson-validator__actions">
-          <button type="button" className="geojson-validator__button primary" onClick={handleValidate}>
+          <button
+            type="button"
+            className="geojson-validator__button primary"
+            onClick={handleValidate}
+          >
             Validate GeoJSON
           </button>
           <button type="button" className="geojson-validator__button" onClick={handleClear}>
@@ -61,10 +65,16 @@ export default function GeoJsonValidatorTool() {
 
       {validation && (
         <div className="geojson-validator__results">
-          <div className={validation.errors.length ? 'geojson-validator__error' : 'geojson-validator__valid'}
-            role="status">
+          <div
+            className={
+              validation.errors.length ? 'geojson-validator__error' : 'geojson-validator__valid'
+            }
+            role="status"
+          >
             {validation.errors.length
-              ? `${validation.errors.length} validation error${validation.errors.length === 1 ? '' : 's'} found.`
+              ? `${validation.errors.length} validation error${
+                validation.errors.length === 1 ? '' : 's'
+              } found.`
               : 'Valid GeoJSON.'}
           </div>
 

@@ -29,7 +29,11 @@ describe('validateGeoJson', () => {
       type: 'FeatureCollection',
       features: [
         { type: 'Feature', properties: null, geometry: { type: 'Point', coordinates: [0, 0] } },
-        { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [[1, 2], [3, 4]] } },
+        {
+          type: 'Feature',
+          properties: {},
+          geometry: { type: 'LineString', coordinates: [[1, 2], [3, 4]] },
+        },
       ],
     });
 
@@ -62,7 +66,21 @@ describe('validateGeoJson', () => {
   it('reports a missing type member', () => {
     const result = validateGeoJson({ coordinates: [0, 0] });
 
-    expect(result.errors).toEqual([{ path: 'document', message: 'Missing required "type" member.' }]);
+    expect(result.errors).toEqual([
+      { path: 'document', message: 'Missing required "type" member.' },
+    ]);
+  });
+
+  it('rejects a Feature with a non-geometry object', () => {
+    const result = validateGeoJson({
+      type: 'Feature',
+      properties: null,
+      geometry: { type: 'Feature', properties: null, geometry: null },
+    });
+
+    expect(result.errors).toEqual([
+      { path: 'geometry', message: 'Expected a geometry object.' },
+    ]);
   });
 });
 

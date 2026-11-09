@@ -91,9 +91,9 @@
 }
 
 .geojson-validator__valid {
-  background: var(--color-success-bg);
-  border: 1px solid var(--color-success-border);
-  color: var(--color-success-light);
+  background: color-mix(in srgb, var(--color-success) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-success) 40%, transparent);
+  color: var(--color-success);
 }
 
 .geojson-validator__error {
