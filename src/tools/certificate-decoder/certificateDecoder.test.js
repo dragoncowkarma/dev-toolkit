@@ -370,6 +370,52 @@ function withNotBeforeElement(der, tag, text) {
   );
 }
 
+/**
+ * Rebuilds the certificate with `mapField` applied to every `tbsCertificate`
+ * field, re-encoding the body and the outer SEQUENCE lengths so the result
+ * stays well-formed DER. A mapper returning `null` leaves that field untouched.
+ */
+function withTbsFields(der, mapField) {
+  const certificate = parseAsn1(der);
+  const tbs = certificate.children[0];
+  const fields = tbs.children.map((field, index) => mapField(field, index) ?? field.raw);
+  return encodeSequence(
+    concatBytes([
+      encodeSequence(concatBytes(fields)),
+      certificate.children[1].raw,
+      certificate.children[2].raw,
+    ]),
+  );
+}
+
+/**
+ * Rebuilds the certificate with `content` as its version INTEGER content
+ * octets, leaving the `[0]` EXPLICIT wrapper and every other field in place.
+ */
+function withVersionContent(der, content) {
+  expect(tbsVersionFields(der)).toBe(1);
+  return withTbsFields(der, (field, index) =>
+    index === 0 ? encodeContext(0, encodeTlv(ASN1_TAG.INTEGER, Uint8Array.from(content))) : null,
+  );
+}
+
+/**
+ * Rebuilds the certificate with `content` as its `serialNumber` INTEGER content
+ * octets. The replacement may differ in length from the original, so both
+ * enclosing SEQUENCE lengths are re-encoded.
+ */
+function withSerialContent(der, content) {
+  const serialIndex = tbsVersionFields(der);
+  return withTbsFields(der, (field, index) =>
+    index === serialIndex ? encodeTlv(ASN1_TAG.INTEGER, Uint8Array.from(content)) : null,
+  );
+}
+
+/** Encodes a `BasicConstraints` extnValue from raw `cA` and `pathLenConstraint` TLVs. */
+function basicConstraintsValue(...tlvs) {
+  return encodeSequence(concatBytes(tlvs.map((tlv) => Uint8Array.from(tlv))));
+}
+
 /** Parses a standalone UTCTime or GeneralizedTime element from its text. */
 function timeNode(tag, text) {
   const bytes = Uint8Array.from([tag, text.length, ...text.split('').map((c) => c.charCodeAt(0))]);
@@ -1104,6 +1150,101 @@ describe('parseCertificate error handling', () => {
     );
   });
 
+  it('decodes the sample fixture version and serial number from canonical INTEGERs', () => {
+    // The baseline for the mutations below: `02` is v3 and the serial is a
+    // 20-octet positive integer, both of which must keep decoding.
+    const certificate = parseCertificate(sampleDer);
+    expect(certificate.version).toBe(3);
+    expect(certificate.serialNumber).toBe('18FAA945B4DDE0AC196A1667F165B85D698FC5F7');
+  });
+
+  it('rejects a version above v3 instead of reporting a non-existent v4', () => {
+    const mutated = withVersionContent(sampleDer, [0x03]);
+    expect(() => parseCertificate(mutated)).toThrow(
+      'The certificate version 3 is not an RFC 5280 version',
+    );
+    const entry = decodeOne(toPemFromDer(mutated));
+    expect(entry.certificate).toBeUndefined();
+    expect(entry.error).toMatch('is not an RFC 5280 version');
+  });
+
+  it('rejects a negative version instead of reporting it as v0', () => {
+    // `FF` is -1 in two's complement, which `-1 + 1` rendered as `v0`.
+    const mutated = withVersionContent(sampleDer, [0xff]);
+    expect(() => parseCertificate(mutated)).toThrow(
+      'The certificate version -1 is not an RFC 5280 version',
+    );
+    expect(decodeOne(toPemFromDer(mutated)).error).toMatch('is not an RFC 5280 version');
+  });
+
+  it('rejects a version padded with a surplus leading zero octet', () => {
+    // `00 02` decodes to the same v3 marker as `02`, so only its DER form differs.
+    const mutated = withVersionContent(sampleDer, [0x00, 0x02]);
+    expect(() => parseCertificate(mutated)).toThrow(
+      'The certificate version is not a minimally encoded DER INTEGER',
+    );
+    expect(decodeOne(toPemFromDer(mutated)).error).toMatch('not a minimally encoded DER INTEGER');
+  });
+
+  it('rejects an empty version INTEGER', () => {
+    const mutated = withVersionContent(sampleDer, []);
+    expect(() => parseCertificate(mutated)).toThrow(
+      'The certificate version has no DER INTEGER content octets',
+    );
+  });
+
+  it('accepts the v1 and v2 version markers', () => {
+    expect(parseCertificate(withVersionContent(sampleDer, [0x00])).version).toBe(1);
+    expect(parseCertificate(withVersionContent(sampleDer, [0x01])).version).toBe(2);
+  });
+
+  it('rejects a negative serial number instead of rendering its sign bytes', () => {
+    const serial = [...parseAsn1(sampleDer).children[0].children[1].content];
+    serial[0] = 0x80;
+    const mutated = withSerialContent(sampleDer, serial);
+    expect(() => parseCertificate(mutated)).toThrow('The certificate serial number is negative');
+    const entry = decodeOne(toPemFromDer(mutated));
+    expect(entry.certificate).toBeUndefined();
+    expect(entry.error).toMatch('serial number is negative');
+  });
+
+  it('rejects a serial number padded with a surplus leading zero octet', () => {
+    const mutated = withSerialContent(sampleDer, [0x00, 0x01]);
+    expect(() => parseCertificate(mutated)).toThrow(
+      'The certificate serial number is not a minimally encoded DER INTEGER',
+    );
+    expect(decodeOne(toPemFromDer(mutated)).error).toMatch('not a minimally encoded DER INTEGER');
+  });
+
+  it('rejects a zero serial number, which RFC 5280 does not allow', () => {
+    const mutated = withSerialContent(sampleDer, [0x00]);
+    expect(() => parseCertificate(mutated)).toThrow('The certificate serial number is zero');
+    expect(decodeOne(toPemFromDer(mutated)).error).toMatch('serial number is zero');
+  });
+
+  it('rejects a serial number longer than the RFC 5280 limit of 20 octets', () => {
+    const mutated = withSerialContent(sampleDer, [0x01, ...new Array(20).fill(0xab)]);
+    expect(() => parseCertificate(mutated)).toThrow(
+      'The certificate serial number is 21 octets, but RFC 5280 limits it to 20',
+    );
+    expect(decodeOne(toPemFromDer(mutated)).error).toMatch('RFC 5280 limits it to 20');
+  });
+
+  it('accepts a positive serial number at the 20-octet limit', () => {
+    // A leading `00` pad counts towards the 20 octets, so the widest accepted
+    // value is a 20-octet encoding whose first octet keeps the sign bit clear.
+    const mutated = withSerialContent(sampleDer, [0x7f, ...new Array(19).fill(0xab)]);
+    expect(parseCertificate(mutated).serialNumber).toBe(`7F${'AB'.repeat(19)}`);
+  });
+
+  it('keeps decoding the remaining chain blocks when one serial number is negative', () => {
+    const mutated = withSerialContent(sampleDer, [0x80, 0x01]);
+    const results = decodeCertificates(`${toPemFromDer(mutated)}\n${EC_CERTIFICATE}`);
+    expect(results).toHaveLength(2);
+    expect(results[0].error).toMatch('serial number is negative');
+    expect(results[1].certificate.subject.commonName).toBe('ec.example');
+  });
+
   it('rejects a subject public key info with a surplus field', () => {
     const certificate = parseAsn1(sampleDer);
     const tbs = certificate.children[0];
@@ -1442,6 +1583,41 @@ describe('parseCertificate error handling', () => {
     expect(parseCertificate(mutated).extensions.basicConstraints).toEqual({
       isCa: true,
       pathLength: 3,
+    });
+  });
+
+  it('rejects a negative basicConstraints pathLenConstraint', () => {
+    // RFC 5280 types pathLenConstraint as INTEGER (0..MAX); `FF` is -1, which
+    // was reported as a usable CA path depth.
+    const mutated = withBasicConstraintsValue(
+      sampleDer,
+      basicConstraintsValue([ASN1_TAG.BOOLEAN, 0x01, 0xff], [ASN1_TAG.INTEGER, 0x01, 0xff]),
+    );
+    expect(() => parseCertificate(mutated)).toThrow('The basicConstraints path length is negative');
+    const entry = decodeOne(toPemFromDer(mutated));
+    expect(entry.certificate).toBeUndefined();
+    expect(entry.error).toMatch('path length is negative');
+  });
+
+  it('rejects a basicConstraints pathLenConstraint padded with a leading zero octet', () => {
+    const mutated = withBasicConstraintsValue(
+      sampleDer,
+      basicConstraintsValue([ASN1_TAG.BOOLEAN, 0x01, 0xff], [ASN1_TAG.INTEGER, 0x02, 0x00, 0x03]),
+    );
+    expect(() => parseCertificate(mutated)).toThrow(
+      'The basicConstraints path length is not a minimally encoded DER INTEGER',
+    );
+    expect(decodeOne(toPemFromDer(mutated)).error).toMatch('not a minimally encoded DER INTEGER');
+  });
+
+  it('accepts a zero basicConstraints pathLenConstraint', () => {
+    const mutated = withBasicConstraintsValue(
+      sampleDer,
+      basicConstraintsValue([ASN1_TAG.BOOLEAN, 0x01, 0xff], [ASN1_TAG.INTEGER, 0x01, 0x00]),
+    );
+    expect(parseCertificate(mutated).extensions.basicConstraints).toEqual({
+      isCa: true,
+      pathLength: 0,
     });
   });
 

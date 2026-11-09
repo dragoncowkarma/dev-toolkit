@@ -48,6 +48,9 @@ const TAG_LABELS = {
 /** Guards against stack exhaustion from deliberately over-nested input. */
 const MAX_ASN1_DEPTH = 40;
 
+/** RFC 5280 §4.1.2.2: conforming CAs must not exceed 20 octets of serialNumber. */
+const SERIAL_NUMBER_MAX_OCTETS = 20;
+
 const PEM_BLOCK_PATTERN = /-----BEGIN ([^-]+)-----([\s\S]*?)-----END \1-----/g;
 const BASE64_PATTERN = /^[A-Za-z0-9+/]+={0,2}$/;
 const CERTIFICATE_LABELS = new Set(['CERTIFICATE', 'X509 CERTIFICATE', 'TRUSTED CERTIFICATE']);
@@ -616,9 +619,58 @@ export function formatUtc(date) {
   return `${date.toISOString().slice(0, 19)}Z`;
 }
 
+/**
+ * Asserts that INTEGER content octets use the minimal two's-complement form.
+ *
+ * X.690 §8.3 gives every integer exactly one DER encoding: at least one
+ * content octet, and the leading nine bits are never all zeros nor all ones.
+ * Without this check `00 00 01` and `01` are both accepted as 1, and `FF 80`
+ * and `80` are both accepted as -128, so one field has several spellings and
+ * re-encoding a decoded certificate no longer reproduces the signed bytes.
+ *
+ * @param {Uint8Array} content INTEGER content octets.
+ * @param {string} label Human-readable field name used in the error message.
+ * @returns {Uint8Array} The same content octets, once validated.
+ * @throws {Error} When the encoding is empty or not minimal.
+ */
+function assertCanonicalInteger(content, label) {
+  if (content.length === 0) {
+    throw new Error(`${label} has no DER INTEGER content octets.`);
+  }
+  if (content.length > 1) {
+    const padsPositive = content[0] === 0x00 && (content[1] & 0x80) === 0;
+    const padsNegative = content[0] === 0xff && (content[1] & 0x80) !== 0;
+    if (padsPositive || padsNegative) {
+      throw new Error(`${label} is not a minimally encoded DER INTEGER.`);
+    }
+  }
+  return content;
+}
+
+/**
+ * Asserts that an INTEGER is canonical and not negative.
+ *
+ * Every X.509 integer this decoder displays comes from a non-negative subtype
+ * (`Version`, `pathLenConstraint (0..MAX)`, a positive `serialNumber`, an RSA
+ * modulus), so a set sign bit is a defect rather than a value to render.
+ *
+ * @param {Uint8Array} content INTEGER content octets.
+ * @param {string} label Human-readable field name used in the error message.
+ * @returns {Uint8Array} The same content octets, once validated.
+ * @throws {Error} When the encoding is not minimal or the value is negative.
+ */
+function assertNonNegativeInteger(content, label) {
+  assertCanonicalInteger(content, label);
+  if ((content[0] & 0x80) !== 0) {
+    throw new Error(`${label} is negative, but X.509 requires a non-negative integer.`);
+  }
+  return content;
+}
+
 function decodeSmallInteger(node, label) {
   expectUniversal(node, ASN1_TAG.INTEGER, label);
-  if (node.content.length === 0 || node.content.length > 4) {
+  assertCanonicalInteger(node.content, label);
+  if (node.content.length > 4) {
     throw new Error(`${label} is not a small DER INTEGER.`);
   }
   let value = 0;
@@ -808,6 +860,10 @@ function readRsaModulusBits(keyBytes) {
     const rsaKey = parseAsn1(keyBytes);
     expectUniversal(rsaKey, ASN1_TAG.SEQUENCE, 'An RSA public key');
     const modulus = expectUniversal(rsaKey.children[0], ASN1_TAG.INTEGER, 'An RSA modulus');
+    // An RSA modulus is a positive integer, so a padded or sign-bit-set
+    // encoding is reported as an unknown key size rather than as a bit count
+    // read off two's-complement bytes.
+    assertNonNegativeInteger(modulus.content, 'An RSA modulus');
     const bits = getIntegerBitLength(modulus.content);
     return bits > 0 ? bits : null;
   } catch {
@@ -915,6 +971,9 @@ function parseBasicConstraints(content) {
   }
 
   if (isUniversal(fields[cursor], ASN1_TAG.INTEGER)) {
+    // RFC 5280 §4.2.1.9 types `pathLenConstraint` as INTEGER (0..MAX), so a
+    // negative depth is rejected rather than rendered as a usable CA limit.
+    assertNonNegativeInteger(fields[cursor].content, 'The basicConstraints path length');
     pathLength = decodeSmallInteger(fields[cursor], 'The basicConstraints path length');
     cursor += 1;
   }
@@ -1076,7 +1135,18 @@ export function parseCertificate(der) {
     if (fields[0].children.length !== 1) {
       throw new Error('The certificate version wrapper does not hold exactly one element.');
     }
-    version = decodeSmallInteger(fields[0].children[0], 'The certificate version') + 1;
+    const versionValue = decodeSmallInteger(fields[0].children[0], 'The certificate version');
+    // RFC 5280 §4.1.2.1 defines Version as exactly `v1(0)`, `v2(1)` or
+    // `v3(2)`. Without the bound, `03` renders as a non-existent "v4" and the
+    // two's-complement `FF` renders as "v0", both presented to the reader as
+    // facts about the certificate rather than the malformed field they are.
+    if (versionValue < 0 || versionValue > 2) {
+      throw new Error(
+        `The certificate version ${versionValue} is not an RFC 5280 version ` +
+          '(v1 is 0, v2 is 1, v3 is 2).',
+      );
+    }
+    version = versionValue + 1;
     cursor = 1;
   }
   if (fields.length < cursor + 6) {
@@ -1088,6 +1158,7 @@ export function parseCertificate(der) {
     ASN1_TAG.INTEGER,
     'The certificate serial number',
   );
+  assertSerialNumber(serialNode.content);
   cursor += 1;
   // The signed body repeats the signature AlgorithmIdentifier, and RFC 5280
   // §4.1.1.2 requires it to be the *same* identifier as the outer one. The two
@@ -1147,10 +1218,35 @@ export function parseCertificate(der) {
   };
 }
 
-function stripLeadingZeroByte(content) {
-  if (content.length === 0) {
-    throw new Error('The certificate serial number is empty.');
+/**
+ * Validates `serialNumber` against the RFC 5280 §4.1.2.2 profile.
+ *
+ * The serial number must be a *positive* integer of at most 20 octets. A
+ * negative encoding such as `80 FA ...` is otherwise rendered as the hex string
+ * `80:FA:...`, which misreports the certificate's identity: those digits are
+ * two's-complement bytes, not the number a CA issued, so no CRL or OCSP lookup
+ * keyed on them would match.
+ *
+ * @param {Uint8Array} content `serialNumber` INTEGER content octets.
+ * @throws {Error} When the encoding is not a minimal positive integer of at
+ *   most 20 octets.
+ */
+function assertSerialNumber(content) {
+  const label = 'The certificate serial number';
+  assertNonNegativeInteger(content, label);
+  // After the minimality check, zero has the single spelling `00`.
+  if (content.length === 1 && content[0] === 0x00) {
+    throw new Error(`${label} is zero, but RFC 5280 requires a positive integer.`);
   }
+  if (content.length > SERIAL_NUMBER_MAX_OCTETS) {
+    throw new Error(
+      `${label} is ${content.length} octets, but RFC 5280 limits it to ` +
+        `${SERIAL_NUMBER_MAX_OCTETS}.`,
+    );
+  }
+}
+
+function stripLeadingZeroByte(content) {
   const significant = content.length > 1 && content[0] === 0 ? content.subarray(1) : content;
   return toHex(significant);
 }
