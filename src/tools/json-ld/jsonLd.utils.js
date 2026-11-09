@@ -72,6 +72,27 @@ export function isEntityContainerKeyword(key) {
   return ENTITY_CONTAINER_KEYWORDS.has(key);
 }
 
+function getEntityContainerIssue(key, value, path) {
+  if (key === '@reverse' && !isRecord(value)) {
+    return {
+      severity: 'warning',
+      path,
+      message: '@reverse should be an object mapping properties to node objects.',
+    };
+  }
+
+  if ((key === '@graph' || key === '@included') &&
+      !isRecord(value) && !(Array.isArray(value) && value.every(isRecord))) {
+    return {
+      severity: 'warning',
+      path,
+      message: `${key} should be an object or an array of objects.`,
+    };
+  }
+
+  return null;
+}
+
 function isIdReference(value, isNested) {
   if (!isNested || !isRecord(value) || !('@id' in value)) return false;
   return Object.keys(value).every((key) => key === '@id');
@@ -122,8 +143,11 @@ function inspectEntity(value, path, entities, issues, references = [], isNested 
 
   Object.entries(value).forEach(([key, child]) => {
     if (key !== '@context' && key !== '@type' && key !== '@id') {
+      const childPath = formatPath(path, key);
+      const entityContainerIssue = getEntityContainerIssue(key, child, childPath);
+      if (entityContainerIssue !== null) issues.push(entityContainerIssue);
       const childIsNested = !isEntityContainerKeyword(key);
-      inspectEntity(child, formatPath(path, key), entities, issues, references, childIsNested);
+      inspectEntity(child, childPath, entities, issues, references, childIsNested);
     }
   });
 }
