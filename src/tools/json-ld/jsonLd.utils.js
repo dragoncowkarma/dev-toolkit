@@ -60,7 +60,7 @@ export function extractJsonLdContent(input) {
   };
 }
 
-export const ENTITY_CONTAINER_KEYWORDS = new Set(['@graph', '@included']);
+export const ENTITY_CONTAINER_KEYWORDS = new Set(['@graph', '@included', '@reverse']);
 
 /**
  * Determines whether a JSON-LD property or keyword represents an entity container.
