@@ -53,9 +53,12 @@ function formatDosDateTime(date, time) {
   const seconds = (time & 0x1f) * 2;
   const minutes = (time >> 5) & 0x3f;
   const hours = (time >> 11) & 0x1f;
-  if (!day || !month || month > 12 || hours > 23 || minutes > 59 || seconds > 59) return 'Invalid DOS timestamp';
+  if (!day || !month || month > 12 || hours > 23 || minutes > 59 || seconds > 59) {
+    return 'Invalid DOS timestamp';
+  }
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')} ` +
-    `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:` +
+    `${String(seconds).padStart(2, '0')}`;
 }
 
 /**
@@ -85,7 +88,9 @@ function readZip64Extra(extra, needs) {
     const id = extra[position] | (extra[position + 1] << 8);
     const length = extra[position + 2] | (extra[position + 3] << 8);
     position += 4;
-    if (position + length > extra.length) throw new ZipInspectorError('Central directory extra field is truncated.');
+    if (position + length > extra.length) {
+      throw new ZipInspectorError('Central directory extra field is truncated.');
+    }
     if (id === 1) {
       const view = new DataView(extra.buffer, extra.byteOffset + position, length);
       let cursor = 0;
@@ -124,8 +129,12 @@ function readZip64Eocd(view, eocdOffset) {
  * @returns {{ eocd: object, entries: object[], zip64: boolean }}
  */
 export function inspectZip(buffer) {
-  if (!(buffer instanceof ArrayBuffer)) throw new TypeError('ZIP input must be an ArrayBuffer.');
-  if (buffer.byteLength < 22) throw new ZipInspectorError('File is too small to contain an EOCD record.');
+  if (!(buffer instanceof ArrayBuffer)) {
+    throw new TypeError('ZIP input must be an ArrayBuffer.');
+  }
+  if (buffer.byteLength < 22) {
+    throw new ZipInspectorError('File is too small to contain an EOCD record.');
+  }
   const bytes = new Uint8Array(buffer);
   const view = new DataView(buffer);
   const eocdOffset = findEocd(view);
@@ -147,7 +156,10 @@ export function inspectZip(buffer) {
   const directoryEnd = position + directory.centralDirectorySize;
   for (let index = 0; index < directory.entryCount; index += 1) {
     requireRange(bytes, position, 46, `Central directory entry ${index + 1}`);
-    if (position + 46 > directoryEnd || view.getUint32(position, true) !== CENTRAL_DIRECTORY_SIGNATURE) {
+    if (
+      position + 46 > directoryEnd ||
+      view.getUint32(position, true) !== CENTRAL_DIRECTORY_SIGNATURE
+    ) {
       throw new ZipInspectorError(`Central directory entry ${index + 1} has an invalid signature.`);
     }
     const nameLength = view.getUint16(position + 28, true);
@@ -156,7 +168,9 @@ export function inspectZip(buffer) {
     const recordLength = 46 + nameLength + extraLength + entryCommentLength;
     requireRange(bytes, position, recordLength, `Central directory entry ${index + 1}`);
     if (position + recordLength > directoryEnd) {
-      throw new ZipInspectorError(`Central directory entry ${index + 1} exceeds central directory bounds.`);
+      throw new ZipInspectorError(
+        `Central directory entry ${index + 1} exceeds central directory bounds.`,
+      );
     }
     const flags = view.getUint16(position + 8, true);
     const rawCompressedSize = view.getUint32(position + 20, true);
@@ -181,15 +195,21 @@ export function inspectZip(buffer) {
       uncompressedSize: zip64Values.uncompressedSize ?? rawUncompressedSize,
       compressionMethod: view.getUint16(position + 10, true),
       crc32: view.getUint32(position + 16, true).toString(16).padStart(8, '0').toUpperCase(),
-      modified: formatDosDateTime(view.getUint16(position + 14, true), view.getUint16(position + 12, true)),
-      externalAttributes: `0x${view.getUint32(position + 38, true).toString(16).padStart(8, '0').toUpperCase()}`,
+      modified: formatDosDateTime(
+        view.getUint16(position + 14, true),
+        view.getUint16(position + 12, true),
+      ),
+      externalAttributes: `0x${view.getUint32(position + 38, true)
+        .toString(16).padStart(8, '0').toUpperCase()}`,
       encrypted: Boolean(flags & 1),
       dataDescriptor: Boolean(flags & 8),
       zip64: needZip64.length > 0,
     });
     position += recordLength;
   }
-  if (position !== directoryEnd) throw new ZipInspectorError('Central directory size does not match its entries.');
+  if (position !== directoryEnd) {
+    throw new ZipInspectorError('Central directory size does not match its entries.');
+  }
   return {
     zip64,
     eocd: { ...directory, comment: comment.value, commentUsedFallback: comment.usedFallback },

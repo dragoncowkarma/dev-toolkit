@@ -78,7 +78,10 @@ describe('inspectZip', () => {
 
   it('uses hex and Base64 fallback for a non-UTF-8 entry name', () => {
     const result = inspectZip(createZip({ name: Uint8Array.from([0xff, 0x80]) }));
-    expect(result.entries[0]).toMatchObject({ name: 'hex:ff80 (Base64: /4A=)', nameUsedFallback: true });
+    expect(result.entries[0]).toMatchObject({
+      name: 'hex:ff80 (Base64: /4A=)',
+      nameUsedFallback: true,
+    });
   });
 
   it('labels data descriptors and encrypted entries from their flags', () => {
