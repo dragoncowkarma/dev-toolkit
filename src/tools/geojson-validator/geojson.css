@@ -1,0 +1,126 @@
+.geojson-validator {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+}
+
+.geojson-validator__toolbar,
+.geojson-validator__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.geojson-validator__toolbar {
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.geojson-validator h2,
+.geojson-validator h3,
+.geojson-validator h4,
+.geojson-validator p {
+  margin-top: 0;
+}
+
+.geojson-validator__toolbar p,
+.geojson-validator__label {
+  color: var(--color-text-muted);
+}
+
+.geojson-validator__label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.5rem;
+  text-transform: uppercase;
+}
+
+.geojson-validator__input {
+  box-sizing: border-box;
+  min-height: 260px;
+  width: 100%;
+  resize: vertical;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  font: 0.9rem/1.5 'SF Mono', 'Fira Code', Consolas, monospace;
+  padding: 1rem;
+}
+
+.geojson-validator__input:focus {
+  border-color: var(--color-primary);
+  outline: none;
+}
+
+.geojson-validator__button {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  padding: 0.5rem 1rem;
+}
+
+.geojson-validator__button:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.geojson-validator__button.primary {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.geojson-validator__results {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.geojson-validator__valid,
+.geojson-validator__error,
+.geojson-validator__summary,
+.geojson-validator__errors {
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+}
+
+.geojson-validator__valid {
+  background: var(--color-success-bg);
+  border: 1px solid var(--color-success-border);
+  color: var(--color-success-light);
+}
+
+.geojson-validator__error {
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  color: var(--color-error-light);
+  margin-top: 1rem;
+}
+
+.geojson-validator__summary,
+.geojson-validator__errors {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+}
+
+.geojson-validator__summary ul,
+.geojson-validator__errors ul {
+  margin-bottom: 0;
+  padding-left: 1.25rem;
+}
+
+.geojson-validator__errors code {
+  color: var(--color-primary-light);
+}
+
+@media (min-width: 768px) {
+  .geojson-validator {
+    padding: 0 2rem 3rem;
+  }
+}
