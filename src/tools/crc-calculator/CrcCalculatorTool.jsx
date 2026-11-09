@@ -35,9 +35,9 @@ export default function CrcCalculatorTool() {
   const hasInput = fileBytes !== null || text !== '';
   const results = hasInput
     ? ALGORITHMS.map((algorithm) => ({
-        ...algorithm,
-        value: formatChecksum(algorithm.calculate(bytes), algorithm.width),
-      }))
+      ...algorithm,
+      value: formatChecksum(algorithm.calculate(bytes), algorithm.width),
+    }))
     : [];
 
   useEffect(() => {
