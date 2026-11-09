@@ -1,7 +1,11 @@
-const MAX_INPUT_LENGTH = 1_000_000;
+export const MAX_INPUT_BYTES = 1_000_000;
+const SIZE_LIMIT_MESSAGE =
+  `Input is too long. Limit input to ${MAX_INPUT_BYTES.toLocaleString()} bytes.`;
 
 /**
  * Converts text or hexadecimal bytes into a byte array for checksum calculation.
+ * Text input is bounded by `MAX_INPUT_BYTES` so the synchronous crc8/crc16/crc32
+ * bit-by-bit loops cannot stall the main thread on an oversized paste.
  * @param {string} input
  * @param {'text'|'hex'} mode
  * @returns {Uint8Array}
@@ -12,12 +16,18 @@ export function inputToBytes(input, mode) {
     throw new TypeError('Input must be a string.');
   }
 
-  if (input.length > MAX_INPUT_LENGTH) {
-    throw new Error('Input is too long. Limit input to 1,000,000 characters.');
+  // Cheap pre-check: every UTF-8 character is at least 1 byte, so this
+  // rejects huge inputs before paying for a full TextEncoder().encode() pass.
+  if (input.length > MAX_INPUT_BYTES) {
+    throw new Error(SIZE_LIMIT_MESSAGE);
   }
 
   if (mode === 'text') {
-    return new TextEncoder().encode(input);
+    const encoded = new TextEncoder().encode(input);
+    if (encoded.byteLength > MAX_INPUT_BYTES) {
+      throw new Error(SIZE_LIMIT_MESSAGE);
+    }
+    return encoded;
   }
 
   const cleaned = input.replace(/\s/g, '');
