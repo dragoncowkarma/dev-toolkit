@@ -30,11 +30,9 @@ const CODE128_PATTERNS = [
   '114131','311141','411131','211412','211214','211232','2331112',
 ];
 
-function inverse(table) {
-  return Object.fromEntries(Object.entries(table).map(([key, value]) => [value, key]));
-}
-
-const CODE128_BY_PATTERN = Object.fromEntries(CODE128_PATTERNS.map((pattern, value) => [pattern, value]));
+const CODE128_BY_PATTERN = Object.fromEntries(
+  CODE128_PATTERNS.map((pattern, value) => [pattern, value]),
+);
 
 /**
  * Validates an EAN-13 or UPC-A check digit.
@@ -52,8 +50,12 @@ export function hasValidEanUpcChecksum(value) {
 }
 
 function decodeEanModules(modules) {
-  if (modules.length !== 95 || !modules.startsWith('101') || !modules.endsWith('101') ||
-      modules.slice(45, 50) !== '01010') return null;
+  if (
+    modules.length !== 95 ||
+    !modules.startsWith('101') ||
+    !modules.endsWith('101') ||
+    modules.slice(45, 50) !== '01010'
+  ) return null;
   let parity = '';
   let left = '';
   let right = '';
@@ -74,7 +76,11 @@ function decodeEanModules(modules) {
   if (first === undefined) return null;
   const ean = `${first}${left}${right}`;
   if (!hasValidEanUpcChecksum(ean)) return null;
-  return { value: first === '0' ? ean.slice(1) : ean, symbology: first === '0' ? 'UPC-A' : 'EAN-13', checksumValid: true };
+  return {
+    value: first === '0' ? ean.slice(1) : ean,
+    symbology: first === '0' ? 'UPC-A' : 'EAN-13',
+    checksumValid: true,
+  };
 }
 
 function decodeCode128Runs(runs) {
@@ -90,10 +96,16 @@ function decodeCode128Runs(runs) {
   }
   if (patterns.at(-1) !== CODE128_PATTERNS[106]) return null;
   const codes = patterns.slice(0, -1).map((pattern) => CODE128_BY_PATTERN[pattern]);
-  if (codes.some((code) => code === undefined) || ![103, 104, 105].includes(codes[0]) || codes.length < 3) return null;
+  if (
+    codes.some((code) => code === undefined) ||
+    ![103, 104, 105].includes(codes[0]) ||
+    codes.length < 3
+  ) return null;
   const checksum = codes.at(-1);
   const data = codes.slice(1, -1);
-  const calculated = (codes[0] + data.reduce((sum, code, index) => sum + code * (index + 1), 0)) % 103;
+  const calculated = (
+    codes[0] + data.reduce((sum, code, index) => sum + code * (index + 1), 0)
+  ) % 103;
   if (checksum !== calculated) return null;
   let set = codes[0] === 103 ? 'A' : codes[0] === 104 ? 'B' : 'C';
   let value = '';
@@ -115,7 +127,8 @@ function decodeCode128Runs(runs) {
  */
 export function decodeBarcodeModules(modules) {
   if (typeof modules !== 'string' || !/^[01]+$/.test(modules)) return null;
-  return decodeEanModules(modules) ?? decodeCode128Runs(modules.match(/1+|0+/g)?.map((run) => String(run.length)) ?? []);
+  const runs = modules.match(/1+|0+/g)?.map((run) => String(run.length)) ?? [];
+  return decodeEanModules(modules) ?? decodeCode128Runs(runs);
 }
 
 function rowRuns(data, width, y) {
@@ -140,8 +153,13 @@ function rowRuns(data, width, y) {
  * @returns {{value: string, symbology: string, checksumValid: boolean}|null}
  */
 export function decodeBarcodeFromImageData(imageData) {
-  if (!imageData?.data || !Number.isInteger(imageData.width) || !Number.isInteger(imageData.height) ||
-      imageData.width < 20 || imageData.height < 1) return null;
+  if (
+    !imageData?.data ||
+    !Number.isInteger(imageData.width) ||
+    !Number.isInteger(imageData.height) ||
+    imageData.width < 20 ||
+    imageData.height < 1
+  ) return null;
   const rows = new Set([Math.floor(imageData.height / 2)]);
   for (let ratio = 0.2; ratio <= 0.8; ratio += 0.1) rows.add(Math.floor(imageData.height * ratio));
   for (const y of rows) {
@@ -152,7 +170,9 @@ export function decodeBarcodeFromImageData(imageData) {
       const unit = narrow / scale;
       const normalized = runs.map((run) => Math.round(run / unit));
       if (normalized.some((run) => run < 1 || run > 4)) continue;
-      const modules = normalized.map((run, index) => (index % 2 === 0 ? '1' : '0').repeat(run)).join('');
+      const modules = normalized
+        .map((run, index) => (index % 2 === 0 ? '1' : '0').repeat(run))
+        .join('');
       const decoded = decodeBarcodeModules(modules);
       if (decoded) return decoded;
     }
