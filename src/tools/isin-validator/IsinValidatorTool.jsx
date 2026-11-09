@@ -43,8 +43,8 @@ export default function IsinValidatorTool() {
     }
   }
 
-  const alertMessage = copyError || result.errorMessage;
   const isInputEmpty = input.trim().length === 0;
+  const alertMessage = copyError || (!isInputEmpty ? result.errorMessage : '');
 
   return (
     <section className="isin-tool" aria-label="ISIN Validator Tool">
