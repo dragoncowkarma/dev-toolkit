@@ -77,7 +77,8 @@ export function calculateCheckDigit(isin11) {
 /**
  * @typedef {Object} IsinValidationResult
  * @property {boolean} isValid True if the ISIN is completely valid.
- * @property {'empty' | 'length' | 'format' | 'checksum' | null} errorType Error category if invalid.
+ * @property {'empty' | 'length' | 'format' | 'checksum' | null} errorType
+ *   Error category if invalid.
  * @property {string | null} errorMessage Human-readable description of error.
  * @property {string | null} countryCode Extracted 2-letter country code.
  * @property {string | null} nsin Extracted 9-character NSIN.
@@ -146,7 +147,9 @@ export function validateIsin(rawInput) {
       errorType: 'format',
       errorMessage:
         'Invalid format: First 2 characters must be uppercase letters (ISO country code).',
-      countryCode: /^[A-Za-z]{2}$/.test(countryCode) ? countryCode.toUpperCase() : null,
+      countryCode: /^[A-Za-z]{2}$/.test(countryCode)
+        ? countryCode.toUpperCase()
+        : null,
       nsin: null,
       checkDigit: null,
       expectedCheckDigit: null,
@@ -160,7 +163,7 @@ export function validateIsin(rawInput) {
       isValid: false,
       errorType: 'format',
       errorMessage:
-        'Invalid format: Characters 3–11 must be uppercase alphanumeric characters (NSIN).',
+        'Invalid format: Characters 3–11 must be uppercase alphanumeric (NSIN).',
       countryCode,
       nsin: null,
       checkDigit: null,

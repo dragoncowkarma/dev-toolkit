@@ -95,7 +95,9 @@ describe('isin.utils', () => {
       const lowerNsinRes = validateIsin('US02079k3059');
       expect(lowerNsinRes.isValid).toBe(false);
       expect(lowerNsinRes.errorType).toBe('format');
-      expect(lowerNsinRes.errorMessage).toContain('Characters 3–11 must be uppercase alphanumeric');
+      expect(lowerNsinRes.errorMessage).toContain(
+        'Characters 3–11 must be uppercase alphanumeric'
+      );
     });
 
     it('identifies non-numeric check digit character', () => {
