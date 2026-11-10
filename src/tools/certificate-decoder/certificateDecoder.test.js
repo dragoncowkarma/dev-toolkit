@@ -1625,6 +1625,47 @@ describe('parseCertificate error handling', () => {
     });
   });
 
+  it('rejects a basicConstraints pathLenConstraint with the cA BOOLEAN absent', () => {
+    // RFC 5280 §4.2.1.9 forbids pathLenConstraint unless cA is asserted; this
+    // was reported as `{ isCa: false, pathLength: 0 }`, i.e. a non-CA with a
+    // usable path depth.
+    const mutated = withBasicConstraintsValue(
+      sampleDer,
+      basicConstraintsValue([ASN1_TAG.INTEGER, 0x01, 0x00]),
+    );
+    expect(() => parseCertificate(mutated)).toThrow(
+      'The basicConstraints extension must not include a pathLenConstraint ' +
+        'unless the cA flag is true',
+    );
+    const entry = decodeOne(toPemFromDer(mutated));
+    expect(entry.certificate).toBeUndefined();
+    expect(entry.error).toMatch('must not include a pathLenConstraint unless the cA flag is true');
+  });
+
+  it('rejects a basicConstraints pathLenConstraint when cA is FALSE', () => {
+    const mutated = withBasicConstraintsValue(
+      sampleDer,
+      basicConstraintsValue([ASN1_TAG.BOOLEAN, 0x01, 0x00], [ASN1_TAG.INTEGER, 0x01, 0x02]),
+    );
+    expect(() => parseCertificate(mutated)).toThrow(
+      'must not include a pathLenConstraint unless the cA flag is true',
+    );
+    const entry = decodeOne(toPemFromDer(mutated));
+    expect(entry.certificate).toBeUndefined();
+    expect(entry.error).toMatch('must not include a pathLenConstraint unless the cA flag is true');
+  });
+
+  it('accepts basicConstraints carrying an explicit FALSE cA without a pathLenConstraint', () => {
+    const mutated = withBasicConstraintsValue(
+      sampleDer,
+      basicConstraintsValue([ASN1_TAG.BOOLEAN, 0x01, 0x00]),
+    );
+    expect(parseCertificate(mutated).extensions.basicConstraints).toEqual({
+      isCa: false,
+      pathLength: null,
+    });
+  });
+
   it('rejects an Extension carrying a fourth field after extnValue', () => {
     const mutated = withExtensions(sampleDer, (extension) =>
       extensionOid(extension) === '2.5.29.19' ? withSurplusField(extension) : null,

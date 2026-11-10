@@ -985,6 +985,17 @@ function parseBasicConstraints(content) {
     );
   }
 
+  // RFC 5280 §4.2.1.9: "CAs MUST NOT include the pathLenConstraint field
+  // unless the cA boolean is asserted". Accepting it with `cA` absent or FALSE
+  // would report a malformed certificate as a non-CA that nonetheless carries
+  // a usable path length.
+  if (pathLength !== null && !isCa) {
+    throw new Error(
+      'The basicConstraints extension must not include a pathLenConstraint ' +
+        'unless the cA flag is true.',
+    );
+  }
+
   return { isCa, pathLength };
 }
 
