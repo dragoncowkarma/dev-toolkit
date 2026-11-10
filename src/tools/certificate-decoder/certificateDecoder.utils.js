@@ -1063,11 +1063,21 @@ function parseExtensions(node) {
  * in DER); `[3]` is EXPLICIT and so wraps exactly one element, its `Extensions`
  * SEQUENCE.
  *
+ * Which of the three may appear at all depends on the version: RFC 5280 §4.1
+ * allows the unique IDs only in v2 and v3, and `extensions` only in v3. The
+ * grammar alone would accept either inside a v1 body — and because `[0]
+ * version` is itself optional and defaults to v1, a body with the version
+ * wrapper simply removed would decode as a successful `{ version: 1 }` whose
+ * extensions are reported as facts. Those combinations are not v1 certificates
+ * with extra data; they are malformed, so they are rejected rather than
+ * displayed.
+ *
  * @param {Array<object>} fields The tbsCertificate fields after the public key.
+ * @param {number} version The certificate version as 1, 2, or 3.
  * @returns {object|null} The `[3]` extensions wrapper, or null when absent.
  * @throws {Error} When the tail does not match the RFC 5280 grammar.
  */
-function readTbsOptionalFields(fields) {
+function readTbsOptionalFields(fields, version) {
   let lowestAllowedTag = 1;
   let extensionsNode = null;
 
@@ -1091,9 +1101,19 @@ function readTbsOptionalFields(fields) {
         field.tagNumber === 1
           ? 'The certificate issuer unique ID'
           : 'The certificate subject unique ID';
+      if (version < 2) {
+        throw new Error(
+          `${uniqueIdLabel} is only permitted in a v2 or v3 certificate, not in v${version}.`,
+        );
+      }
       readBitStringContent(field.content, uniqueIdLabel);
     }
     if (field.tagNumber === 3) {
+      if (version < 3) {
+        throw new Error(
+          `The certificate extensions are only permitted in a v3 certificate, not in v${version}.`,
+        );
+      }
       if (field.children.length !== 1) {
         throw new Error('The certificate extensions wrapper does not hold exactly one element.');
       }
@@ -1205,7 +1225,7 @@ export function parseCertificate(der) {
     throw new Error('The certificate validity is not exactly a notBefore and a notAfter.');
   }
 
-  const extensionsNode = readTbsOptionalFields(fields.slice(cursor));
+  const extensionsNode = readTbsOptionalFields(fields.slice(cursor), version);
   const extensions = extensionsNode
     ? parseExtensions(extensionsNode.children[0])
     : { all: [], subjectAltNames: [], basicConstraints: null };

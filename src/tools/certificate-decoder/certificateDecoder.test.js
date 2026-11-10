@@ -162,6 +162,23 @@ function withTbsTail(der, tail) {
   );
 }
 
+/**
+ * Rebuilds the certificate with its `[0] version` wrapper removed, so the
+ * decoder has to apply the RFC 5280 v1 default instead of reading a marker.
+ */
+function withoutVersionField(der) {
+  expect(tbsVersionFields(der)).toBe(1);
+  const certificate = parseAsn1(der);
+  const tbs = certificate.children[0];
+  return encodeSequence(
+    concatBytes([
+      encodeSequence(concatBytes(tbs.children.slice(1).map((field) => field.raw))),
+      certificate.children[1].raw,
+      certificate.children[2].raw,
+    ]),
+  );
+}
+
 /** Re-encodes a PEM block around mutated DER bytes. */
 function toPemFromDer(der) {
   return toPem(btoa(String.fromCharCode(...der)));
@@ -1193,9 +1210,78 @@ describe('parseCertificate error handling', () => {
     );
   });
 
-  it('accepts the v1 and v2 version markers', () => {
-    expect(parseCertificate(withVersionContent(sampleDer, [0x00])).version).toBe(1);
-    expect(parseCertificate(withVersionContent(sampleDer, [0x01])).version).toBe(2);
+  it('accepts the v1 and v2 version markers on a body without a v3-only tail', () => {
+    // The sample fixture carries extensions, which only v3 may hold, so the
+    // optional tail is dropped before the marker is lowered.
+    const bare = withTbsTail(sampleDer, []);
+    expect(parseCertificate(withVersionContent(bare, [0x00])).version).toBe(1);
+    expect(parseCertificate(withVersionContent(bare, [0x01])).version).toBe(2);
+  });
+
+  it('accepts unique IDs in a v2 certificate', () => {
+    // v2 is exactly the version the unique IDs were added for, so they must
+    // keep decoding there even though v1 rejects them.
+    const mutated = withVersionContent(
+      withTbsTail(sampleDer, [uniqueIdField(1), uniqueIdField(2)]),
+      [0x01],
+    );
+    const certificate = parseCertificate(mutated);
+    expect(certificate.version).toBe(2);
+    expect(certificate.extensions.all).toEqual([]);
+  });
+
+  it('rejects extensions in a v1 certificate', () => {
+    const mutated = withVersionContent(sampleDer, [0x00]);
+    expect(() => parseCertificate(mutated)).toThrow(
+      'The certificate extensions are only permitted in a v3 certificate, not in v1',
+    );
+    const entry = decodeOne(toPemFromDer(mutated));
+    expect(entry.certificate).toBeUndefined();
+    expect(entry.error).toMatch('only permitted in a v3 certificate');
+  });
+
+  it('rejects extensions when the absent version wrapper defaults the body to v1', () => {
+    // `[0] version` is optional, so simply deleting the wrapper used to turn a
+    // v3 certificate into a successful `{ version: 1 }` decode that still
+    // reported every extension.
+    const mutated = withoutVersionField(sampleDer);
+    expect(tbsVersionFields(mutated)).toBe(0);
+    expect(() => parseCertificate(mutated)).toThrow(
+      'The certificate extensions are only permitted in a v3 certificate, not in v1',
+    );
+    const entry = decodeOne(toPemFromDer(mutated));
+    expect(entry.certificate).toBeUndefined();
+    expect(entry.error).toMatch('only permitted in a v3 certificate');
+  });
+
+  it('rejects extensions in a v2 certificate', () => {
+    const mutated = withVersionContent(sampleDer, [0x01]);
+    expect(() => parseCertificate(mutated)).toThrow(
+      'The certificate extensions are only permitted in a v3 certificate, not in v2',
+    );
+    const entry = decodeOne(toPemFromDer(mutated));
+    expect(entry.certificate).toBeUndefined();
+    expect(entry.error).toMatch('only permitted in a v3 certificate');
+  });
+
+  it('rejects an issuer unique ID in a v1 certificate', () => {
+    const mutated = withVersionContent(withTbsTail(sampleDer, [uniqueIdField(1)]), [0x00]);
+    expect(() => parseCertificate(mutated)).toThrow(
+      'The certificate issuer unique ID is only permitted in a v2 or v3 certificate, not in v1',
+    );
+    const entry = decodeOne(toPemFromDer(mutated));
+    expect(entry.certificate).toBeUndefined();
+    expect(entry.error).toMatch('only permitted in a v2 or v3 certificate');
+  });
+
+  it('rejects a subject unique ID when the absent version wrapper defaults to v1', () => {
+    const mutated = withoutVersionField(withTbsTail(sampleDer, [uniqueIdField(2)]));
+    expect(() => parseCertificate(mutated)).toThrow(
+      'The certificate subject unique ID is only permitted in a v2 or v3 certificate, not in v1',
+    );
+    const entry = decodeOne(toPemFromDer(mutated));
+    expect(entry.certificate).toBeUndefined();
+    expect(entry.error).toMatch('only permitted in a v2 or v3 certificate');
   });
 
   it('rejects a negative serial number instead of rendering its sign bytes', () => {
