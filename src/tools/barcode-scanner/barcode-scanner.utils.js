@@ -147,19 +147,7 @@ function rowRuns(data, width, y) {
   return trimmed.match(/1+|0+/g)?.map((run) => run.length) ?? null;
 }
 
-/**
- * Decodes an ImageData-like raster by sampling horizontal scan lines.
- * @param {{data: Uint8ClampedArray, width: number, height: number}} imageData
- * @returns {{value: string, symbology: string, checksumValid: boolean}|null}
- */
-export function decodeBarcodeFromImageData(imageData) {
-  if (
-    !imageData?.data ||
-    !Number.isInteger(imageData.width) ||
-    !Number.isInteger(imageData.height) ||
-    imageData.width < 20 ||
-    imageData.height < 1
-  ) return null;
+function decodeHorizontalScanLines(imageData) {
   const rows = new Set([Math.floor(imageData.height / 2)]);
   for (let ratio = 0.2; ratio <= 0.8; ratio += 0.1) rows.add(Math.floor(imageData.height * ratio));
   for (const y of rows) {
@@ -178,4 +166,33 @@ export function decodeBarcodeFromImageData(imageData) {
     }
   }
   return null;
+}
+
+function transposeImageData({ data, width, height }) {
+  const rotatedData = new Uint8ClampedArray(data.length);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const sourceOffset = (y * width + x) * 4;
+      const targetOffset = (x * height + y) * 4;
+      rotatedData.set(data.subarray(sourceOffset, sourceOffset + 4), targetOffset);
+    }
+  }
+  return { data: rotatedData, width: height, height: width };
+}
+
+/**
+ * Decodes an ImageData-like raster by sampling horizontal scan lines.
+ * @param {{data: Uint8ClampedArray, width: number, height: number}} imageData
+ * @returns {{value: string, symbology: string, checksumValid: boolean}|null}
+ */
+export function decodeBarcodeFromImageData(imageData) {
+  if (
+    !imageData?.data ||
+    !Number.isInteger(imageData.width) ||
+    !Number.isInteger(imageData.height) ||
+    imageData.width < 20 ||
+    imageData.height < 1
+  ) return null;
+  const horizontalResult = decodeHorizontalScanLines(imageData);
+  return horizontalResult ?? decodeHorizontalScanLines(transposeImageData(imageData));
 }
