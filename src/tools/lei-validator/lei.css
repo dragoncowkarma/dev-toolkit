@@ -91,9 +91,9 @@
 }
 
 .lei-validator__valid {
-  background: var(--color-success-bg, var(--color-surface));
-  border: 1px solid var(--color-success-border, var(--color-primary));
-  color: var(--color-success-light, var(--color-text));
+  background: color-mix(in srgb, var(--color-success) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-success) 40%, transparent);
+  color: var(--color-success);
 }
 
 .lei-validator__error {

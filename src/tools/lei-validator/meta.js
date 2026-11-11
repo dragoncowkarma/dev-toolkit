@@ -3,5 +3,5 @@ export default {
   name: 'LEI Validator',
   description: 'Validate Legal Entity Identifiers (LEIs) with ISO 7064 MOD 97-10 checks.',
   icon: '✓',
-  category: 'Validator',
+  category: 'Inspector',
 };

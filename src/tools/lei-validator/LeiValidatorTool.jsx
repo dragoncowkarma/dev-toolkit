@@ -76,7 +76,8 @@ export default function LeiValidatorTool() {
           value={input}
           onChange={handleInputChange}
           placeholder="e.g. 529900T8BM49AURSDO55"
-          aria-describedby="lei-help lei-message"
+          aria-describedby={message ? 'lei-help lei-message' : 'lei-help'}
+          aria-invalid={Boolean(input && !result?.isValid)}
           spellCheck={false}
           autoCapitalize="characters"
         />

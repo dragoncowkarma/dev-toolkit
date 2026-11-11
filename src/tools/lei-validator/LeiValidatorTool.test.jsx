@@ -17,13 +17,21 @@ describe('LeiValidatorTool', () => {
   it('shows valid and invalid inline validation messages', () => {
     render(<LeiValidatorTool />);
 
+    const input = screen.getByLabelText('Legal Entity Identifier');
+    expect(input).toHaveAttribute('aria-describedby', 'lei-help');
+    expect(input).toHaveAttribute('aria-invalid', 'false');
+
     enterValidLei();
     expect(screen.getByRole('status')).toHaveTextContent('Valid LEI');
+    expect(input).toHaveAttribute('aria-describedby', 'lei-help');
+    expect(input).toHaveAttribute('aria-invalid', 'false');
 
     fireEvent.change(screen.getByLabelText('Legal Entity Identifier'), {
       target: { value: '529900T8BM49AURSDO56' },
     });
     expect(screen.getByRole('alert')).toHaveTextContent('invalid MOD 97-10');
+    expect(input).toHaveAttribute('aria-describedby', 'lei-help lei-message');
+    expect(input).toHaveAttribute('aria-invalid', 'true');
   });
 
   it('copies the entered LEI and provides feedback', async () => {

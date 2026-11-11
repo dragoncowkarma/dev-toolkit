@@ -23,7 +23,14 @@ describe('validateLei', () => {
   it('rejects an LEI containing non-alphanumeric characters', () => {
     expect(validateLei('529900T8BM49AURSDO5!')).toMatchObject({
       isValid: false,
-      error: expect.stringMatching(/only uppercase letters and digits/i),
+      error: expect.stringMatching(/uppercase letters or digits/i),
+    });
+  });
+
+  it('rejects letters in the terminal check digit positions', () => {
+    expect(validateLei('529900T8BM49AURSDO5A')).toMatchObject({
+      isValid: false,
+      error: expect.stringMatching(/two check digits/i),
     });
   });
 });

@@ -1,5 +1,5 @@
 const LEI_LENGTH = 20;
-const ALPHANUMERIC_PATTERN = /^[A-Z0-9]+$/;
+const LEI_PATTERN = /^[A-Z0-9]{18}[0-9]{2}$/;
 
 /**
  * Calculates the ISO 7064 MOD 97-10 remainder for an alphanumeric value.
@@ -37,8 +37,11 @@ export function validateLei(value) {
     return { isValid: false, error: 'An LEI must contain exactly 20 characters.' };
   }
 
-  if (!ALPHANUMERIC_PATTERN.test(value)) {
-    return { isValid: false, error: 'An LEI may contain only uppercase letters and digits.' };
+  if (!LEI_PATTERN.test(value)) {
+    return {
+      isValid: false,
+      error: 'An LEI must have 18 uppercase letters or digits followed by two check digits.',
+    };
   }
 
   // Unlike IBAN, an LEI stores its check digits at the end, so it is
