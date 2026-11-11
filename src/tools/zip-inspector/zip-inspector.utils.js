@@ -79,7 +79,7 @@ function findEocd(view) {
     const commentLength = view.getUint16(offset + 20, true);
     if (offset + 22 + commentLength === view.byteLength) return offset;
   }
-  throw new ZipInspectorError('End of Central Directory record was not found or is malformed.');
+  throw new ZipInspectorError('EOCD record was not found or is malformed.');
 }
 
 function readZip64Extra(extra, needs) {
