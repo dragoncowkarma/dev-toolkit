@@ -65,6 +65,24 @@ describe('parseIcalendar validation', () => {
     ]));
   });
 
+  it('rejects impossible calendar dates that match the DATE syntax', () => {
+    const result = parseIcalendar(`BEGIN:VCALENDAR
+BEGIN:VEVENT
+UID:impossible-date
+DTSTAMP:20261109T090000Z
+DTSTART;VALUE=DATE:20260230
+END:VEVENT
+END:VCALENDAR`);
+
+    expect(result.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        line: 5,
+        message: 'DTSTART must use a valid DATE value.',
+        severity: 'error',
+      }),
+    ]));
+  });
+
   it('detects duplicate event UIDs', () => {
     const event = (stamp) => [
       'BEGIN:VEVENT',

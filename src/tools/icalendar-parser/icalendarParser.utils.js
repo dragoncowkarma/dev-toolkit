@@ -132,10 +132,33 @@ function getProperty(component, name) {
   return getProperties(component, name)[0];
 }
 
+function hasValidCalendarDate(value, declaredDate) {
+  const match = declaredDate
+    ? /^(\d{4})(\d{2})(\d{2})$/.exec(value)
+    : /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z?$/.exec(value);
+  if (!match) return false;
+
+  const [, year, month, day, hour = '00', minute = '00', second = '00'] = match;
+  const date = new Date(Date.UTC(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    Number(hour),
+    Number(minute),
+    Number(second),
+  ));
+  return date.getUTCFullYear() === Number(year)
+    && date.getUTCMonth() === Number(month) - 1
+    && date.getUTCDate() === Number(day)
+    && date.getUTCHours() === Number(hour)
+    && date.getUTCMinutes() === Number(minute)
+    && date.getUTCSeconds() === Number(second);
+}
+
 function validateDateProperty(component, property, issues) {
   const declaredDate = property.params.VALUE?.includes('DATE');
   const pattern = declaredDate ? DATE_PATTERN : DATE_TIME_PATTERN;
-  if (!pattern.test(property.value)) {
+  if (!pattern.test(property.value) || !hasValidCalendarDate(property.value, declaredDate)) {
     addIssue(
       issues,
       'error',
