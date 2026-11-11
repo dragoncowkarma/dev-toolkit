@@ -3,5 +3,5 @@ export default {
   name: 'Avro Schema Validator',
   description: 'Validate Apache Avro schema JSON locally in your browser.',
   icon: '◈',
-  category: 'Validator',
+  category: 'Inspector',
 };
