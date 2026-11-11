@@ -8,6 +8,7 @@ import {
   parseHar,
   toCurlCommand,
   toFetchSnippet,
+  toGoRequestsSnippet,
   toHttpieCommand,
   toPythonRequestsSnippet,
 } from './har.utils.js';
@@ -212,7 +213,9 @@ export default function HarTool() {
         ? toHttpieCommand(selectedEntry)
         : format === 'python'
           ? toPythonRequestsSnippet(selectedEntry)
-          : toCurlCommand(selectedEntry);
+          : format === 'go'
+            ? toGoRequestsSnippet(selectedEntry)
+            : toCurlCommand(selectedEntry);
 
     try {
       await navigator.clipboard.writeText(snippet);
@@ -225,7 +228,9 @@ export default function HarTool() {
           ? 'HTTPie command'
           : format === 'python'
             ? 'Python snippet'
-            : 'cURL command';
+            : format === 'go'
+              ? 'Go snippet'
+              : 'cURL command';
       setCopyError(`Failed to copy ${formatName}.`);
     }
   }
@@ -500,6 +505,13 @@ export default function HarTool() {
                   >
                     {copiedFormat === 'python' ? '✓ Copied' : 'Copy as Python'}
                   </button>
+                  <button
+                    className="har-button har-button--quiet"
+                    type="button"
+                    onClick={() => copyRequest('go')}
+                  >
+                    {copiedFormat === 'go' ? '✓ Copied' : 'Copy as Go'}
+                  </button>
                   {copiedFormat && (
                     <span className="sr-only" role="status" aria-live="polite">
                       Copied {copiedFormat === 'fetch'
@@ -508,7 +520,9 @@ export default function HarTool() {
                           ? 'HTTPie command'
                           : copiedFormat === 'python'
                             ? 'Python snippet'
-                            : 'cURL command'}
+                            : copiedFormat === 'go'
+                              ? 'Go snippet'
+                              : 'cURL command'}
                     </span>
                   )}
                 </div>

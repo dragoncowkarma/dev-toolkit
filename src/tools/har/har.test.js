@@ -8,6 +8,7 @@ import {
   parseHar,
   toCurlCommand,
   toFetchSnippet,
+  toGoRequestsSnippet,
   toHttpieCommand,
   toPythonRequestsSnippet,
 } from './har.utils.js';
@@ -388,6 +389,67 @@ describe('toPythonRequestsSnippet', () => {
     });
 
     expect(snippet).toContain('"Authorization": "Bearer token"');
+    expect(snippet).not.toContain('missing name');
+    expect(snippet).not.toContain('empty name');
+    expect(snippet).not.toContain(':method');
+  });
+});
+
+describe('toGoRequestsSnippet', () => {
+  it('uses a byte slice for a valid JSON request body', () => {
+    const snippet = toGoRequestsSnippet({
+      request: {
+        method: 'POST',
+        url: 'https://api.example.test/items',
+        postData: { mimeType: 'application/json', text: '{"name":"Ada","active":true}' },
+      },
+    });
+
+    expect(snippet).toContain('"bytes"');
+    expect(snippet).toContain('body := []byte("{\\"name\\":\\"Ada\\",\\"active\\":true}")');
+    expect(snippet).toContain('requestBody := bytes.NewReader(body)');
+  });
+
+  it('uses a raw string for a non-JSON request body', () => {
+    const snippet = toGoRequestsSnippet({
+      request: {
+        method: 'PATCH',
+        url: 'https://example.test/items/1',
+        postData: { mimeType: 'text/plain', text: 'line one\nline two' },
+      },
+    });
+
+    expect(snippet).toContain('"strings"');
+    expect(snippet).toContain('requestBody := strings.NewReader(`line one\nline two`)');
+  });
+
+  it('splits raw strings around backticks without producing invalid Go source', () => {
+    const snippet = toGoRequestsSnippet({
+      request: {
+        method: 'POST',
+        url: 'https://example.test/quoted',
+        postData: { mimeType: 'text/plain', text: 'value with `backtick`' },
+      },
+    });
+
+    expect(snippet).toContain('strings.NewReader(`value with ` + "`" + `backtick` + "`" + ``)');
+  });
+
+  it('keeps named non-pseudo headers and skips malformed header entries', () => {
+    const snippet = toGoRequestsSnippet({
+      request: {
+        url: 'https://example.test/profile',
+        headers: [
+          null,
+          { value: 'missing name' },
+          { name: '', value: 'empty name' },
+          { name: ':method', value: 'GET' },
+          { name: 'Authorization', value: 'Bearer token' },
+        ],
+      },
+    });
+
+    expect(snippet).toContain('request.Header.Set("Authorization", "Bearer token")');
     expect(snippet).not.toContain('missing name');
     expect(snippet).not.toContain('empty name');
     expect(snippet).not.toContain(':method');
