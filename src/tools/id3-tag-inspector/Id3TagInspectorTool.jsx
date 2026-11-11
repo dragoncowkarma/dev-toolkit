@@ -3,7 +3,12 @@ import { parseId3Tags } from './id3TagInspector.utils.js';
 import './id3TagInspector.css';
 
 const FIELD_LABELS = {
-  title: 'Title', artist: 'Artist', album: 'Album', year: 'Year', genre: 'Genre', comment: 'Comment',
+  title: 'Title',
+  artist: 'Artist',
+  album: 'Album',
+  year: 'Year',
+  genre: 'Genre',
+  comment: 'Comment',
 };
 
 /**
@@ -69,14 +74,21 @@ export default function Id3TagInspectorTool() {
         <div className="id3-tag-inspector__results">
           <h2>{fileName}</h2>
           <p className="id3-tag-inspector__versions">
-            Detected: {[result.v2 && `ID3v${result.v2.version}`, result.v1 && `ID3v${result.v1.version}`]
-              .filter(Boolean).join(' and ')}
+            Detected: {[
+              result.v2 && `ID3v${result.v2.version}`,
+              result.v1 && `ID3v${result.v1.version}`,
+            ].filter(Boolean).join(' and ')}
           </p>
           <dl>
             {Object.entries(FIELD_LABELS).map(([key, label]) => result.fields[key] && (
               <div key={key}><dt>{label}</dt><dd>{result.fields[key]}</dd></div>
             ))}
-            {result.v2?.coverArt && <div><dt>Cover art</dt><dd>Present ({result.v2.coverArt.mimeType})</dd></div>}
+            {result.v2?.coverArt && (
+              <div>
+                <dt>Cover art</dt>
+                <dd>Present ({result.v2.coverArt.mimeType})</dd>
+              </div>
+            )}
           </dl>
         </div>
       )}

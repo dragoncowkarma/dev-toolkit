@@ -8,7 +8,9 @@ const V22_FRAME_NAMES = {
 };
 
 function isMagic(bytes, offset, value) {
-  return value.split('').every((character, index) => bytes[offset + index] === character.charCodeAt(0));
+  return value.split('').every(
+    (character, index) => bytes[offset + index] === character.charCodeAt(0),
+  );
 }
 
 function readSynchsafe(bytes, offset) {
@@ -90,19 +92,33 @@ function parseV2Frames(bytes, version, flags) {
   let coverArt = null;
   const frameHeaderLength = version === 2 ? 6 : 10;
   while (offset + frameHeaderLength <= bytes.length) {
-    const rawId = new TextDecoder('ascii').decode(bytes.slice(offset, offset + (version === 2 ? 3 : 4)));
+    const rawId = new TextDecoder('ascii').decode(
+      bytes.slice(offset, offset + (version === 2 ? 3 : 4)),
+    );
     if (/^\0+$/.test(rawId)) break;
-    if (!/^[A-Z0-9]{3,4}$/.test(rawId)) throw new Error('The ID3v2 tag contains an invalid frame identifier.');
+    if (!/^[A-Z0-9]{3,4}$/.test(rawId)) {
+      throw new Error('The ID3v2 tag contains an invalid frame identifier.');
+    }
     const frameSize = version === 2
       ? (bytes[offset + 3] << 16) + (bytes[offset + 4] << 8) + bytes[offset + 5]
       : version === 4 ? readSynchsafe(bytes, offset + 4) : readUint32(bytes, offset + 4);
     const contentStart = offset + frameHeaderLength;
     const contentEnd = contentStart + frameSize;
-    if (contentEnd > bytes.length) throw new Error(`The ${rawId} frame extends beyond the ID3v2 tag.`);
+    if (contentEnd > bytes.length) {
+      throw new Error(`The ${rawId} frame extends beyond the ID3v2 tag.`);
+    }
     const frameId = V22_FRAME_NAMES[rawId] || rawId;
     const content = bytes.slice(contentStart, contentEnd);
     if (['TIT2', 'TPE1', 'TALB', 'TYER', 'TDRC', 'TCON'].includes(frameId) && content.length) {
-      const fieldName = { TIT2: 'title', TPE1: 'artist', TALB: 'album', TYER: 'year', TDRC: 'year', TCON: 'genre' }[frameId];
+      const frameFieldMap = {
+        TIT2: 'title',
+        TPE1: 'artist',
+        TALB: 'album',
+        TYER: 'year',
+        TDRC: 'year',
+        TCON: 'genre',
+      };
+      const fieldName = frameFieldMap[frameId];
       fields[fieldName] = decodeText(content.slice(1), content[0]);
     } else if (frameId === 'COMM') {
       fields.comment = parseComment(content);
