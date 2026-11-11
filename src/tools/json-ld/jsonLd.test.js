@@ -141,6 +141,64 @@ describe('inspectJsonLd', () => {
     expect(result.issues).toEqual([]);
   });
 
+  it.each(['@list', '@set'])('warns when %s is not an array', (key) => {
+    const result = inspectJsonLd(JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'Thing',
+      [key]: 'not an array',
+    }));
+
+    expect(result.issues).toEqual([
+      {
+        severity: 'warning',
+        path: `$.${key}`,
+        message: `${key} must be an array.`,
+      },
+    ]);
+  });
+
+  it.each([
+    [
+      'contains both @type and @language',
+      { '@value': 'Ada', '@type': 'Text', '@language': 'en' },
+      'A value object cannot contain both @type and @language.',
+    ],
+    [
+      'contains an extraneous key',
+      { '@value': 'Ada', label: 'Name' },
+      'A value object may only contain @value, @type, @language, @direction, and @index.',
+    ],
+  ])('warns when a value object %s', (_description, valueObject, message) => {
+    const result = inspectJsonLd(JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'Person',
+      name: valueObject,
+    }));
+
+    expect(result.entities).toEqual([
+      expect.objectContaining({ path: '$', types: ['Person'] }),
+    ]);
+    expect(result.issues).toEqual([
+      { severity: 'warning', path: '$.name', message },
+    ]);
+  });
+
+  it('accepts valid list, set, and value-object shapes without issues', () => {
+    const result = inspectJsonLd(JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'Person',
+      name: { '@value': 'Ada', '@language': 'en' },
+      alternateName: { '@value': 'A. Lovelace', '@type': 'Text' },
+      sameAs: { '@set': ['https://example.com/ada'] },
+      knows: { '@list': [{ '@value': 'Charles', '@index': '0' }] },
+    }));
+
+    expect(result.entities).toEqual([
+      expect.objectContaining({ path: '$', types: ['Person'] }),
+    ]);
+    expect(result.issues).toEqual([]);
+  });
+
   it('warns when a document has no linked-data metadata', () => {
     const result = inspectJsonLd('{"name":"Untyped data"}');
     expect(result.issues.map((issue) => issue.message)).toContain(

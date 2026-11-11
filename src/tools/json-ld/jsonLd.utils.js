@@ -61,6 +61,14 @@ export function extractJsonLdContent(input) {
 }
 
 export const ENTITY_CONTAINER_KEYWORDS = new Set(['@graph', '@included', '@reverse']);
+const LIST_SET_KEYWORDS = new Set(['@list', '@set']);
+const VALUE_OBJECT_ALLOWED_KEYWORDS = new Set([
+  '@value',
+  '@type',
+  '@language',
+  '@direction',
+  '@index',
+]);
 
 /**
  * Determines whether a JSON-LD property or keyword represents an entity container.
@@ -98,6 +106,39 @@ function isIdReference(value, isNested) {
   return Object.keys(value).every((key) => key === '@id');
 }
 
+function getListSetIssue(key, value, path) {
+  if (!LIST_SET_KEYWORDS.has(key) || Array.isArray(value)) return null;
+
+  return {
+    severity: 'warning',
+    path: formatPath(path, key),
+    message: `${key} must be an array.`,
+  };
+}
+
+function getValueObjectIssue(value, path) {
+  if (!('@value' in value)) return [];
+
+  const issues = [];
+  if ('@type' in value && '@language' in value) {
+    issues.push({
+      severity: 'warning',
+      path,
+      message: 'A value object cannot contain both @type and @language.',
+    });
+  }
+
+  if (Object.keys(value).some((key) => !VALUE_OBJECT_ALLOWED_KEYWORDS.has(key))) {
+    issues.push({
+      severity: 'warning',
+      path,
+      message: 'A value object may only contain @value, @type, @language, @direction, and @index.',
+    });
+  }
+
+  return issues;
+}
+
 function inspectEntity(value, path, entities, issues, references = [], isNested = false) {
   if (Array.isArray(value)) {
     value.forEach((item, index) => {
@@ -107,6 +148,10 @@ function inspectEntity(value, path, entities, issues, references = [], isNested 
   }
 
   if (!isRecord(value)) return;
+
+  const valueObjectIssues = getValueObjectIssue(value, path);
+  if (valueObjectIssues.length > 0) issues.push(...valueObjectIssues);
+  if ('@value' in value) return;
 
   const isReference = isIdReference(value, isNested);
   const types = normalizeTypes(value['@type']);
@@ -142,6 +187,9 @@ function inspectEntity(value, path, entities, issues, references = [], isNested 
   }
 
   Object.entries(value).forEach(([key, child]) => {
+    const listSetIssue = getListSetIssue(key, child, path);
+    if (listSetIssue !== null) issues.push(listSetIssue);
+
     if (key !== '@context' && key !== '@type' && key !== '@id') {
       const childPath = formatPath(path, key);
       const entityContainerIssue = getEntityContainerIssue(key, child, childPath);
