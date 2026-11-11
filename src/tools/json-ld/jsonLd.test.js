@@ -113,6 +113,34 @@ describe('inspectJsonLd', () => {
     ]);
   });
 
+  it.each([
+    ['@reverse', 'not-a-map', '@reverse should be an object mapping properties to node objects.'],
+    ['@reverse', 42, '@reverse should be an object mapping properties to node objects.'],
+    ['@graph', 42, '@graph should be an object or an array of objects.'],
+    ['@included', 'not-a-node', '@included should be an object or an array of objects.'],
+  ])('warns when %s has an invalid entity-container shape', (key, value, message) => {
+    const result = inspectJsonLd(JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'Article',
+      [key]: value,
+    }));
+
+    expect(result.issues).toEqual([
+      { severity: 'warning', path: `$.${key}`, message },
+    ]);
+  });
+
+  it('does not warn for valid entity-container shapes', () => {
+    const result = inspectJsonLd(JSON.stringify({
+      '@context': 'https://schema.org',
+      '@reverse': { relatedTo: { '@type': 'Thing', '@id': 'https://example.com/#node' } },
+      '@graph': { '@type': 'Article', '@id': 'https://example.com/#article' },
+      '@included': [{ '@type': 'Person', '@id': 'https://example.com/#person' }],
+    }));
+
+    expect(result.issues).toEqual([]);
+  });
+
   it('warns when a document has no linked-data metadata', () => {
     const result = inspectJsonLd('{"name":"Untyped data"}');
     expect(result.issues.map((issue) => issue.message)).toContain(
