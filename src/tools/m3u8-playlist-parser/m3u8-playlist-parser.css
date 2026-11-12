@@ -1,0 +1,123 @@
+.m3u8-parser {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  color: var(--color-text);
+}
+
+.m3u8-parser__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.m3u8-parser__button {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  padding: 0.55rem 0.9rem;
+}
+
+.m3u8-parser__button:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.m3u8-parser__upload:focus-within {
+  outline: 2px solid var(--color-primary-light);
+  outline-offset: 3px;
+}
+
+.m3u8-parser__file-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.m3u8-parser__label {
+  display: block;
+  margin: 0.9rem 0 0.4rem;
+  color: var(--color-text-muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.m3u8-parser__source,
+.m3u8-parser__filter {
+  box-sizing: border-box;
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: 0.9rem/1.5 'SF Mono', Consolas, monospace;
+  padding: 0.8rem;
+}
+
+.m3u8-parser__source { min-height: 220px; resize: vertical; }
+.m3u8-parser__source:focus, .m3u8-parser__filter:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.m3u8-parser__summary {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+.m3u8-parser__summary div {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  padding: 0.75rem;
+}
+
+.m3u8-parser__summary span {
+  display: block;
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+}
+.m3u8-parser__summary strong { font-size: 1rem; }
+.m3u8-parser__alert {
+  margin-top: 1rem;
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+  padding: 0.5rem 1rem;
+}
+.m3u8-parser__alert p { margin: 0.35rem 0; }
+.m3u8-parser__table-wrap { overflow-x: auto; margin-top: 0.8rem; }
+.m3u8-parser__table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+.m3u8-parser__table th, .m3u8-parser__table td {
+  border-bottom: 1px solid var(--color-border);
+  padding: 0.7rem;
+  text-align: left;
+  vertical-align: top;
+}
+.m3u8-parser__table th { color: var(--color-text-muted); }
+.m3u8-parser__badge {
+  display: inline-block;
+  border-radius: 999px;
+  background: var(--color-surface-hover);
+  padding: 0.15rem 0.45rem;
+  font-size: 0.75rem;
+}
+.m3u8-parser__badge--error { background: var(--color-error-bg); color: var(--color-error-light); }
+.m3u8-parser__badge--warning { color: var(--color-warning); }
+
+@media (min-width: 768px) {
+  .m3u8-parser { padding: 0 2rem 3rem; }
+  .m3u8-parser__summary { grid-template-columns: repeat(4, 1fr); }
+}
