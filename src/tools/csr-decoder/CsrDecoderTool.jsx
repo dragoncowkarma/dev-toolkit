@@ -63,7 +63,7 @@ export default function CsrDecoderTool() {
           <article>
             <h3>Subject</h3>
             <p>{result.subjectDn || 'Empty subject'}</p>
-            <CopyButton value={result.subjectDn} label="subject" />
+            {result.subjectDn && <CopyButton value={result.subjectDn} label="subject" />}
             <dl>
               {result.subject.map((field) => (
                 <div key={`${field.name}-${field.value}`}>

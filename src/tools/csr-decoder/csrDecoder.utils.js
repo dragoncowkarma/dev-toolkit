@@ -64,7 +64,7 @@ function decodeOid(bytes) {
     if (value > 0x1fffffff) fail('object identifier is too large');
     if (!(bytes[index] & 128)) { values.push(value); value = 0; }
   }
-  if (value) fail('truncated object identifier');
+  if (bytes[bytes.length - 1] & 128) fail('truncated object identifier');
   return values.join('.');
 }
 function readNode(bytes, offset = 0, depth = 0) {
@@ -103,15 +103,19 @@ function parseAlgorithm(value) {
 function parseSubject(subject) {
   const fields = [];
   for (const set of requireTag(subject, 48, 'subject sequence').children) {
-    const pair = requireTag(set, 49, 'relative distinguished name').children[0];
-    const id = decodeOid(requireTag(pair?.children[0], 6, 'subject attribute OID').value);
-    const value = pair?.children[1];
-    if (!value || value.tag === 48 || value.tag === 49) fail('invalid subject attribute value');
-    fields.push({ name: OIDS[id] || id, value: decodeText(value.value) });
+    const pairs = requireTag(set, 49, 'relative distinguished name').children;
+    for (const pair of pairs) {
+      const attribute = requireTag(pair, 48, 'subject attribute');
+      const id = decodeOid(requireTag(attribute.children[0], 6, 'subject attribute OID').value);
+      const value = attribute.children[1];
+      if (!value || value.tag === 48 || value.tag === 49) fail('invalid subject attribute value');
+      fields.push({ name: OIDS[id] || id, value: decodeText(value.value) });
+    }
   }
   return fields;
 }
 function parseGeneralName(value) {
+  if (value.tag === 129) return `email:${decodeText(value.value)}`;
   if (value.tag === 130) return `DNS:${decodeText(value.value)}`;
   if (value.tag === 134) return `URI:${decodeText(value.value)}`;
   if (value.tag === 135 && value.value.length === 4) {
