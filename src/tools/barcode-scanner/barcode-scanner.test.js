@@ -44,6 +44,25 @@ function imageFromModules(modules, scale = 3) {
   return { data, width, height };
 }
 
+function transposeImageData({ data, width, height }) {
+  const rotatedData = new Uint8ClampedArray(data.length);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const sourceOffset = (y * width + x) * 4;
+      const targetOffset = (x * height + y) * 4;
+      rotatedData.set(data.subarray(sourceOffset, sourceOffset + 4), targetOffset);
+    }
+  }
+  return { data: rotatedData, width: height, height: width };
+}
+
+function code128Modules() {
+  return '2112141113231311232331112'
+    .split('')
+    .map((width, index) => (index % 2 === 0 ? '1' : '0').repeat(Number(width)))
+    .join('');
+}
+
 describe('barcode decoding', () => {
   it('decodes a valid EAN-13 image and validates its check digit', () => {
     const value = '4006381333931';
@@ -63,11 +82,7 @@ describe('barcode decoding', () => {
   });
 
   it('decodes a valid Code 128-B sample', () => {
-    const modules = '2112141113231311232331112'
-      .split('')
-      .map((width, index) => (index % 2 === 0 ? '1' : '0').repeat(Number(width)))
-      .join('');
-    expect(decodeBarcodeModules(modules)).toEqual({
+    expect(decodeBarcodeModules(code128Modules())).toEqual({
       value: 'A',
       symbology: 'Code 128',
       checksumValid: true,
@@ -82,5 +97,18 @@ describe('barcode decoding', () => {
   it('returns no result when no barcode scanline is present', () => {
     const data = new Uint8ClampedArray(100 * 20 * 4).fill(255);
     expect(decodeBarcodeFromImageData({ data, width: 100, height: 20 })).toBeNull();
+  });
+
+  it.each([
+    ['Code 128', code128Modules(), { value: 'A', symbology: 'Code 128', checksumValid: true }],
+    ['EAN-13', eanModules('4006381333931'), {
+      value: '4006381333931', symbology: 'EAN-13', checksumValid: true,
+    }],
+    ['UPC-A', eanModules('0036000291452'), {
+      value: '036000291452', symbology: 'UPC-A', checksumValid: true,
+    }],
+  ])('decodes a 90-degree rotated %s image', (_name, modules, expected) => {
+    const verticalBarcode = transposeImageData(imageFromModules(modules));
+    expect(decodeBarcodeFromImageData(verticalBarcode)).toEqual(expected);
   });
 });
