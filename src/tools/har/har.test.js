@@ -11,6 +11,7 @@ import {
   toGoRequestsSnippet,
   toHttpieCommand,
   toNodeAxiosSnippet,
+  toPowerShellSnippet,
   toPythonRequestsSnippet,
 } from './har.utils.js';
 
@@ -381,6 +382,55 @@ describe('toNodeAxiosSnippet', () => {
 
     expect(snippet).toContain('"X-Note": "`quoted` \\"value\\"\\nnext line"');
     expect(snippet).toContain('data: "`body` \\"value\\"\\nnext line"');
+  });
+});
+
+describe('toPowerShellSnippet', () => {
+  it('builds a bodyless GET request without HTTP/2 pseudo-headers', () => {
+    const snippet = toPowerShellSnippet({
+      request: {
+        method: 'GET',
+        url: 'https://example.test/items',
+        headers: [
+          { name: ':path', value: '/items' },
+          { name: 'Accept', value: 'application/json' },
+        ],
+      },
+    });
+
+    expect(snippet).toContain("$headers = @{\n  'Accept' = 'application/json'\n}");
+    expect(snippet).toContain("Invoke-RestMethod -Method 'GET' -Uri 'https://example.test/items'");
+    expect(snippet).not.toContain(':path');
+    expect(snippet).not.toContain('-Body');
+  });
+
+  it('serializes JSON bodies through ConvertTo-Json and infers Content-Type', () => {
+    const snippet = toPowerShellSnippet({
+      request: {
+        method: 'POST',
+        url: 'https://api.example.test/items',
+        postData: { mimeType: 'application/json', text: '{"name":"Ada","active":true}' },
+      },
+    });
+
+    expect(snippet).toContain("'Content-Type' = 'application/json'");
+    expect(snippet).toContain(
+      "$body = @{\n  'name' = 'Ada'\n  'active' = $true\n} | ConvertTo-Json -Depth 10"
+    );
+    expect(snippet).toContain('-Headers $headers -Body $body');
+  });
+
+  it('single-quotes raw text bodies while preserving newlines and escaping quotes', () => {
+    const snippet = toPowerShellSnippet({
+      request: {
+        method: 'POST',
+        url: 'https://api.example.test/messages',
+        postData: { mimeType: 'text/plain', text: "line one\nO'Brien" },
+      },
+    });
+
+    expect(snippet).toContain("$body = 'line one\nO''Brien'");
+    expect(snippet).toContain('-Body $body');
   });
 });
 

@@ -456,6 +456,49 @@ export function toNodeAxiosSnippet(entry) {
 }
 
 /**
+ * Converts a captured HAR request into a runnable PowerShell Invoke-RestMethod command.
+ * @param {object} entry
+ * @returns {string}
+ */
+export function toPowerShellSnippet(entry) {
+  const request = entry?.request ?? {};
+  const method = String(request.method ?? 'GET').toUpperCase();
+  const url = String(request.url ?? '');
+  const postData = request.postData ?? {};
+  const headers = Array.isArray(request.headers)
+    ? request.headers.filter((header) => hasHeaderName(header) && !header.name.startsWith(':'))
+    : [];
+  const body = typeof postData.text === 'string' ? postData.text : null;
+  const hasJsonBody = body !== null && /json/i.test(String(postData.mimeType ?? '')) &&
+    isValidJson(body);
+
+  if (body !== null && postData.mimeType && !hasHeader(headers, 'content-type')) {
+    headers.push({ name: 'Content-Type', value: String(postData.mimeType) });
+  }
+
+  const statements = [];
+  if (headers.length > 0) {
+    statements.push(`$headers = ${formatPowerShellHashtable(headers)}`);
+  }
+  if (body !== null) {
+    const formattedBody = hasJsonBody
+      ? `${formatPowerShellValue(JSON.parse(body))} | ConvertTo-Json -Depth 10`
+      : toPowerShellSingleQuoted(body);
+    statements.push(`$body = ${formattedBody}`);
+  }
+
+  const argumentsList = [
+    `-Method ${toPowerShellSingleQuoted(method)}`,
+    `-Uri ${toPowerShellSingleQuoted(url)}`,
+  ];
+  if (headers.length > 0) argumentsList.push('-Headers $headers');
+  if (body !== null) argumentsList.push('-Body $body');
+
+  statements.push(`Invoke-RestMethod ${argumentsList.join(' ')}`);
+  return statements.join('\n');
+}
+
+/**
  * Converts a captured HAR request into a runnable Go net/http program.
  * @param {object} entry
  * @returns {string}
@@ -533,6 +576,38 @@ function formatGoRawString(value) {
     if (part === '`' || part === '\r') return JSON.stringify(part);
     return `\`${part}\``;
   }).join(' + ');
+}
+
+function toPowerShellSingleQuoted(value) {
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+function formatPowerShellHashtable(headers) {
+  return `@{\n${headers.map(({ name, value }) => (
+    `  ${toPowerShellSingleQuoted(name)} = ${toPowerShellSingleQuoted(value ?? '')}`
+  )).join('\n')}\n}`;
+}
+
+function formatPowerShellValue(value, indentation = '') {
+  if (value === null) return '$null';
+  if (typeof value === 'string') return toPowerShellSingleQuoted(value);
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value).replace(
+    /true|false/,
+    (literal) => `$${literal}`
+  );
+  if (Array.isArray(value)) {
+    return `@(\n${value.map((item) => (
+      `${indentation}  ${formatPowerShellValue(item, `${indentation}  `)}`
+    )).join('\n')}\n${indentation})`;
+  }
+
+  const entries = Object.entries(value);
+  return `@{\n${entries.map(([key, item]) => (
+    `${indentation}  ${toPowerShellSingleQuoted(key)} = ${formatPowerShellValue(
+      item,
+      `${indentation}  `
+    )}`
+  )).join('\n')}\n${indentation}}`;
 }
 
 function formatHeaders(headers) {
