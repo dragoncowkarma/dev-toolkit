@@ -1,0 +1,80 @@
+.csr-tool {
+  display: grid;
+  gap: 1rem;
+  max-width: 1100px;
+}
+
+.csr-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.csr-toolbar button,
+.csr-decode,
+.csr-copy {
+  padding: 0.55rem 0.8rem;
+  color: var(--color-text);
+  cursor: pointer;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.csr-decode {
+  width: fit-content;
+  background: var(--color-primary);
+}
+
+.csr-tool textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 15rem;
+  padding: 0.75rem;
+  color: var(--color-text);
+  resize: vertical;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  font-family: monospace;
+}
+
+.csr-error {
+  padding: 0.75rem;
+  color: var(--color-error-light);
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+}
+
+.csr-results {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+}
+
+.csr-results article {
+  padding: 1rem;
+  overflow-wrap: anywhere;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.csr-results h3 {
+  margin-top: 0;
+}
+
+.csr-results dl div {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.csr-results dd {
+  margin: 0;
+}
+
+.csr-results code {
+  font-size: 0.8rem;
+}
