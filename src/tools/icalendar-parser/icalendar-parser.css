@@ -1,0 +1,172 @@
+.icalendar-parser {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+}
+
+.icalendar-parser__toolbar,
+.icalendar-parser__table-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.icalendar-parser__button,
+.icalendar-parser__filter {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.icalendar-parser__button {
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+}
+
+.icalendar-parser__button:hover,
+.icalendar-parser__button:focus-within {
+  border-color: var(--color-primary);
+}
+
+.icalendar-parser__button--file {
+  position: relative;
+  overflow: hidden;
+}
+
+.icalendar-parser__file-input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.icalendar-parser__label {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.icalendar-parser__input {
+  width: 100%;
+  min-height: 250px;
+  margin: 0.5rem 0 1rem;
+  padding: 1rem;
+  resize: vertical;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: 0.9rem/1.5 'SF Mono', 'Fira Code', Consolas, monospace;
+}
+
+.icalendar-parser__input:focus,
+.icalendar-parser__filter:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.icalendar-parser__alert {
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  color: var(--color-error-light);
+  background: var(--color-error-bg);
+}
+
+.icalendar-parser__alert p,
+.icalendar-parser__alert ul {
+  margin: 0;
+}
+
+.icalendar-parser__alert ul {
+  margin-top: 0.5rem;
+  padding-left: 1.25rem;
+}
+
+.icalendar-parser__summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.icalendar-parser__summary div {
+  padding: 0.75rem;
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.icalendar-parser__summary dt {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
+.icalendar-parser__summary dd {
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
+.icalendar-parser__filter {
+  flex: 1;
+  min-width: 220px;
+  padding: 0.5rem 0.75rem;
+}
+
+.icalendar-parser__table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.icalendar-parser__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.icalendar-parser__table th,
+.icalendar-parser__table td {
+  padding: 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.icalendar-parser__table th {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
+.icalendar-parser__badge {
+  display: inline-block;
+  margin: 0.1rem;
+  padding: 0.15rem 0.4rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.icalendar-parser__badge--error {
+  color: var(--color-error);
+  background: var(--color-error-bg);
+}
+
+.icalendar-parser__badge--warning {
+  color: var(--color-warning);
+  background: color-mix(in srgb, var(--color-warning) 14%, transparent);
+}
+
+.icalendar-parser__badge--valid {
+  color: var(--color-success);
+  background: color-mix(in srgb, var(--color-success) 14%, transparent);
+}
+
+@media (min-width: 768px) {
+  .icalendar-parser {
+    padding: 0 2rem 3rem;
+  }
+}
