@@ -69,12 +69,21 @@ export default function PcapInspectorTool() {
             <dl className="pcap-inspector__header-grid">
               <div><dt>Magic</dt><dd>{result.header.magic}</dd></div>
               <div><dt>Byte order</dt><dd>{result.header.byteOrder}</dd></div>
-              <div><dt>Version</dt><dd>{result.header.versionMajor}.{result.header.versionMinor}</dd></div>
-              <div><dt>Timestamp resolution</dt><dd>{result.header.timestampResolution}</dd></div>
+              <div>
+                <dt>Version</dt>
+                <dd>{result.header.versionMajor}.{result.header.versionMinor}</dd>
+              </div>
+              <div>
+                <dt>Timestamp resolution</dt>
+                <dd>{result.header.timestampResolution}</dd>
+              </div>
               <div><dt>Timezone offset</dt><dd>{result.header.timezoneOffset}</dd></div>
               <div><dt>Timestamp accuracy</dt><dd>{result.header.timestampAccuracy}</dd></div>
               <div><dt>Snaplen</dt><dd>{result.header.snaplen}</dd></div>
-              <div><dt>Link-layer type</dt><dd>{result.header.linkTypeName} ({result.header.linkType})</dd></div>
+              <div>
+                <dt>Link-layer type</dt>
+                <dd>{result.header.linkTypeName} ({result.header.linkType})</dd>
+              </div>
             </dl>
           </section>
 

@@ -44,7 +44,9 @@ export function parsePcap(buffer) {
     throw new TypeError('PCAP input must be an ArrayBuffer.');
   }
   if (buffer.byteLength > MAX_INPUT_BYTES) {
-    throw new Error(`File is too large. PCAP files must be ${MAX_INPUT_BYTES / 1024} KB or smaller.`);
+    throw new Error(
+      `File is too large. PCAP files must be ${MAX_INPUT_BYTES / 1024} KB or smaller.`,
+    );
   }
 
   const view = new DataView(buffer);
@@ -115,7 +117,9 @@ export async function parsePcapFile(file) {
     throw new TypeError('Select a PCAP file to inspect.');
   }
   if (file.size > MAX_INPUT_BYTES) {
-    throw new Error(`File is too large. PCAP files must be ${MAX_INPUT_BYTES / 1024} KB or smaller.`);
+    throw new Error(
+      `File is too large. PCAP files must be ${MAX_INPUT_BYTES / 1024} KB or smaller.`,
+    );
   }
   return parsePcap(await file.arrayBuffer());
 }

@@ -30,7 +30,9 @@ describe('PcapInspectorTool', () => {
 
     expect(await screen.findByRole('heading', { name: 'capture.pcap' })).toBeInTheDocument();
     expect(screen.getByText('Ethernet (1)')).toBeInTheDocument();
-    expect(screen.getByRole('list', { name: 'Parsed packet records' })).toHaveTextContent('10.000020');
+    expect(
+      screen.getByRole('list', { name: 'Parsed packet records' }),
+    ).toHaveTextContent('10.000020');
     expect(screen.getByText(/Files are parsed locally/)).toBeInTheDocument();
   });
 

@@ -73,7 +73,10 @@ describe('PCAP display helpers', () => {
   });
 
   it('rejects oversized files before allocating their buffers', async () => {
-    const file = { size: MAX_INPUT_BYTES + 1, arrayBuffer: () => { throw new Error('must not read'); } };
+    const file = {
+      size: MAX_INPUT_BYTES + 1,
+      arrayBuffer: () => { throw new Error('must not read'); },
+    };
     await expect(parsePcapFile(file)).rejects.toThrow(/too large/);
   });
 });
