@@ -1,0 +1,100 @@
+.protobuf-validator {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+}
+
+.protobuf-validator__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.protobuf-validator h2 {
+  font-size: 1.25rem;
+}
+
+.protobuf-validator p,
+.protobuf-validator__label {
+  color: var(--color-text-muted);
+}
+
+.protobuf-validator__label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.protobuf-validator__button {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  padding: 0.5rem 1rem;
+}
+
+.protobuf-validator__button:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.protobuf-validator__input {
+  width: 100%;
+  min-height: 320px;
+  resize: vertical;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  padding: 1rem;
+}
+
+.protobuf-validator__input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.protobuf-validator__status,
+.protobuf-validator__success,
+.protobuf-validator__errors {
+  margin-top: 1rem;
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+}
+
+.protobuf-validator__status {
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+}
+
+.protobuf-validator__success {
+  background: color-mix(in srgb, var(--color-success) 12%, transparent);
+  border: 1px solid var(--color-success);
+  color: var(--color-success);
+}
+
+.protobuf-validator__errors {
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  color: var(--color-error-light);
+}
+
+.protobuf-validator__errors ul {
+  margin: 0.5rem 0 0 1.25rem;
+}
+
+@media (min-width: 768px) {
+  .protobuf-validator {
+    padding: 0 2rem 3rem;
+  }
+}
