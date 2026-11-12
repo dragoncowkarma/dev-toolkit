@@ -1,0 +1,9 @@
+.csr-tool { display: grid; gap: 1rem; max-width: 1100px; }
+.csr-toolbar { display: flex; flex-wrap: wrap; gap: .5rem; }
+.csr-toolbar button, .csr-decode, .csr-copy { border: 1px solid var(--border-color, #cbd5e1); border-radius: .4rem; background: var(--surface-color, #fff); color: inherit; cursor: pointer; padding: .55rem .8rem; }
+.csr-decode { background: var(--primary-color, #2563eb); color: #fff; width: fit-content; }
+.csr-tool textarea { box-sizing: border-box; font-family: monospace; min-height: 15rem; padding: .75rem; resize: vertical; width: 100%; }
+.csr-error { background: #fee2e2; border-radius: .4rem; color: #991b1b; padding: .75rem; }
+.csr-results { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.csr-results article { border: 1px solid var(--border-color, #cbd5e1); border-radius: .5rem; padding: 1rem; overflow-wrap: anywhere; }
+.csr-results h3 { margin-top: 0; }.csr-results dl div { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }.csr-results dd { margin: 0; }.csr-results code { font-size: .8rem; }
