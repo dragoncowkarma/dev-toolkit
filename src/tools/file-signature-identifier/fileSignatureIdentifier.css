@@ -1,0 +1,141 @@
+.file-signature-identifier {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  color: var(--color-text);
+}
+
+.file-signature-identifier__dropzone,
+.file-signature-identifier__result,
+.file-signature-identifier__file {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.file-signature-identifier__dropzone {
+  padding: 2rem;
+  text-align: center;
+  transition: border-color var(--transition), background var(--transition);
+}
+
+.file-signature-identifier__dropzone.is-dragging {
+  border-color: var(--color-primary);
+  background: var(--color-bg);
+}
+
+.file-signature-identifier__heading {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.file-signature-identifier__copy,
+.file-signature-identifier__result p {
+  color: var(--color-text-muted);
+}
+
+.file-signature-identifier__button,
+.file-signature-identifier__file button {
+  display: inline-block;
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius);
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  padding: 0.6rem 1rem;
+}
+
+.file-signature-identifier__button:focus-within,
+.file-signature-identifier__file button:focus-visible {
+  outline: 2px solid var(--color-primary-light);
+  outline-offset: 3px;
+}
+
+.file-signature-identifier__button input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+.file-signature-identifier__file {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+}
+
+.file-signature-identifier__file button {
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.file-signature-identifier__result,
+.file-signature-identifier__error {
+  margin-top: 1rem;
+  padding: 1.25rem;
+}
+
+.file-signature-identifier__label {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.file-signature-identifier__result h2 {
+  margin: 0.25rem 0 1rem;
+}
+
+.file-signature-identifier__result dl {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.file-signature-identifier__result dl div {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.file-signature-identifier__result dt {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.file-signature-identifier__result dd {
+  margin: 0;
+}
+
+.file-signature-identifier__result dd:first-letter {
+  font-family: inherit;
+}
+
+.file-signature-identifier__result dd {
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+}
+
+.file-signature-identifier__result dl div:last-child dd {
+  font-family: inherit;
+}
+
+.file-signature-identifier__error {
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+}
+
+@media (min-width: 768px) {
+  .file-signature-identifier {
+    padding: 0 2rem 3rem;
+  }
+}
