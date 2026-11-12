@@ -218,7 +218,7 @@ export default function HarTool() {
             ? toGoRequestsSnippet(selectedEntry)
             : format === 'node'
               ? toNodeAxiosSnippet(selectedEntry)
-            : toCurlCommand(selectedEntry);
+              : toCurlCommand(selectedEntry);
 
     try {
       await navigator.clipboard.writeText(snippet);
@@ -235,7 +235,7 @@ export default function HarTool() {
               ? 'Go snippet'
               : format === 'node'
                 ? 'Node.js snippet'
-              : 'cURL command';
+                : 'cURL command';
       setCopyError(`Failed to copy ${formatName}.`);
     }
   }
@@ -536,7 +536,7 @@ export default function HarTool() {
                               ? 'Go snippet'
                               : copiedFormat === 'node'
                                 ? 'Node.js snippet'
-                              : 'cURL command'}
+                                : 'cURL command'}
                     </span>
                   )}
                 </div>
