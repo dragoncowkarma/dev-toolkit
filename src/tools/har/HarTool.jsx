@@ -10,6 +10,7 @@ import {
   toFetchSnippet,
   toGoRequestsSnippet,
   toHttpieCommand,
+  toNodeAxiosSnippet,
   toPythonRequestsSnippet,
 } from './har.utils.js';
 import { useCopyFeedback } from '../../hooks/useCopyFeedback.js';
@@ -215,6 +216,8 @@ export default function HarTool() {
           ? toPythonRequestsSnippet(selectedEntry)
           : format === 'go'
             ? toGoRequestsSnippet(selectedEntry)
+            : format === 'node'
+              ? toNodeAxiosSnippet(selectedEntry)
             : toCurlCommand(selectedEntry);
 
     try {
@@ -230,6 +233,8 @@ export default function HarTool() {
             ? 'Python snippet'
             : format === 'go'
               ? 'Go snippet'
+              : format === 'node'
+                ? 'Node.js snippet'
               : 'cURL command';
       setCopyError(`Failed to copy ${formatName}.`);
     }
@@ -512,6 +517,13 @@ export default function HarTool() {
                   >
                     {copiedFormat === 'go' ? '✓ Copied' : 'Copy as Go'}
                   </button>
+                  <button
+                    className="har-button har-button--quiet"
+                    type="button"
+                    onClick={() => copyRequest('node')}
+                  >
+                    {copiedFormat === 'node' ? '✓ Copied' : 'Copy as Node'}
+                  </button>
                   {copiedFormat && (
                     <span className="sr-only" role="status" aria-live="polite">
                       Copied {copiedFormat === 'fetch'
@@ -522,6 +534,8 @@ export default function HarTool() {
                             ? 'Python snippet'
                             : copiedFormat === 'go'
                               ? 'Go snippet'
+                              : copiedFormat === 'node'
+                                ? 'Node.js snippet'
                               : 'cURL command'}
                     </span>
                   )}

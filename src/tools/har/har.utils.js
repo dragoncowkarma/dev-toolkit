@@ -411,6 +411,51 @@ export function toPythonRequestsSnippet(entry) {
 }
 
 /**
+ * Converts a captured HAR request into a runnable Node.js axios call.
+ * @param {object} entry
+ * @returns {string}
+ */
+export function toNodeAxiosSnippet(entry) {
+  const request = entry?.request ?? {};
+  const method = String(request.method ?? 'GET').toUpperCase();
+  const url = String(request.url ?? '');
+  const postData = request.postData ?? {};
+  const headers = Array.isArray(request.headers)
+    ? request.headers.filter((header) => hasHeaderName(header) && !header.name.startsWith(':'))
+    : [];
+  const body = typeof postData.text === 'string' ? postData.text : null;
+  const options = [
+    `method: ${JSON.stringify(method)}`,
+    `url: ${JSON.stringify(url)}`,
+  ];
+
+  if (body !== null && postData.mimeType && !hasHeader(headers, 'content-type')) {
+    headers.push({ name: 'Content-Type', value: String(postData.mimeType) });
+  }
+
+  if (headers.length > 0) {
+    options.push(`headers: ${formatHeaders(headers)}`);
+  }
+
+  if (body !== null) {
+    options.push(`data: ${formatNodeRequestBody(body, postData.mimeType)}`);
+  }
+
+  return [
+    "import axios from 'axios';",
+    '',
+    'async function main() {',
+    `  const response = await axios({\n${options.map((option) => (
+      indentLines(option, 4)
+    )).join(',\n')}\n  });`,
+    '  console.log(response.data);',
+    '}',
+    '',
+    'main().catch(console.error);',
+  ].join('\n');
+}
+
+/**
  * Converts a captured HAR request into a runnable Go net/http program.
  * @param {object} entry
  * @returns {string}
@@ -504,6 +549,23 @@ function formatRequestBody(body) {
   } catch {
     return JSON.stringify(body);
   }
+}
+
+function formatNodeRequestBody(body, mimeType) {
+  if (/json/i.test(String(mimeType ?? ''))) {
+    try {
+      return JSON.stringify(JSON.parse(body), null, 2);
+    } catch {
+      // Preserve invalid JSON verbatim instead of changing the captured request.
+    }
+  }
+
+  return JSON.stringify(body);
+}
+
+function indentLines(value, spaces) {
+  const indentation = ' '.repeat(spaces);
+  return String(value).split('\n').map((line) => `${indentation}${line}`).join('\n');
 }
 
 function formatPythonDictionary(headers) {

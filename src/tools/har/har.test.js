@@ -10,6 +10,7 @@ import {
   toFetchSnippet,
   toGoRequestsSnippet,
   toHttpieCommand,
+  toNodeAxiosSnippet,
   toPythonRequestsSnippet,
 } from './har.utils.js';
 
@@ -327,6 +328,59 @@ describe('toHttpieCommand', () => {
     expect(command).toContain('http POST');
     expect(command).toContain("'Content-Type:text/plain'");
     expect(command).toContain("--raw 'O'\\''Brien'");
+  });
+});
+
+describe('toNodeAxiosSnippet', () => {
+  it('builds a GET request without headers or body data', () => {
+    const snippet = toNodeAxiosSnippet({
+      request: { method: 'GET', url: 'https://example.test/items' },
+    });
+
+    expect(snippet).toContain("import axios from 'axios';");
+    expect(snippet).toContain('method: "GET"');
+    expect(snippet).toContain('url: "https://example.test/items"');
+    expect(snippet).not.toContain('headers:');
+    expect(snippet).not.toContain('data:');
+  });
+
+  it('uses an object payload and infers Content-Type for JSON requests', () => {
+    const snippet = toNodeAxiosSnippet({
+      request: {
+        method: 'POST',
+        url: 'https://api.example.test/items',
+        postData: { mimeType: 'application/json', text: '{"name":"Ada","active":true}' },
+      },
+    });
+
+    expect(snippet).toContain('"Content-Type": "application/json"');
+    expect(snippet).toContain('data: {\n      "name": "Ada",\n      "active": true\n    }');
+  });
+
+  it('uses a JavaScript string literal for raw text bodies', () => {
+    const snippet = toNodeAxiosSnippet({
+      request: {
+        method: 'POST',
+        url: 'https://api.example.test/items',
+        postData: { mimeType: 'text/plain', text: 'line one\nline two' },
+      },
+    });
+
+    expect(snippet).toContain('data: "line one\\nline two"');
+  });
+
+  it('escapes backticks, quotes, and newlines in headers and request bodies', () => {
+    const snippet = toNodeAxiosSnippet({
+      request: {
+        method: 'POST',
+        url: 'https://api.example.test/items',
+        headers: [{ name: 'X-Note', value: '`quoted` "value"\nnext line' }],
+        postData: { mimeType: 'text/plain', text: '`body` "value"\nnext line' },
+      },
+    });
+
+    expect(snippet).toContain('"X-Note": "`quoted` \\"value\\"\\nnext line"');
+    expect(snippet).toContain('data: "`body` \\"value\\"\\nnext line"');
   });
 });
 

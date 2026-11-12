@@ -307,3 +307,40 @@ describe('HarTool Copy as Go', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Failed to copy Go snippet.');
   });
 });
+
+describe('HarTool Copy as Node', () => {
+  it('copies an axios snippet for the selected request', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    render(<HarTool />);
+
+    fireEvent.change(screen.getByLabelText('Paste raw HAR JSON'), { target: { value: harText } });
+    fireEvent.click(screen.getByRole('button', { name: 'Analyze HAR' }));
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy as Node' }));
+    });
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    expect(writeText).toHaveBeenCalledWith(expect.stringContaining("import axios from 'axios';"));
+    expect(screen.getByRole('status')).toHaveTextContent('Copied Node.js snippet');
+  });
+
+  it('shows an error message when clipboard copy fails', async () => {
+    Object.assign(navigator, {
+      clipboard: { writeText: vi.fn().mockRejectedValue(new Error('denied')) },
+    });
+
+    render(<HarTool />);
+
+    fireEvent.change(screen.getByLabelText('Paste raw HAR JSON'), { target: { value: harText } });
+    fireEvent.click(screen.getByRole('button', { name: 'Analyze HAR' }));
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy as Node' }));
+    });
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Failed to copy Node.js snippet.');
+  });
+});
