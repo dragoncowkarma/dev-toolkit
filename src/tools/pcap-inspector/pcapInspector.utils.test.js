@@ -25,6 +25,18 @@ function makePcap({ littleEndian = true, payload = [1, 2, 3], declaredLength = n
   return buffer;
 }
 
+function makeEthernetIpv4Packet({ protocol, ports = [], etherType = 0x0800 } = {}) {
+  const payload = new Uint8Array(14 + 20 + ports.length);
+  payload.set([0, 17, 34, 51, 68, 85, 102, 119, 136, 153, 170, 187], 0);
+  new DataView(payload.buffer).setUint16(12, etherType, false);
+  if (etherType !== 0x0800) return Array.from(payload);
+
+  payload.set([0x45, 0, 0, payload.length - 14, 0, 0, 0, 0, 64, protocol, 0, 0], 14);
+  payload.set([192, 0, 2, 1, 198, 51, 100, 2], 26);
+  payload.set(ports, 34);
+  return Array.from(payload);
+}
+
 describe('parsePcap', () => {
   it('parses a little-endian classic PCAP global header and packet metadata', () => {
     const result = parsePcap(makePcap());
@@ -42,6 +54,42 @@ describe('parsePcap', () => {
     const result = parsePcap(makePcap({ littleEndian: false }));
     expect(result.header.byteOrder).toBe('Big-endian');
     expect(result.packets[0].capturedLength).toBe(3);
+  });
+
+  it('decodes Ethernet, IPv4, and TCP headers', () => {
+    const result = parsePcap(makePcap({
+      payload: makeEthernetIpv4Packet({ protocol: 6, ports: [1, 187, 31, 144] }),
+    }));
+    expect(result.packets[0]).toMatchObject({
+      destMac: '00:11:22:33:44:55', sourceMac: '66:77:88:99:aa:bb', etherType: 0x0800,
+      sourceIp: '192.0.2.1', destIp: '198.51.100.2', protocol: 6, protocolName: 'TCP',
+      totalLength: 24, sourcePort: 443, destPort: 8080,
+    });
+  });
+
+  it('decodes Ethernet, IPv4, and UDP headers', () => {
+    const result = parsePcap(makePcap({
+      payload: makeEthernetIpv4Packet({ protocol: 17, ports: [0, 53, 207, 8] }),
+    }));
+    expect(result.packets[0]).toMatchObject({
+      protocol: 17, protocolName: 'UDP', sourcePort: 53, destPort: 53000,
+    });
+  });
+
+  it('leaves non-IPv4 Ethernet packets undecoded', () => {
+    const result = parsePcap(makePcap({
+      payload: makeEthernetIpv4Packet({ etherType: 0x86dd }),
+    }));
+    expect(result.packets[0]).not.toHaveProperty('etherType');
+    expect(result.packets[0]).not.toHaveProperty('sourceIp');
+  });
+
+  it('leaves a truncated inner header undecoded while parsing the file', () => {
+    const truncatedPayload = makeEthernetIpv4Packet({ protocol: 6 }).slice(0, 20);
+    const result = parsePcap(makePcap({ payload: truncatedPayload }));
+    expect(result.packets).toHaveLength(1);
+    expect(result.packets[0]).not.toHaveProperty('sourceMac');
+    expect(result.packets[0]).not.toHaveProperty('sourceIp');
   });
 
   it('rejects PCAPNG distinctly', () => {
