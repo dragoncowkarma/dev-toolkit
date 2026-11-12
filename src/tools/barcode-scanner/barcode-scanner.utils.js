@@ -180,6 +180,18 @@ function transposeImageData({ data, width, height }) {
   return { data: rotatedData, width: height, height: width };
 }
 
+function reverseImageDataRows({ data, width, height }) {
+  const reversedData = new Uint8ClampedArray(data.length);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const sourceOffset = (y * width + x) * 4;
+      const targetOffset = (y * width + (width - x - 1)) * 4;
+      reversedData.set(data.subarray(sourceOffset, sourceOffset + 4), targetOffset);
+    }
+  }
+  return { data: reversedData, width, height };
+}
+
 /**
  * Decodes an ImageData-like raster by sampling horizontal scan lines.
  * @param {{data: Uint8ClampedArray, width: number, height: number}} imageData
@@ -193,6 +205,16 @@ export function decodeBarcodeFromImageData(imageData) {
     imageData.width < 20 ||
     imageData.height < 1
   ) return null;
-  const horizontalResult = decodeHorizontalScanLines(imageData);
-  return horizontalResult ?? decodeHorizontalScanLines(transposeImageData(imageData));
+  const transposedImage = transposeImageData(imageData);
+  const orientations = [
+    imageData,
+    transposedImage,
+    reverseImageDataRows(imageData),
+    reverseImageDataRows(transposedImage),
+  ];
+  for (const orientation of orientations) {
+    const decoded = decodeHorizontalScanLines(orientation);
+    if (decoded) return decoded;
+  }
+  return null;
 }

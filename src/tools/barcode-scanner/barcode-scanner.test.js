@@ -56,6 +56,29 @@ function transposeImageData({ data, width, height }) {
   return { data: rotatedData, width: height, height: width };
 }
 
+function rotateImageData({ data, width, height }, degrees) {
+  const rotatedWidth = degrees % 180 === 0 ? width : height;
+  const rotatedHeight = degrees % 180 === 0 ? height : width;
+  const rotatedData = new Uint8ClampedArray(data.length);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const sourceOffset = (y * width + x) * 4;
+      let targetX = x;
+      let targetY = y;
+      if (degrees === 180) {
+        targetX = width - x - 1;
+        targetY = height - y - 1;
+      } else if (degrees === 270) {
+        targetX = y;
+        targetY = width - x - 1;
+      }
+      const targetOffset = (targetY * rotatedWidth + targetX) * 4;
+      rotatedData.set(data.subarray(sourceOffset, sourceOffset + 4), targetOffset);
+    }
+  }
+  return { data: rotatedData, width: rotatedWidth, height: rotatedHeight };
+}
+
 function code128Modules() {
   return '2112141113231311232331112'
     .split('')
@@ -110,5 +133,31 @@ describe('barcode decoding', () => {
   ])('decodes a 90-degree rotated %s image', (_name, modules, expected) => {
     const verticalBarcode = transposeImageData(imageFromModules(modules));
     expect(decodeBarcodeFromImageData(verticalBarcode)).toEqual(expected);
+  });
+
+  it.each([
+    ['Code 128', code128Modules(), { value: 'A', symbology: 'Code 128', checksumValid: true }],
+    ['EAN-13', eanModules('4006381333931'), {
+      value: '4006381333931', symbology: 'EAN-13', checksumValid: true,
+    }],
+    ['UPC-A', eanModules('0036000291452'), {
+      value: '036000291452', symbology: 'UPC-A', checksumValid: true,
+    }],
+  ])('decodes a 180-degree rotated %s image', (_name, modules, expected) => {
+    const rotatedBarcode = rotateImageData(imageFromModules(modules), 180);
+    expect(decodeBarcodeFromImageData(rotatedBarcode)).toEqual(expected);
+  });
+
+  it.each([
+    ['Code 128', code128Modules(), { value: 'A', symbology: 'Code 128', checksumValid: true }],
+    ['EAN-13', eanModules('4006381333931'), {
+      value: '4006381333931', symbology: 'EAN-13', checksumValid: true,
+    }],
+    ['UPC-A', eanModules('0036000291452'), {
+      value: '036000291452', symbology: 'UPC-A', checksumValid: true,
+    }],
+  ])('decodes a 270-degree rotated %s image', (_name, modules, expected) => {
+    const rotatedBarcode = rotateImageData(imageFromModules(modules), 270);
+    expect(decodeBarcodeFromImageData(rotatedBarcode)).toEqual(expected);
   });
 });
