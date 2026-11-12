@@ -30,8 +30,8 @@ export function encodeGeohash(latitude, longitude, precision = 9) {
   validateCoordinate(longitude, 'Longitude', -180, 180);
   validatePrecision(precision);
 
-  let latitudeRange = [-90, 90];
-  let longitudeRange = [-180, 180];
+  const latitudeRange = [-90, 90];
+  const longitudeRange = [-180, 180];
   let useLongitude = true;
   let bitCount = 0;
   let characterValue = 0;
@@ -79,8 +79,8 @@ export function decodeGeohash(geohash) {
     throw new Error('Geohash cannot be empty.');
   }
 
-  let latitudeRange = [-90, 90];
-  let longitudeRange = [-180, 180];
+  const latitudeRange = [-90, 90];
+  const longitudeRange = [-180, 180];
   let useLongitude = true;
 
   for (const character of normalized) {
