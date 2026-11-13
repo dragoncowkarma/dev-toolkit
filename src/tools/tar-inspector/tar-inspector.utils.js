@@ -426,11 +426,98 @@ export function parseTarArchive(input) {
     const headerOffset = offset;
     offset += TAR_BLOCK_SIZE;
 
-    // Check payload boundaries
-    const paddedDataSize = Math.ceil(size / TAR_BLOCK_SIZE) * TAR_BLOCK_SIZE;
+    const isMetaHeader =
+      typeflag === TYPE_FLAGS.GNU_LONGLINK ||
+      typeflag === TYPE_FLAGS.GNU_LONGLINK_TARGET ||
+      typeflag === TYPE_FLAGS.PAX_EXTENDED ||
+      typeflag === TYPE_FLAGS.PAX_GLOBAL;
+
+    let effectiveSize = size;
+    let displayName = rawName;
+    let resolvedData = null;
+
+    if (!isMetaHeader) {
+      const effectivePax = { ...globalPax, ...(pendingPax || {}) };
+
+      let resolvedName = rawName;
+      let hasLongName = false;
+      if (pendingLongName) {
+        resolvedName = pendingLongName;
+        hasLongName = true;
+        pendingLongName = null;
+      } else if (effectivePax.path) {
+        resolvedName = effectivePax.path;
+      } else if (prefix) {
+        resolvedName = `${prefix}/${rawName}`;
+      }
+
+      let resolvedLinkname = rawLinkname;
+      if (pendingLongLink) {
+        resolvedLinkname = pendingLongLink;
+        pendingLongLink = null;
+      } else if (effectivePax.linkpath) {
+        resolvedLinkname = effectivePax.linkpath;
+      }
+
+      let resolvedSize = size;
+      if (effectivePax.size !== undefined) {
+        const parsedSize = parseInt(effectivePax.size, 10);
+        if (!Number.isNaN(parsedSize) && parsedSize >= 0) {
+          resolvedSize = parsedSize;
+        }
+      }
+
+      let resolvedMtime = mtime;
+      if (effectivePax.mtime !== undefined) {
+        const parsedMtime = parseFloat(effectivePax.mtime);
+        if (!Number.isNaN(parsedMtime)) resolvedMtime = Math.floor(parsedMtime);
+      }
+
+      let resolvedUid = uid;
+      if (effectivePax.uid !== undefined) {
+        const parsedUid = parseInt(effectivePax.uid, 10);
+        if (!Number.isNaN(parsedUid)) resolvedUid = parsedUid;
+      }
+
+      let resolvedGid = gid;
+      if (effectivePax.gid !== undefined) {
+        const parsedGid = parseInt(effectivePax.gid, 10);
+        if (!Number.isNaN(parsedGid)) resolvedGid = parsedGid;
+      }
+
+      let resolvedUname = uname;
+      if (effectivePax.uname !== undefined) {
+        resolvedUname = effectivePax.uname;
+      }
+
+      let resolvedGname = gname;
+      if (effectivePax.gname !== undefined) {
+        resolvedGname = effectivePax.gname;
+      }
+
+      pendingPax = null;
+
+      effectiveSize = resolvedSize;
+      displayName = resolvedName;
+
+      resolvedData = {
+        resolvedName,
+        hasLongName,
+        resolvedLinkname,
+        resolvedSize,
+        resolvedMtime,
+        resolvedUid,
+        resolvedGid,
+        resolvedUname,
+        resolvedGname,
+      };
+    }
+
+    // Check payload boundaries and compute padded data size from effective size
+    const paddedDataSize = Math.ceil(effectiveSize / TAR_BLOCK_SIZE) * TAR_BLOCK_SIZE;
     if (offset + paddedDataSize > buffer.length) {
       throw new TarParseError(
-        `Archive is truncated: entry "${rawName || 'unnamed'}" data (${size} bytes) ` +
+        `Archive is truncated: entry "${displayName || 'unnamed'}" data (${effectiveSize} bytes) ` +
         `extends beyond file end.`,
         headerOffset,
       );
@@ -543,63 +630,17 @@ export function parseTarArchive(input) {
       if (!detectedFormat) detectedFormat = 'POSIX PAX';
     } else {
       // Normal entry (regular file, directory, symlink, device, etc.)
-      const effectivePax = { ...globalPax, ...(pendingPax || {}) };
-
-      let resolvedName = rawName;
-      let hasLongName = false;
-      if (pendingLongName) {
-        resolvedName = pendingLongName;
-        hasLongName = true;
-        pendingLongName = null;
-      } else if (effectivePax.path) {
-        resolvedName = effectivePax.path;
-      } else if (prefix) {
-        resolvedName = `${prefix}/${rawName}`;
-      }
-
-      let resolvedLinkname = rawLinkname;
-      if (pendingLongLink) {
-        resolvedLinkname = pendingLongLink;
-        pendingLongLink = null;
-      } else if (effectivePax.linkpath) {
-        resolvedLinkname = effectivePax.linkpath;
-      }
-
-      let resolvedSize = size;
-      if (effectivePax.size !== undefined) {
-        const parsedSize = parseInt(effectivePax.size, 10);
-        if (!Number.isNaN(parsedSize)) resolvedSize = parsedSize;
-      }
-
-      let resolvedMtime = mtime;
-      if (effectivePax.mtime !== undefined) {
-        const parsedMtime = parseFloat(effectivePax.mtime);
-        if (!Number.isNaN(parsedMtime)) resolvedMtime = Math.floor(parsedMtime);
-      }
-
-      let resolvedUid = uid;
-      if (effectivePax.uid !== undefined) {
-        const parsedUid = parseInt(effectivePax.uid, 10);
-        if (!Number.isNaN(parsedUid)) resolvedUid = parsedUid;
-      }
-
-      let resolvedGid = gid;
-      if (effectivePax.gid !== undefined) {
-        const parsedGid = parseInt(effectivePax.gid, 10);
-        if (!Number.isNaN(parsedGid)) resolvedGid = parsedGid;
-      }
-
-      let resolvedUname = uname;
-      if (effectivePax.uname !== undefined) {
-        resolvedUname = effectivePax.uname;
-      }
-
-      let resolvedGname = gname;
-      if (effectivePax.gname !== undefined) {
-        resolvedGname = effectivePax.gname;
-      }
-
-      pendingPax = null;
+      const {
+        resolvedName,
+        hasLongName,
+        resolvedLinkname,
+        resolvedSize,
+        resolvedMtime,
+        resolvedUid,
+        resolvedGid,
+        resolvedUname,
+        resolvedGname,
+      } = resolvedData;
 
       totalDataSize += resolvedSize;
 
@@ -656,7 +697,8 @@ export function parseTarArchive(input) {
  *   uname?: string,
  *   gname?: string,
  *   prefix?: string,
- *   useGnuLongName?: boolean
+ *   useGnuLongName?: boolean,
+ *   headerSize?: number
  * }>} files
  * @returns {Uint8Array}
  */
@@ -727,7 +769,8 @@ export function createMockTarArchive(files) {
     const contentBytes = typeof rawContent === 'string'
       ? new TextEncoder().encode(rawContent)
       : rawContent;
-    const size = file.typeflag === '5' ? 0 : contentBytes.length;
+    const payloadLength = file.typeflag === '5' ? 0 : contentBytes.length;
+    const size = file.headerSize !== undefined ? file.headerSize : payloadLength;
 
     // GNU long filename handling
     const needsLongName = file.useGnuLongName || file.name.length > 100;
@@ -764,8 +807,8 @@ export function createMockTarArchive(files) {
     });
     blocks.push(header);
 
-    if (size > 0) {
-      const paddedLen = Math.ceil(size / TAR_BLOCK_SIZE) * TAR_BLOCK_SIZE;
+    if (payloadLength > 0) {
+      const paddedLen = Math.ceil(payloadLength / TAR_BLOCK_SIZE) * TAR_BLOCK_SIZE;
       const dataBlock = new Uint8Array(paddedLen);
       dataBlock.set(contentBytes);
       blocks.push(dataBlock);
