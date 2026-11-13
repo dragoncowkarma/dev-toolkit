@@ -296,4 +296,103 @@ describe('parseTarArchive', () => {
     expect(result.entries).toHaveLength(1);
     expect(result.entries[0].name).toBe('nested/directory/file.txt');
   });
+
+  it('preserves PAX global records separately and applies them to every subsequent entry', () => {
+    const globalPaxPayload = '20 mtime=1705000000\n20 uname=globaluser\n';
+    const mockData = createMockTarArchive([
+      {
+        name: 'pax_global_header',
+        typeflag: TYPE_FLAGS.PAX_GLOBAL,
+        content: globalPaxPayload,
+      },
+      {
+        name: 'file1.txt',
+        content: 'content of file 1',
+        mtime: 1600000000,
+        uname: 'localuser',
+      },
+      {
+        name: 'file2.txt',
+        content: 'content of file 2',
+        mtime: 1600000000,
+        uname: 'localuser',
+      },
+    ]);
+
+    const result = parseTarArchive(mockData);
+    expect(result.entries).toHaveLength(3);
+    expect(result.format).toBe('POSIX PAX');
+
+    const globalHeader = result.entries[0];
+    expect(globalHeader.typeflag).toBe(TYPE_FLAGS.PAX_GLOBAL);
+    expect(globalHeader.type).toBe('PAX Global Header');
+    expect(globalHeader.paxRecords).toEqual({
+      mtime: '1705000000',
+      uname: 'globaluser',
+    });
+
+    const file1 = result.entries[1];
+    expect(file1.name).toBe('file1.txt');
+    expect(file1.mtime).toBe(1705000000);
+    expect(file1.uname).toBe('globaluser');
+
+    const file2 = result.entries[2];
+    expect(file2.name).toBe('file2.txt');
+    expect(file2.mtime).toBe(1705000000);
+    expect(file2.uname).toBe('globaluser');
+  });
+
+  it(
+    'allows per-entry PAX extended headers to override global PAX without clearing globals',
+    () => {
+      const globalPaxPayload = '20 mtime=1705000000\n';
+      const extPaxPayload = '20 mtime=1709999999\n';
+
+      const mockData = createMockTarArchive([
+        {
+          name: 'pax_global_header',
+          typeflag: TYPE_FLAGS.PAX_GLOBAL,
+          content: globalPaxPayload,
+        },
+        {
+          name: 'PaxHeader/file1.txt',
+          typeflag: TYPE_FLAGS.PAX_EXTENDED,
+          content: extPaxPayload,
+        },
+        {
+          name: 'file1.txt',
+          content: 'first file',
+        },
+        {
+          name: 'file2.txt',
+          content: 'second file',
+        },
+      ]);
+
+      const result = parseTarArchive(mockData);
+      expect(result.entries).toHaveLength(4);
+
+      const file1 = result.entries[2];
+      expect(file1.name).toBe('file1.txt');
+      expect(file1.mtime).toBe(1709999999);
+
+      const file2 = result.entries[3];
+      expect(file2.name).toBe('file2.txt');
+      expect(file2.mtime).toBe(1705000000);
+    },
+  );
+
+  it('rejects an entry when required 512-byte block padding is missing', () => {
+    // Valid archive with 3-byte payload contains:
+    // 512-byte header + 512-byte padded data + 1024-byte zero blocks
+    const validData = createMockTarArchive([
+      { name: 'three-bytes.txt', content: 'abc' },
+    ]);
+    // Truncate to header (512 bytes) + 3 payload bytes (515 bytes total),
+    // missing required 509 padding bytes
+    const truncatedPayloadPadding = validData.subarray(0, 515);
+
+    expect(() => parseTarArchive(truncatedPayloadPadding)).toThrow(TarParseError);
+    expect(() => parseTarArchive(truncatedPayloadPadding)).toThrow(/extends beyond file end/i);
+  });
 });
