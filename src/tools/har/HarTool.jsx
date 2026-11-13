@@ -11,6 +11,7 @@ import {
   toGoRequestsSnippet,
   toHttpieCommand,
   toNodeAxiosSnippet,
+  toPowerShellSnippet,
   toPythonRequestsSnippet,
 } from './har.utils.js';
 import { useCopyFeedback } from '../../hooks/useCopyFeedback.js';
@@ -218,7 +219,9 @@ export default function HarTool() {
             ? toGoRequestsSnippet(selectedEntry)
             : format === 'node'
               ? toNodeAxiosSnippet(selectedEntry)
-              : toCurlCommand(selectedEntry);
+              : format === 'powershell'
+                ? toPowerShellSnippet(selectedEntry)
+                : toCurlCommand(selectedEntry);
 
     try {
       await navigator.clipboard.writeText(snippet);
@@ -235,7 +238,9 @@ export default function HarTool() {
               ? 'Go snippet'
               : format === 'node'
                 ? 'Node.js snippet'
-                : 'cURL command';
+                : format === 'powershell'
+                  ? 'PowerShell snippet'
+                  : 'cURL command';
       setCopyError(`Failed to copy ${formatName}.`);
     }
   }
@@ -524,6 +529,13 @@ export default function HarTool() {
                   >
                     {copiedFormat === 'node' ? '✓ Copied' : 'Copy as Node'}
                   </button>
+                  <button
+                    className="har-button har-button--quiet"
+                    type="button"
+                    onClick={() => copyRequest('powershell')}
+                  >
+                    {copiedFormat === 'powershell' ? '✓ Copied' : 'Copy as PowerShell'}
+                  </button>
                   {copiedFormat && (
                     <span className="sr-only" role="status" aria-live="polite">
                       Copied {copiedFormat === 'fetch'
@@ -536,7 +548,9 @@ export default function HarTool() {
                               ? 'Go snippet'
                               : copiedFormat === 'node'
                                 ? 'Node.js snippet'
-                                : 'cURL command'}
+                                : copiedFormat === 'powershell'
+                                  ? 'PowerShell snippet'
+                                  : 'cURL command'}
                     </span>
                   )}
                 </div>
