@@ -25,6 +25,73 @@ function requireBytes(view, offset, length, label) {
   }
 }
 
+function requirePacketBytes(view, payloadOffset, capturedLength, offset, length, label) {
+  if (!Number.isSafeInteger(offset) || !Number.isSafeInteger(length) ||
+      offset < 0 || length < 0 || offset > capturedLength - length) {
+    throw new Error(`Truncated packet: ${label} extends beyond the captured payload.`);
+  }
+  requireBytes(view, payloadOffset + offset, length, label);
+}
+
+function formatMacAddress(view, offset) {
+  return Array.from({ length: 6 }, (_, index) => view.getUint8(offset + index)
+    .toString(16).padStart(2, '0')).join(':');
+}
+
+function formatIpv4Address(view, offset) {
+  return Array.from({ length: 4 }, (_, index) => view.getUint8(offset + index)).join('.');
+}
+
+function getProtocolName(protocol) {
+  return new Map([
+    [1, 'ICMP'],
+    [6, 'TCP'],
+    [17, 'UDP'],
+  ]).get(protocol);
+}
+
+function decodeEthernetPacket(view, payloadOffset, capturedLength) {
+  try {
+    requirePacketBytes(view, payloadOffset, capturedLength, 0, 14, 'Ethernet header');
+    const etherType = view.getUint16(payloadOffset + 12, false);
+    if (etherType !== 0x0800) return {};
+
+    const ipOffset = 14;
+    requirePacketBytes(view, payloadOffset, capturedLength, ipOffset, 20, 'IPv4 header');
+    const ipv4VersionAndHeaderLength = view.getUint8(payloadOffset + ipOffset);
+    const version = ipv4VersionAndHeaderLength >> 4;
+    const ipHeaderLength = (ipv4VersionAndHeaderLength & 0x0f) * 4;
+    if (version !== 4 || ipHeaderLength < 20) return {};
+    requirePacketBytes(
+      view, payloadOffset, capturedLength, ipOffset, ipHeaderLength, 'IPv4 options',
+    );
+
+    const protocol = view.getUint8(payloadOffset + ipOffset + 9);
+    const decodedPacket = {
+      destMac: formatMacAddress(view, payloadOffset),
+      sourceMac: formatMacAddress(view, payloadOffset + 6),
+      etherType,
+      sourceIp: formatIpv4Address(view, payloadOffset + ipOffset + 12),
+      destIp: formatIpv4Address(view, payloadOffset + ipOffset + 16),
+      protocol,
+      protocolName: getProtocolName(protocol),
+      totalLength: view.getUint16(payloadOffset + ipOffset + 2, false),
+    };
+
+    if (protocol === 6 || protocol === 17) {
+      const transportOffset = ipOffset + ipHeaderLength;
+      requirePacketBytes(
+        view, payloadOffset, capturedLength, transportOffset, 4, 'transport header',
+      );
+      decodedPacket.sourcePort = view.getUint16(payloadOffset + transportOffset, false);
+      decodedPacket.destPort = view.getUint16(payloadOffset + transportOffset + 2, false);
+    }
+    return decodedPacket;
+  } catch {
+    return {};
+  }
+}
+
 /**
  * Returns a readable name for a libpcap LINKTYPE value.
  * @param {number} linkType
@@ -80,13 +147,17 @@ export function parsePcap(buffer) {
     const originalLength = view.getUint32(offset + 12, littleEndian);
     const payloadOffset = offset + 16;
     requireBytes(view, payloadOffset, capturedLength, `packet payload at offset ${payloadOffset}`);
-    packets.push({
+    const packet = {
       index: packets.length + 1,
       timestampSeconds,
       timestampFraction,
       capturedLength,
       originalLength,
-    });
+    };
+    if (linkType === 1) {
+      Object.assign(packet, decodeEthernetPacket(view, payloadOffset, capturedLength));
+    }
+    packets.push(packet);
     offset = payloadOffset + capturedLength;
   }
 

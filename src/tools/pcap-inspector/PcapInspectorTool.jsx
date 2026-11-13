@@ -12,6 +12,7 @@ export default function PcapInspectorTool() {
   const [fileName, setFileName] = useState('');
   const fileInputRef = useRef(null);
   const requestRef = useRef(0);
+  const hasDecodedPackets = result?.packets.some((packet) => packet.sourceIp);
 
   async function handleFileChange(event) {
     const file = event.target.files?.[0];
@@ -90,16 +91,46 @@ export default function PcapInspectorTool() {
           <section aria-labelledby="pcap-packets">
             <h3 id="pcap-packets">Packet records ({result.packets.length})</h3>
             <div className="pcap-inspector__packet-list" role="region" aria-label="Packet records">
-              <div className="pcap-inspector__packet-row pcap-inspector__packet-heading" role="row">
+              <div
+                className={`pcap-inspector__packet-row pcap-inspector__packet-heading${
+                  hasDecodedPackets ? ' pcap-inspector__packet-row--decoded' : ''
+                }`}
+                role="row"
+              >
                 <span>Packet</span><span>Timestamp</span><span>Captured</span><span>Original</span>
+                {hasDecodedPackets && <>
+                  <span>Destination MAC</span><span>Source MAC</span><span>EtherType</span>
+                  <span>Source IP</span><span>Destination IP</span><span>Protocol</span>
+                  <span>IP length</span><span>Source port</span><span>Destination port</span>
+                </>}
               </div>
               <ol className="pcap-inspector__packets" aria-label="Parsed packet records">
                 {result.packets.map((packet) => (
-                  <li className="pcap-inspector__packet-row" key={packet.index}>
+                  <li
+                    className={`pcap-inspector__packet-row${
+                      hasDecodedPackets ? ' pcap-inspector__packet-row--decoded' : ''
+                    }`}
+                    key={packet.index}
+                  >
                     <span>{packet.index}</span>
                     <span>{formatPacketTimestamp(packet, result.header.timestampResolution)}</span>
                     <span>{packet.capturedLength} B</span>
                     <span>{packet.originalLength} B</span>
+                    {hasDecodedPackets && <>
+                      <span>{packet.destMac ?? '—'}</span>
+                      <span>{packet.sourceMac ?? '—'}</span>
+                      <span>
+                        {packet.etherType
+                          ? `0x${packet.etherType.toString(16).padStart(4, '0')}`
+                          : '—'}
+                      </span>
+                      <span>{packet.sourceIp ?? '—'}</span>
+                      <span>{packet.destIp ?? '—'}</span>
+                      <span>{packet.protocolName ?? packet.protocol ?? '—'}</span>
+                      <span>{packet.totalLength ?? '—'}</span>
+                      <span>{packet.sourcePort ?? '—'}</span>
+                      <span>{packet.destPort ?? '—'}</span>
+                    </>}
                   </li>
                 ))}
               </ol>
