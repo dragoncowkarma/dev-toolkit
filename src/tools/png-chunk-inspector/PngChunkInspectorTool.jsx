@@ -37,13 +37,13 @@ export default function PngChunkInspectorTool() {
     <div className="png-inspector__actions">
       <label className="png-inspector__upload">
         Choose PNG file
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/png,.png"
-        aria-label="Choose PNG file"
-        onChange={(event) => inspectFile(event.target.files?.[0])}
-      />
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/png,.png"
+          aria-label="Choose PNG file"
+          onChange={(event) => inspectFile(event.target.files?.[0])}
+        />
       </label>
       <button type="button" onClick={clear}>Clear</button>
     </div>
