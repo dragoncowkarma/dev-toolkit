@@ -1,0 +1,119 @@
+.lei-validator {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+}
+
+.lei-validator__intro {
+  margin-bottom: 1.5rem;
+}
+
+.lei-validator__eyebrow,
+.lei-validator__label,
+.lei-validator__samples-label {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.lei-validator__intro h2 {
+  margin: 0.25rem 0 0.5rem;
+}
+
+.lei-validator__intro p:last-child,
+.lei-validator__help {
+  color: var(--color-text-muted);
+}
+
+.lei-validator__label {
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+.lei-validator__input-row,
+.lei-validator__samples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.lei-validator__input {
+  flex: 1 1 18rem;
+  min-width: 0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+  font-size: 1rem;
+  padding: 0.7rem 0.8rem;
+}
+
+.lei-validator__input:focus {
+  border-color: var(--color-primary);
+  outline: none;
+}
+
+.lei-validator__button,
+.lei-validator__sample {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  padding: 0.7rem 0.9rem;
+}
+
+.lei-validator__button:hover:not(:disabled),
+.lei-validator__sample:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.lei-validator__button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.lei-validator__help {
+  font-size: 0.875rem;
+  margin: 0.6rem 0 1rem;
+}
+
+.lei-validator__valid,
+.lei-validator__error {
+  border-radius: var(--radius);
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+}
+
+.lei-validator__valid {
+  background: color-mix(in srgb, var(--color-success) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-success) 40%, transparent);
+  color: var(--color-success);
+}
+
+.lei-validator__error {
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  color: var(--color-error-light);
+}
+
+.lei-validator__samples {
+  align-items: center;
+  margin-top: 1.5rem;
+}
+
+.lei-validator__sample {
+  font-size: 0.875rem;
+  padding: 0.5rem 0.7rem;
+}
+
+@media (min-width: 768px) {
+  .lei-validator {
+    padding: 0 2rem 3rem;
+  }
+}
