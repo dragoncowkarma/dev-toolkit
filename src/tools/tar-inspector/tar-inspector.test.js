@@ -395,4 +395,113 @@ describe('parseTarArchive', () => {
     expect(() => parseTarArchive(truncatedPayloadPadding)).toThrow(TarParseError);
     expect(() => parseTarArchive(truncatedPayloadPadding)).toThrow(/extends beyond file end/i);
   });
+
+  it('applies effective per-entry PAX size to advance offset when raw header size differs', () => {
+    // PAX header specifies size=1024, but raw header size is 0
+    const paxPayload = '14 size=1024\n';
+    const file1Data = new Uint8Array(1024);
+    file1Data.fill(0xaa);
+
+    const mockData = createMockTarArchive([
+      {
+        name: 'PaxHeader/file1.bin',
+        typeflag: TYPE_FLAGS.PAX_EXTENDED,
+        content: paxPayload,
+      },
+      {
+        name: 'file1.bin',
+        content: file1Data,
+        headerSize: 0,
+      },
+      {
+        name: 'file2.txt',
+        content: 'next file contents',
+      },
+    ]);
+
+    const result = parseTarArchive(mockData);
+    expect(result.entries).toHaveLength(3);
+    expect(result.format).toBe('POSIX PAX');
+
+    const file1 = result.entries[1];
+    expect(file1.name).toBe('file1.bin');
+    expect(file1.size).toBe(1024);
+
+    const file2 = result.entries[2];
+    expect(file2.name).toBe('file2.txt');
+    expect(file2.size).toBe(18);
+    expect(result.totalSize).toBe(1024 + 18);
+  });
+
+  it('applies global PAX size override across entries when raw header sizes differ', () => {
+    const globalPaxPayload = '13 size=512\n';
+    const file1Data = new Uint8Array(512);
+    const file2Data = new Uint8Array(512);
+
+    const mockData = createMockTarArchive([
+      {
+        name: 'pax_global_header',
+        typeflag: TYPE_FLAGS.PAX_GLOBAL,
+        content: globalPaxPayload,
+      },
+      {
+        name: 'file1.bin',
+        content: file1Data,
+        headerSize: 0,
+      },
+      {
+        name: 'file2.bin',
+        content: file2Data,
+        headerSize: 2048, // Header size differs from actual 512-byte payload & global PAX size
+      },
+      {
+        name: 'file3.txt',
+        content: 'third file',
+      },
+    ]);
+
+    const result = parseTarArchive(mockData);
+    expect(result.entries).toHaveLength(4);
+
+    const file1 = result.entries[1];
+    expect(file1.name).toBe('file1.bin');
+    expect(file1.size).toBe(512);
+
+    const file2 = result.entries[2];
+    expect(file2.name).toBe('file2.bin');
+    expect(file2.size).toBe(512);
+
+    const file3 = result.entries[3];
+    expect(file3.name).toBe('file3.txt');
+    expect(file3.size).toBe(512);
+  });
+
+  it('validates padded extent and rejects truncated archives using effective PAX size', () => {
+    const paxPayload = '14 size=1024\n';
+    const file1Data = new Uint8Array(1024);
+
+    const validData = createMockTarArchive([
+      {
+        name: 'PaxHeader/large.bin',
+        typeflag: TYPE_FLAGS.PAX_EXTENDED,
+        content: paxPayload,
+      },
+      {
+        name: 'large.bin',
+        content: file1Data,
+        headerSize: 0, // Raw header claims 0 bytes
+      },
+    ]);
+
+    // Truncate during the 1024-byte payload (e.g. at header + 500 bytes of payload)
+    // PAX header = 512 header + 512 data = 1024 bytes
+    // large.bin header = 512 bytes (total 1536 bytes)
+    // Truncate to 1536 + 500 = 2036 bytes (missing remainder of 1024-byte payload)
+    const truncated = validData.subarray(0, 2036);
+
+    expect(() => parseTarArchive(truncated)).toThrow(TarParseError);
+    expect(() => parseTarArchive(truncated)).toThrow(
+      /Archive is truncated: entry "large\.bin" data \(1024 bytes\) extends beyond file end/i,
+    );
+  });
 });
