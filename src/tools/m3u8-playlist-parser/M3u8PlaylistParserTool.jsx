@@ -35,7 +35,11 @@ export default function M3u8PlaylistParserTool() {
   const result = useMemo(() => parseM3u8Playlist(source), [source]);
   const entries = result.type === 'Master' ? result.variants : result.segments;
   const filteredEntries = entries.filter((entry) => {
-    const searchable = [entry.uri, entry.title ?? '', JSON.stringify(entry.attributes ?? {})].join(' ');
+    const searchable = [
+      entry.uri,
+      entry.title ?? '',
+      JSON.stringify(entry.attributes ?? {}),
+    ].join(' ');
     return searchable.toLowerCase().includes(filter.trim().toLowerCase());
   });
 
@@ -149,7 +153,9 @@ export default function M3u8PlaylistParserTool() {
                     <td>{entry.uri || 'Missing URI'}</td>
                     <td>
                       {result.type === 'Master'
-                        ? Object.entries(entry.attributes).map(([key, value]) => `${key}=${value}`).join(', ')
+                        ? Object.entries(entry.attributes)
+                          .map(([key, value]) => `${key}=${value}`)
+                          .join(', ')
                         : `${formatDuration(entry.duration)} ${entry.title}`}
                     </td>
                     <td>
