@@ -358,6 +358,7 @@ export function parseTarArchive(input) {
   const entries = [];
   let pendingLongName = null;
   let pendingLongLink = null;
+  let globalPax = {};
   let pendingPax = null;
   let detectedFormat = null;
   let totalDataSize = 0;
@@ -427,7 +428,7 @@ export function parseTarArchive(input) {
 
     // Check payload boundaries
     const paddedDataSize = Math.ceil(size / TAR_BLOCK_SIZE) * TAR_BLOCK_SIZE;
-    if (offset + size > buffer.length) {
+    if (offset + paddedDataSize > buffer.length) {
       throw new TarParseError(
         `Archive is truncated: entry "${rawName || 'unnamed'}" data (${size} bytes) ` +
         `extends beyond file end.`,
@@ -502,12 +503,20 @@ export function parseTarArchive(input) {
       if (!detectedFormat) detectedFormat = 'GNU tar';
     } else if (typeflag === TYPE_FLAGS.PAX_EXTENDED || typeflag === TYPE_FLAGS.PAX_GLOBAL) {
       const payload = buffer.subarray(offset, offset + size);
-      pendingPax = parsePaxData(payload);
+      const parsedRecords = parsePaxData(payload);
+      if (typeflag === TYPE_FLAGS.PAX_GLOBAL) {
+        globalPax = { ...globalPax, ...parsedRecords };
+      } else {
+        pendingPax = { ...(pendingPax || {}), ...parsedRecords };
+      }
+      const defaultPaxName = typeflag === TYPE_FLAGS.PAX_GLOBAL
+        ? 'pax_global_header'
+        : 'pax_extended_header';
       entries.push({
         id: entries.length + 1,
-        name: rawName || 'pax_global_header',
+        name: rawName || defaultPaxName,
         rawName,
-        paxRecords: pendingPax,
+        paxRecords: parsedRecords,
         prefix: '',
         type: getEntryType(typeflag),
         typeflag,
@@ -534,14 +543,16 @@ export function parseTarArchive(input) {
       if (!detectedFormat) detectedFormat = 'POSIX PAX';
     } else {
       // Normal entry (regular file, directory, symlink, device, etc.)
+      const effectivePax = { ...globalPax, ...(pendingPax || {}) };
+
       let resolvedName = rawName;
       let hasLongName = false;
       if (pendingLongName) {
         resolvedName = pendingLongName;
         hasLongName = true;
         pendingLongName = null;
-      } else if (pendingPax?.path) {
-        resolvedName = pendingPax.path;
+      } else if (effectivePax.path) {
+        resolvedName = effectivePax.path;
       } else if (prefix) {
         resolvedName = `${prefix}/${rawName}`;
       }
@@ -550,20 +561,42 @@ export function parseTarArchive(input) {
       if (pendingLongLink) {
         resolvedLinkname = pendingLongLink;
         pendingLongLink = null;
-      } else if (pendingPax?.linkpath) {
-        resolvedLinkname = pendingPax.linkpath;
+      } else if (effectivePax.linkpath) {
+        resolvedLinkname = effectivePax.linkpath;
       }
 
       let resolvedSize = size;
-      if (pendingPax?.size) {
-        const parsedSize = parseInt(pendingPax.size, 10);
+      if (effectivePax.size !== undefined) {
+        const parsedSize = parseInt(effectivePax.size, 10);
         if (!Number.isNaN(parsedSize)) resolvedSize = parsedSize;
       }
 
       let resolvedMtime = mtime;
-      if (pendingPax?.mtime) {
-        const parsedMtime = parseFloat(pendingPax.mtime);
+      if (effectivePax.mtime !== undefined) {
+        const parsedMtime = parseFloat(effectivePax.mtime);
         if (!Number.isNaN(parsedMtime)) resolvedMtime = Math.floor(parsedMtime);
+      }
+
+      let resolvedUid = uid;
+      if (effectivePax.uid !== undefined) {
+        const parsedUid = parseInt(effectivePax.uid, 10);
+        if (!Number.isNaN(parsedUid)) resolvedUid = parsedUid;
+      }
+
+      let resolvedGid = gid;
+      if (effectivePax.gid !== undefined) {
+        const parsedGid = parseInt(effectivePax.gid, 10);
+        if (!Number.isNaN(parsedGid)) resolvedGid = parsedGid;
+      }
+
+      let resolvedUname = uname;
+      if (effectivePax.uname !== undefined) {
+        resolvedUname = effectivePax.uname;
+      }
+
+      let resolvedGname = gname;
+      if (effectivePax.gname !== undefined) {
+        resolvedGname = effectivePax.gname;
       }
 
       pendingPax = null;
@@ -582,10 +615,10 @@ export function parseTarArchive(input) {
         mode,
         modeOctal: (mode & 0o7777).toString(8).padStart(4, '0'),
         permissions: formatPermissions(mode, typeflag),
-        uid,
-        gid,
-        uname,
-        gname,
+        uid: resolvedUid,
+        gid: resolvedGid,
+        uname: resolvedUname,
+        gname: resolvedGname,
         mtime: resolvedMtime,
         mtimeFormatted: formatMtime(resolvedMtime),
         checksum: storedChecksum,
