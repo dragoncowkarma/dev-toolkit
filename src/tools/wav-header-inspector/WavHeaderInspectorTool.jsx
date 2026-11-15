@@ -101,6 +101,12 @@ export default function WavHeaderInspectorTool() {
                   <div><dt>Byte rate</dt><dd>{result.format.byteRate} bytes/sec</dd></div>
                   <div><dt>Block align</dt><dd>{result.format.blockAlign} bytes</dd></div>
                   <div><dt>Bits per sample</dt><dd>{result.format.bitsPerSample}</dd></div>
+                  {result.format.extensionSize !== null && (
+                    <div>
+                      <dt>Format extension (cbSize)</dt>
+                      <dd>{result.format.extensionSize} bytes</dd>
+                    </div>
+                  )}
                 </>
               ) : (
                 <div><dt>Audio format</dt><dd>No fmt chunk found</dd></div>
@@ -108,6 +114,7 @@ export default function WavHeaderInspectorTool() {
               {result.data && (
                 <>
                   <div><dt>Data payload</dt><dd>{result.data.size} bytes</dd></div>
+                  <div><dt>Data byte offset</dt><dd>{result.data.offset}</dd></div>
                   <div>
                     <dt>Duration</dt>
                     <dd>
@@ -143,6 +150,14 @@ export default function WavHeaderInspectorTool() {
               </table>
             </div>
           </section>
+          {result.warnings.length > 0 && (
+            <div className="wav-inspector__warning" role="alert">
+              <strong>Inspection warnings</strong>
+              <ul>
+                {result.warnings.map((warning) => <li key={warning}>{warning}</li>)}
+              </ul>
+            </div>
+          )}
         </div>
       )}
     </section>

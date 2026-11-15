@@ -45,8 +45,9 @@ export function formatDuration(seconds) {
  * Parses a RIFF/WAVE file header and its top-level chunks.
  *
  * @param {ArrayBuffer} buffer - The file bytes to inspect.
- * @returns {{riffSize: number, chunks: Array, format: object|null, data: object|null}}
- * @throws {Error} When the file is not a complete RIFF/WAVE container.
+ * @returns {{riffSize: number, chunks: Array, format: object|null, data: object|null,
+ * warnings: string[]}}
+ * @throws {Error} When the file is not a RIFF/WAVE container.
  */
 export function parseWavHeader(buffer) {
   if (!(buffer instanceof ArrayBuffer)) {
@@ -66,64 +67,83 @@ export function parseWavHeader(buffer) {
 
   const riffSize = view.getUint32(4, true);
   const chunks = [];
+  const warnings = [];
   let format = null;
   let data = null;
   let offset = RIFF_HEADER_SIZE;
 
+  if (riffSize + 8 > view.byteLength) {
+    warnings.push(
+      `RIFF declares ${riffSize + 8} bytes, but the uploaded file contains ` +
+        `${view.byteLength} bytes.`
+    );
+  }
+
   while (offset < view.byteLength) {
     if (view.byteLength - offset < CHUNK_HEADER_SIZE) {
-      throw new Error(`Truncated chunk header at byte offset ${offset}.`);
+      warnings.push(`Truncated chunk header at byte offset ${offset}.`);
+      break;
     }
 
     const id = readChunkId(view, offset);
     const size = view.getUint32(offset + 4, true);
     const payloadOffset = offset + CHUNK_HEADER_SIZE;
     const payloadEnd = payloadOffset + size;
-    if (payloadEnd > view.byteLength) {
-      throw new Error(`Truncated ${id} chunk at byte offset ${offset}: expected ${size} bytes.`);
-    }
-
-    const chunk = { id, offset, size };
+    const availableSize = Math.max(0, Math.min(size, view.byteLength - payloadOffset));
+    const isTruncated = availableSize < size;
+    const chunk = { id, offset, size, availableSize, isTruncated };
     chunks.push(chunk);
+    if (isTruncated) {
+      warnings.push(
+        `Truncated ${id} chunk at byte offset ${offset}: expected ${size} bytes, ` +
+          `found ${availableSize}.`
+      );
+    }
     if (id === 'fmt ' && format === null) {
-      if (size < 16) {
-        throw new Error(`Invalid fmt chunk at byte offset ${offset}: expected at least 16 bytes.`);
+      if (availableSize < 16) {
+        warnings.push(`Invalid fmt chunk at byte offset ${offset}: expected at least 16 bytes.`);
+      } else {
+        const audioFormat = view.getUint16(payloadOffset, true);
+        const channels = view.getUint16(payloadOffset + 2, true);
+        const sampleRate = view.getUint32(payloadOffset + 4, true);
+        const byteRate = view.getUint32(payloadOffset + 8, true);
+        const blockAlign = view.getUint16(payloadOffset + 12, true);
+        const bitsPerSample = view.getUint16(payloadOffset + 14, true);
+        const extensionSize = availableSize >= 18 ? view.getUint16(payloadOffset + 16, true) : null;
+        format = {
+          audioFormat,
+          audioFormatLabel: formatAudioFormat(audioFormat),
+          channels,
+          sampleRate,
+          byteRate,
+          blockAlign,
+          bitsPerSample,
+          extensionSize,
+        };
       }
-      const audioFormat = view.getUint16(payloadOffset, true);
-      const channels = view.getUint16(payloadOffset + 2, true);
-      const sampleRate = view.getUint32(payloadOffset + 4, true);
-      const byteRate = view.getUint32(payloadOffset + 8, true);
-      const blockAlign = view.getUint16(payloadOffset + 12, true);
-      const bitsPerSample = view.getUint16(payloadOffset + 14, true);
-      format = {
-        audioFormat,
-        audioFormatLabel: formatAudioFormat(audioFormat),
-        channels,
-        sampleRate,
-        byteRate,
-        blockAlign,
-        bitsPerSample,
-      };
     }
     if (id === 'data' && data === null) {
-      data = { size };
+      data = { offset: payloadOffset, size, availableSize, isTruncated };
     }
+
+    if (isTruncated) break;
 
     offset = payloadEnd;
     if (size % 2 === 1) {
       if (offset >= view.byteLength) {
-        throw new Error(`Truncated padding byte after ${id} chunk at byte offset ${offset}.`);
+        warnings.push(`Truncated padding byte after ${id} chunk at byte offset ${offset}.`);
+        break;
       }
       offset += 1;
     }
   }
 
-  if (format && data && format.audioFormat === 1) {
-    const bytesPerSecond = format.sampleRate * format.channels * (format.bitsPerSample / 8);
+  if (format && data && format.byteRate > 0) {
+    const bytesPerSecond = format.byteRate;
     data.duration = bytesPerSecond > 0 ? data.size / bytesPerSecond : null;
   } else if (data) {
     data.duration = null;
   }
 
-  return { riffSize, chunks, format, data };
+  return { riffSize, chunks, format, data, warnings };
 }

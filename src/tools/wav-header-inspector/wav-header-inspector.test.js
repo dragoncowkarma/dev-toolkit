@@ -50,14 +50,14 @@ describe('parseWavHeader', () => {
       sampleRate: 48000,
       bitsPerSample: 16,
     });
-    expect(parsed.data).toEqual({ size: 192000, duration: 1 });
+    expect(parsed.data).toMatchObject({ size: 192000, duration: 1 });
     expect(parsed.chunks.map(({ id }) => id)).toEqual(['fmt ', 'data']);
   });
 
-  it('parses IEEE-float WAV metadata without reporting PCM duration', () => {
+  it('parses IEEE-float WAV metadata and derives duration from the byte rate', () => {
     const parsed = parseWavHeader(wavFile(3));
     expect(parsed.format.audioFormatLabel).toBe('IEEE float (3)');
-    expect(parsed.data.duration).toBeNull();
+    expect(parsed.data.duration).toBe(1);
   });
 
   it('lists extra and unknown top-level chunks', () => {
@@ -73,14 +73,34 @@ describe('parseWavHeader', () => {
     expect(parsed.format.audioFormatLabel).toBe('Unknown (0x1234)');
   });
 
-  it('reports a readable error for a chunk truncated mid-payload', () => {
+  it('preserves a truncated data chunk and returns a user-visible warning', () => {
     const bytes = new Uint8Array(wavFile());
-    expect(() => parseWavHeader(bytes.slice(0, 48).buffer)).toThrow(/Truncated data chunk/);
+    const parsed = parseWavHeader(bytes.slice(0, 48).buffer);
+    expect(parsed.data).toMatchObject({ size: 192000, availableSize: 4, isTruncated: true });
+    expect(parsed.warnings).toContainEqual(expect.stringMatching(/Truncated data chunk/));
   });
 
   it('rejects a non-WAV file with wrong magic bytes', () => {
     const bytes = new Uint8Array(wavFile());
     bytes.set(fourCC('NOPE'), 0);
     expect(() => parseWavHeader(bytes.buffer)).toThrow(/missing RIFF magic/);
+  });
+
+  it('rejects a RIFF container with a non-WAVE format identifier', () => {
+    const bytes = new Uint8Array(wavFile());
+    bytes.set(fourCC('AVI '), 8);
+    expect(() => parseWavHeader(bytes.buffer)).toThrow(/must be WAVE/);
+  });
+
+  it('reads the optional fmt extension size', () => {
+    const fmt = [
+      ...uint16(0xfffe), ...uint16(2), ...uint32(48000), ...uint32(192000),
+      ...uint16(4), ...uint16(16), ...uint16(22), ...new Array(22).fill(0),
+    ];
+    const body = [...chunk('fmt ', fmt), ...chunk('data', [0, 0, 0, 0])];
+    const bytes = new Uint8Array([
+      ...fourCC('RIFF'), ...uint32(body.length + 4), ...fourCC('WAVE'), ...body,
+    ]);
+    expect(parseWavHeader(bytes.buffer).format.extensionSize).toBe(22);
   });
 });
