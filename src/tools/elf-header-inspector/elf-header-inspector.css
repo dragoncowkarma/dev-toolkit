@@ -1,0 +1,130 @@
+.elf-inspector {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+}
+
+.elf-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.elf-upload-button,
+.elf-button {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  padding: 0.55rem 1rem;
+}
+
+.elf-upload-button {
+  position: relative;
+  overflow: hidden;
+}
+
+.elf-upload-button:focus-within,
+.elf-button:focus-visible,
+.elf-paste-input:focus {
+  outline: 2px solid var(--color-primary-light);
+  outline-offset: 2px;
+}
+
+.elf-file-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.elf-paste-label {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.elf-paste-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 100px;
+  margin-bottom: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+  padding: 0.75rem;
+}
+
+.elf-error {
+  margin-top: 1rem;
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+  padding: 0.75rem 1rem;
+}
+
+.elf-results {
+  display: grid;
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+.elf-table-section h3 {
+  margin: 0 0 0.75rem;
+}
+
+.elf-field-table,
+.elf-data-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--color-surface);
+}
+
+.elf-field-table th,
+.elf-field-table td,
+.elf-data-table th,
+.elf-data-table td {
+  border: 1px solid var(--color-border);
+  padding: 0.55rem 0.7rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.elf-field-table th,
+.elf-data-table th {
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
+.elf-field-table th {
+  width: 35%;
+}
+
+.elf-scroll-table {
+  overflow-x: auto;
+}
+
+.elf-data-table {
+  min-width: 850px;
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+  font-size: 0.8rem;
+}
+
+.elf-empty {
+  color: var(--color-text-muted);
+}
+
+@media (min-width: 768px) {
+  .elf-inspector {
+    padding: 0 2rem 3rem;
+  }
+}
