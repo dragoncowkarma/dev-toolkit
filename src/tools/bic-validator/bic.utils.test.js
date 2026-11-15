@@ -21,11 +21,17 @@ describe('parseBic', () => {
   });
 
   it('rejects invalid lengths', () => {
-    expect(parseBic('DEUTDE')).toMatchObject({ valid: false, error: expect.stringMatching(/8 or 11/) });
+    expect(parseBic('DEUTDE')).toMatchObject({
+      valid: false,
+      error: expect.stringMatching(/8 or 11/),
+    });
   });
 
   it('rejects invalid ISO country codes', () => {
-    expect(parseBic('DEUTZZFF')).toMatchObject({ valid: false, error: expect.stringMatching(/ISO/) });
+    expect(parseBic('DEUTZZFF')).toMatchObject({
+      valid: false,
+      error: expect.stringMatching(/ISO/),
+    });
   });
 
   it('rejects invalid character classes', () => {

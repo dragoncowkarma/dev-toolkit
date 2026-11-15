@@ -81,7 +81,11 @@ export default function BicValidatorTool() {
       </div>
 
       {isInvalid && (
-        <p id="bic-error" className="bic-validator__message bic-validator__message--error" role="alert">
+        <p
+          id="bic-error"
+          className="bic-validator__message bic-validator__message--error"
+          role="alert"
+        >
           {result.error}
         </p>
       )}

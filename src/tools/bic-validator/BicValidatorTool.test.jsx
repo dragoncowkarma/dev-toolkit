@@ -42,6 +42,6 @@ describe('BicValidatorTool', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Copy code' }));
 
     await vi.waitFor(() => expect(writeText).toHaveBeenCalledWith('DEUTDEFF500'));
-    expect(screen.getByRole('status', { name: /copied/i })).toBeInTheDocument();
+    expect(await screen.findByText('BIC/SWIFT code copied to clipboard')).toBeInTheDocument();
   });
 });
