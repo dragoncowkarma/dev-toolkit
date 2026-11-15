@@ -1,5 +1,14 @@
 const textDecoder = new TextDecoder();
 
+function isUint8Array(value) {
+  return (
+    value instanceof Uint8Array ||
+    (value != null &&
+      typeof value === 'object' &&
+      Object.prototype.toString.call(value) === '[object Uint8Array]')
+  );
+}
+
 /**
  * Decodes an ASCII-compatible bencoded byte string for display.
  * @param {Uint8Array} bytes
@@ -23,7 +32,7 @@ function parseValue(bytes, offset) {
     const end = bytes.indexOf(101, offset);
     if (end === -1) throw new Error('Unterminated integer value.');
     const source = decodeText(bytes.slice(offset + 1, end));
-    if (!/^-?(0|[1-9]\d*)$/.test(source)) throw new Error('Invalid bencoded integer.');
+    if (!/^(0|-?[1-9]\d*)$/.test(source)) throw new Error('Invalid bencoded integer.');
     const value = Number(source);
     if (!Number.isSafeInteger(value)) throw new Error('Integer is outside the safe range.');
     return { value, end: end + 1 };
@@ -45,7 +54,7 @@ function parseValue(bytes, offset) {
     let cursor = offset + 1;
     while (bytes[cursor] !== 101) {
       const key = parseValue(bytes, cursor);
-      if (!(key.value instanceof Uint8Array)) {
+      if (!isUint8Array(key.value)) {
         throw new Error('Dictionary key must be a byte string.');
       }
       const value = parseValue(bytes, key.end);
@@ -92,7 +101,10 @@ export function sha1Hex(input) {
   const rotateLeft = (value, count) => (value << count) | (value >>> (32 - count));
 
   for (let block = 0; block < words.length; block += 16) {
-    const schedule = words.slice(block, block + 16);
+    const schedule = [];
+    for (let index = 0; index < 16; index += 1) {
+      schedule[index] = words[block + index] || 0;
+    }
     for (let index = 16; index < 80; index += 1) {
       schedule[index] = rotateLeft(
         schedule[index - 3] ^ schedule[index - 8] ^ schedule[index - 14] ^ schedule[index - 16], 1
@@ -122,7 +134,7 @@ function requiredInteger(info, key) {
 
 function optionalText(dictionary, key) {
   const value = dictionary.get(key);
-  return value instanceof Uint8Array ? decodeText(value) : null;
+  return isUint8Array(value) ? decodeText(value) : null;
 }
 
 /**
@@ -135,7 +147,7 @@ function findRawInfo(bytes) {
   let cursor = 1;
   while (bytes[cursor] !== 101) {
     const key = parseValue(bytes, cursor);
-    if (!(key.value instanceof Uint8Array)) {
+    if (!isUint8Array(key.value)) {
       throw new Error('Dictionary key must be a byte string.');
     }
     const valueStart = key.end;
@@ -156,7 +168,7 @@ function findRawInfo(bytes) {
  * @returns {object} Parsed torrent metadata suitable for display.
  */
 export function inspectTorrent(bytes) {
-  if (!(bytes instanceof Uint8Array)) throw new TypeError('Torrent data must be bytes.');
+  if (!isUint8Array(bytes)) throw new TypeError('Torrent data must be bytes.');
   const parsed = parseValue(bytes, 0);
   if (parsed.end !== bytes.length) throw new Error('Unexpected data after the bencoded value.');
   if (!(parsed.value instanceof Map)) {
@@ -169,7 +181,7 @@ export function inspectTorrent(bytes) {
   const info = rawInfo.value;
   const pieceLength = requiredInteger(info, 'piece length');
   const pieces = info.get('pieces');
-  if (!(pieces instanceof Uint8Array) || pieces.length % 20 !== 0) {
+  if (!isUint8Array(pieces) || pieces.length % 20 !== 0) {
     throw new Error('Missing or invalid info.pieces.');
   }
 
@@ -183,7 +195,7 @@ export function inspectTorrent(bytes) {
     if (!(file instanceof Map)) throw new Error('Invalid file entry.');
     const size = requiredInteger(file, 'length');
     const pathParts = file.get('path');
-    if (!Array.isArray(pathParts) || pathParts.some((part) => !(part instanceof Uint8Array))) {
+    if (!Array.isArray(pathParts) || pathParts.some((part) => !isUint8Array(part))) {
       throw new Error('Invalid multi-file path.');
     }
     return { path: pathParts.map(decodeText).join('/'), size };
@@ -191,7 +203,7 @@ export function inspectTorrent(bytes) {
   const announceList = root.get('announce-list');
   const tierUrls = Array.isArray(announceList)
     ? announceList.flatMap((tier) => Array.isArray(tier) ? tier : [tier])
-      .filter((url) => url instanceof Uint8Array)
+      .filter(isUint8Array)
       .map(decodeText)
     : [];
   const announceUrls = [optionalText(root, 'announce'), ...tierUrls].filter(Boolean);

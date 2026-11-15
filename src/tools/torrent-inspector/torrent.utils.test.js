@@ -10,7 +10,7 @@ describe('inspectTorrent', () => {
     const result = inspectTorrent(fixture);
     expect(result).toMatchObject({
       isMultiFile: false, name: 'test.txt', pieceLength: 4, pieceCount: 1, totalSize: 12,
-      infoHash: '8d4ad01e6f5fef66ddab3e319a605f0ddb35b204',
+      infoHash: 'c772f020dcd619b869a6e61c30f3a3b0381ebdfd',
     });
     expect(result.announceUrls).toEqual(['http://tracker.test']);
   });
@@ -30,5 +30,12 @@ describe('inspectTorrent', () => {
 
   it('reports truncated or corrupt bencode input', () => {
     expect(() => inspectTorrent(bytes('d4:infod4:name4:test'))).toThrow(/Unexpected end|Truncated/);
+  });
+
+  it('rejects negative zero bencoded integers', () => {
+    const fixture = bytes(
+      'd4:infod6:lengthi-0e4:name4:test12:piece lengthi4e6:pieces20:12345678901234567890ee',
+    );
+    expect(() => inspectTorrent(fixture)).toThrow('Invalid bencoded integer.');
   });
 });
