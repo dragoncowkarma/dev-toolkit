@@ -160,6 +160,30 @@ describe('parsePaxData', () => {
     expect(parsed.path).toBe('test/long/filename.txt');
     expect(parsed.mtime).toBe('1700000000');
   });
+
+  it('correctly parses multi-record non-ASCII PAX headers without desynchronization', () => {
+    // POSIX PAX record lengths are defined in UTF-8 byte counts.
+    // "café.txt" contains 'é' which is 2 bytes in UTF-8 (0xC3 0xA9) and 1 UTF-16 code unit in JS.
+    // "18 path=café.txt\n" is 18 bytes in UTF-8 (17 characters in JS string).
+    // If parsed using JS string offsets, the second record is desynchronized and lost.
+    const raw = '18 path=café.txt\n20 mtime=1700000000\n';
+    const bytes = new TextEncoder().encode(raw);
+    const parsed = parsePaxData(bytes);
+    expect(parsed.path).toBe('café.txt');
+    expect(parsed.mtime).toBe('1700000000');
+  });
+
+  it('handles multi-byte UTF-8 records (Korean, emoji) across multiple records', () => {
+    // "path=한글문서.txt" -> 5 + 4*3 + 4 = 21 bytes; "25 " is 3 bytes; "\n" is 1 byte -> 25 bytes.
+    // "comment=🎉🚀" -> 8 + 4 + 4 = 16 bytes; "20 " is 3 bytes; "\n" is 1 byte -> 20 bytes.
+    // "gid=1000" -> 8 bytes; "12 " is 3 bytes; "\n" is 1 byte -> 12 bytes.
+    const raw = '25 path=한글문서.txt\n20 comment=🎉🚀\n12 gid=1000\n';
+    const bytes = new TextEncoder().encode(raw);
+    const parsed = parsePaxData(bytes);
+    expect(parsed.path).toBe('한글문서.txt');
+    expect(parsed.comment).toBe('🎉🚀');
+    expect(parsed.gid).toBe('1000');
+  });
 });
 
 describe('parseTarArchive', () => {
@@ -381,6 +405,37 @@ describe('parseTarArchive', () => {
       expect(file2.mtime).toBe(1705000000);
     },
   );
+
+  it('correctly resolves entries with multi-record non-ASCII PAX headers', () => {
+    // Regression test: non-ASCII path in PAX header should not desynchronize
+    // subsequent records (e.g. mtime)
+    const paxPayload = '18 path=café.txt\n20 mtime=1700000000\n';
+    const mockData = createMockTarArchive([
+      {
+        name: 'PaxHeader/cafe.txt',
+        typeflag: TYPE_FLAGS.PAX_EXTENDED,
+        content: paxPayload,
+      },
+      {
+        name: 'fallback_name.txt',
+        content: 'content of cafe',
+        mtime: 123456,
+      },
+    ]);
+
+    const result = parseTarArchive(mockData);
+    expect(result.entries).toHaveLength(2);
+
+    const paxHeader = result.entries[0];
+    expect(paxHeader.paxRecords).toEqual({
+      path: 'café.txt',
+      mtime: '1700000000',
+    });
+
+    const targetEntry = result.entries[1];
+    expect(targetEntry.name).toBe('café.txt');
+    expect(targetEntry.mtime).toBe(1700000000);
+  });
 
   it('rejects an entry when required 512-byte block padding is missing', () => {
     // Valid archive with 3-byte payload contains:

@@ -300,31 +300,67 @@ export function formatMtime(epochSeconds) {
 
 /**
  * Parses PAX extended header records: "<length> <keyword>=<value>\n".
+ * Record lengths in PAX headers are defined in UTF-8 bytes.
+ *
  * @param {Uint8Array} dataBytes
  * @returns {Record<string, string>}
  */
 export function parsePaxData(dataBytes) {
-  const text = new TextDecoder('utf-8').decode(dataBytes);
+  if (!dataBytes || dataBytes.length === 0) {
+    return {};
+  }
+  const bytes = dataBytes instanceof Uint8Array ? dataBytes : new Uint8Array(dataBytes);
+  const decoder = new TextDecoder('utf-8');
   const records = {};
   let pos = 0;
-  while (pos < text.length) {
-    const spaceIdx = text.indexOf(' ', pos);
-    if (spaceIdx === -1) break;
-    const lenStr = text.slice(pos, spaceIdx);
-    const len = parseInt(lenStr, 10);
-    if (Number.isNaN(len) || len <= 0) break;
-    let line = text.slice(spaceIdx + 1, pos + len);
-    if (line.endsWith('\n')) {
-      line = line.slice(0, -1);
+
+  while (pos < bytes.length) {
+    // Stop at trailing null-padding blocks
+    if (bytes[pos] === 0) {
+      break;
     }
+
+    // Locate the space character delimiter (0x20 in ASCII)
+    let spaceIdx = -1;
+    for (let i = pos; i < bytes.length; i++) {
+      if (bytes[i] === 0x20) {
+        spaceIdx = i;
+        break;
+      }
+      if (bytes[i] === 0 || bytes[i] === 0x0a) {
+        break;
+      }
+    }
+    if (spaceIdx === -1) {
+      break;
+    }
+
+    let lenStr = '';
+    for (let i = pos; i < spaceIdx; i++) {
+      lenStr += String.fromCharCode(bytes[i]);
+    }
+    const len = /^\d+$/.test(lenStr) ? parseInt(lenStr, 10) : NaN;
+    if (Number.isNaN(len) || len <= spaceIdx - pos) {
+      break;
+    }
+
+    let end = Math.min(pos + len, bytes.length);
+    // Strip trailing newline character (0x0A) if present
+    if (end > spaceIdx + 1 && bytes[end - 1] === 0x0a) {
+      end -= 1;
+    }
+
+    const line = decoder.decode(bytes.subarray(spaceIdx + 1, end));
     const eqIdx = line.indexOf('=');
     if (eqIdx !== -1) {
       const key = line.slice(0, eqIdx);
       const val = line.slice(eqIdx + 1);
       records[key] = val;
     }
+
     pos += len;
   }
+
   return records;
 }
 
