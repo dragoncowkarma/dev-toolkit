@@ -60,7 +60,7 @@ export function parseM3u8Playlist(source) {
   let currentKey = null;
   let hasStreamInf = false;
 
-  if (lines[0]?.trim() !== '#EXTM3U') {
+  if (lines[0] !== '#EXTM3U') {
     errors.push(createIssue('error', '#EXTM3U must be the first line of the playlist.', 1));
   }
 
@@ -91,6 +91,7 @@ export function parseM3u8Playlist(source) {
       }
       const parsed = parseExtinf(line.slice('#EXTINF:'.length));
       pendingSegment = { ...parsed, line: lineNumber, uri: '', key: currentKey, issues: [] };
+      segments.push(pendingSegment);
       if (!parsed.valid) {
         const issue = createIssue(
           'error', '#EXTINF duration must be a non-negative number.', lineNumber
@@ -105,6 +106,7 @@ export function parseM3u8Playlist(source) {
       hasStreamInf = true;
       const attributes = parseAttributeList(line.slice('#EXT-X-STREAM-INF:'.length));
       pendingVariant = { attributes, line: lineNumber, uri: '', issues: [] };
+      variants.push(pendingVariant);
       if (!attributes.BANDWIDTH) {
         const issue = createIssue(
           'error', 'BANDWIDTH is required on #EXT-X-STREAM-INF.', lineNumber
@@ -140,13 +142,11 @@ export function parseM3u8Playlist(source) {
 
     if (pendingVariant) {
       pendingVariant.uri = line;
-      variants.push(pendingVariant);
       pendingVariant = null;
       return;
     }
     if (pendingSegment) {
       pendingSegment.uri = line;
-      segments.push(pendingSegment);
       pendingSegment = null;
       return;
     }
@@ -209,6 +209,7 @@ export function parseM3u8Playlist(source) {
  */
 export function getTotalDuration(segments) {
   return segments.reduce((total, segment) => {
-    return total + (Number.isFinite(segment.duration) ? segment.duration : 0);
+    const validDuration = Number.isFinite(segment.duration) && segment.duration >= 0;
+    return total + (validDuration ? segment.duration : 0);
   }, 0);
 }

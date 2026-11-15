@@ -55,6 +55,8 @@ low.m3u8`);
 
     expect(messages).toContain('BANDWIDTH is required on #EXT-X-STREAM-INF.');
     expect(messages).toContain('#EXT-X-STREAM-INF must be immediately followed by a variant URI.');
+    expect(result.variants[0].uri).toBe('');
+    expect(result.variants[0].issues).toHaveLength(2);
   });
 
   it('reports invalid media playlist samples', () => {
@@ -70,6 +72,17 @@ orphan.ts`);
     expect(messages).toContain('#EXTINF duration must be a non-negative number.');
     expect(messages).toContain('Every segment URI must be preceded by #EXTINF.');
     expect(result.warnings[0].message).toContain('exceeds TARGETDURATION 5');
+    expect(getTotalDuration(result.segments)).toBe(6);
+  });
+
+  it('requires EXTM3U without leading whitespace and retains missing segment entries', () => {
+    const result = parseM3u8Playlist(' #EXTM3U\n#EXTINF:5,No URI');
+
+    expect(result.errors.map((issue) => issue.message)).toContain(
+      '#EXTM3U must be the first line of the playlist.'
+    );
+    expect(result.segments[0]).toMatchObject({ uri: '', duration: 5 });
+    expect(result.segments[0].issues[0].message).toContain('must be followed by a segment URI');
   });
 
   it('parses standalone EXTINF and attribute-list syntax', () => {

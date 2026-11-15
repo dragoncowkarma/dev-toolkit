@@ -21,4 +21,14 @@ describe('M3u8PlaylistParserTool', () => {
     fireEvent.change(screen.getByLabelText('Filter segments'), { target: { value: 'absent' } });
     expect(screen.getByRole('table')).toBeInTheDocument();
   });
+
+  it('shows a missing URI entry with an issue badge', () => {
+    render(<M3u8PlaylistParserTool />);
+    fireEvent.change(screen.getByLabelText('Playlist source'), {
+      target: { value: '#EXTM3U\n#EXTINF:5,Missing URI' },
+    });
+
+    expect(screen.getByText('Missing URI')).toBeInTheDocument();
+    expect(screen.getByText('error')).toBeInTheDocument();
+  });
 });
