@@ -48,11 +48,12 @@ function programFlags(value) {
 }
 
 function sectionFlags(value) {
+  const flags = BigInt(value);
   const labels = [];
-  if (value & 1) labels.push('WRITE');
-  if (value & 2) labels.push('ALLOC');
-  if (value & 4) labels.push('EXEC');
-  return `${labels.join(', ') || '-'} (${formatHex(value)})`;
+  if (flags & 1n) labels.push('WRITE');
+  if (flags & 2n) labels.push('ALLOC');
+  if (flags & 4n) labels.push('EXEC');
+  return `${labels.join(', ') || '-'} (${formatHex(flags)})`;
 }
 
 function parseError(path, message) {
@@ -170,12 +171,21 @@ function parseSectionHeaders(bytes, header, read) {
         `offset ${nameOffset} is outside .shstrtab`,
       );
     }
-    return { name: nameOffset === 0 ? '' : readString(
-      bytes, namesOffset + nameOffset, namesSize - nameOffset, `section headers[${index}].name`,
-    ), type: namedValue(SECTION_TYPE_NAMES, section.type), flags: sectionFlags(section.flags),
-      addr: section.addr, offset: section.offset,
-      size: section.size, link: section.link, info: section.info, addralign: section.addralign,
-      entsize: section.entsize };
+    return {
+      name: nameOffset === 0 ? '' : readString(
+        bytes, namesOffset + nameOffset, namesSize - nameOffset,
+        `section headers[${index}].name`,
+      ),
+      type: namedValue(SECTION_TYPE_NAMES, section.type),
+      flags: sectionFlags(section.flags),
+      addr: section.addr,
+      offset: section.offset,
+      size: section.size,
+      link: section.link,
+      info: section.info,
+      addralign: section.addralign,
+      entsize: section.entsize,
+    };
   });
 }
 

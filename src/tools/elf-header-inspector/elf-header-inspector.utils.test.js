@@ -28,7 +28,7 @@ function makeElf({ is64, littleEndian }) {
   set16(30 + width * 3, programSize);
   set16(32 + width * 3, 1);
   set16(34 + width * 3, sectionSize);
-  set16(36 + width * 3, 2);
+  set16(36 + width * 3, 3);
   set16(38 + width * 3, 1);
 
   set32(programOffset, 1);
@@ -73,7 +73,8 @@ describe('parseElf', () => {
     expect(result.identification.data).toBe(data);
     expect(result.header.type).toMatch(/^ET_EXEC/);
     expect(result.programHeaders[0].type).toMatch(/^PT_LOAD/);
-    expect(result.sectionHeaders[1].name).toBe('.text');
+    expect(result.sectionHeaders[1].name).toBe('.shstrtab');
+    expect(result.sectionHeaders[2].name).toBe('.text');
   });
 
   it('reports a path-qualified error for truncated input', () => {
