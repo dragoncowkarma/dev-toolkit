@@ -559,4 +559,24 @@ describe('parseTarArchive', () => {
       /Archive is truncated: entry "large\.bin" data \(1024 bytes\) extends beyond file end/i,
     );
   });
+
+  it('rejects an archive that ends immediately after member data without terminator blocks', () => {
+    // 512 header + 512 padded data = 1024 bytes (missing required 2 zero blocks)
+    const truncated = createMockTarArchive([{ name: 'a.txt', content: 'a' }]).subarray(0, 1024);
+
+    expect(() => parseTarArchive(truncated)).toThrow(TarParseError);
+    expect(() => parseTarArchive(truncated)).toThrow(
+      /Archive is truncated: missing two consecutive zero end-of-archive blocks/i,
+    );
+  });
+
+  it('rejects an archive that ends after only one zero terminator block', () => {
+    // 512 header + 512 padded data + 512 one zero block = 1536 bytes (missing 2nd zero block)
+    const truncated = createMockTarArchive([{ name: 'a.txt', content: 'a' }]).subarray(0, 1536);
+
+    expect(() => parseTarArchive(truncated)).toThrow(TarParseError);
+    expect(() => parseTarArchive(truncated)).toThrow(
+      /Archive is truncated: missing two consecutive zero end-of-archive blocks/i,
+    );
+  });
 });

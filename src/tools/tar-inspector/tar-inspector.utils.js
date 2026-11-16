@@ -391,6 +391,7 @@ export function parseTarArchive(input) {
 
   let offset = 0;
   let consecutiveZeroBlocks = 0;
+  let reachedEndOfArchive = false;
   const entries = [];
   let pendingLongName = null;
   let pendingLongLink = null;
@@ -417,6 +418,7 @@ export function parseTarArchive(input) {
       consecutiveZeroBlocks += 1;
       offset += TAR_BLOCK_SIZE;
       if (consecutiveZeroBlocks >= 2) {
+        reachedEndOfArchive = true;
         break;
       }
       continue;
@@ -711,6 +713,13 @@ export function parseTarArchive(input) {
     }
 
     offset += paddedDataSize;
+  }
+
+  if (!reachedEndOfArchive) {
+    throw new TarParseError(
+      'Archive is truncated: missing two consecutive zero end-of-archive blocks.',
+      offset,
+    );
   }
 
   return {
