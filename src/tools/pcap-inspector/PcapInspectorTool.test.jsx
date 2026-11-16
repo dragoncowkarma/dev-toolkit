@@ -34,8 +34,24 @@ function makeDecodedPcap() {
   return buffer;
 }
 
+function makePcapng() {
+  const buffer = new ArrayBuffer(48);
+  const view = new DataView(buffer);
+  view.setUint32(0, 0x0a0d0d0a, true);
+  view.setUint32(4, 28, true);
+  view.setUint32(8, 0x1a2b3c4d, true);
+  view.setUint16(12, 1, true);
+  view.setUint32(24, 28, true);
+  view.setUint32(28, 1, true);
+  view.setUint32(32, 20, true);
+  view.setUint16(36, 1, true);
+  view.setUint32(40, 65535, true);
+  view.setUint32(44, 20, true);
+  return buffer;
+}
+
 function selectFile(file) {
-  const input = screen.getByLabelText('Choose a PCAP file to inspect');
+  const input = screen.getByLabelText('Choose a PCAP or PCAPNG file to inspect');
   Object.defineProperty(input, 'files', { value: [file], configurable: true });
   fireEvent.change(input);
 }
@@ -48,7 +64,9 @@ describe('PcapInspectorTool', () => {
     selectFile({ name: 'capture.pcap', size: 40, arrayBuffer: async () => makePcap() });
 
     expect(await screen.findByRole('heading', { name: 'capture.pcap' })).toBeInTheDocument();
-    expect(screen.getByText('Ethernet (1)')).toBeInTheDocument();
+    expect(screen.getByRole('list', { name: 'Capture interfaces' })).toHaveTextContent(
+      'Ethernet (1)',
+    );
     expect(
       screen.getByRole('list', { name: 'Parsed packet records' }),
     ).toHaveTextContent('10.000020');
@@ -72,5 +90,15 @@ describe('PcapInspectorTool', () => {
     expect(screen.getByText('00:11:22:33:44:55')).toBeInTheDocument();
     expect(screen.getByText('192.0.2.1')).toBeInTheDocument();
     expect(screen.getByText('TCP')).toBeInTheDocument();
+  });
+
+  it('shows the detected PCAPNG format and its interface list', async () => {
+    render(<PcapInspectorTool />);
+    selectFile({ name: 'capture.pcapng', size: 48, arrayBuffer: async () => makePcapng() });
+
+    expect(await screen.findByText('PCAPNG')).toBeInTheDocument();
+    expect(screen.getByRole('list', { name: 'Capture interfaces' })).toHaveTextContent(
+      'Interface 0: Ethernet (1), snaplen 65535 B',
+    );
   });
 });

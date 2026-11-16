@@ -37,6 +37,65 @@ function makeEthernetIpv4Packet({ protocol, ports = [], etherType = 0x0800 } = {
   return Array.from(payload);
 }
 
+function joinBuffers(buffers) {
+  const byteLength = buffers.reduce((total, buffer) => total + buffer.byteLength, 0);
+  const result = new Uint8Array(byteLength);
+  let offset = 0;
+  for (const buffer of buffers) {
+    result.set(new Uint8Array(buffer), offset);
+    offset += buffer.byteLength;
+  }
+  return result.buffer;
+}
+
+function makePcapngBlock(type, bodyLength, littleEndian, writeBody) {
+  const blockLength = 12 + bodyLength;
+  const buffer = new ArrayBuffer(blockLength);
+  const view = new DataView(buffer);
+  view.setUint32(0, type, littleEndian);
+  view.setUint32(4, blockLength, littleEndian);
+  writeBody(view);
+  view.setUint32(blockLength - 4, blockLength, littleEndian);
+  return buffer;
+}
+
+function makePcapng({
+  littleEndian = true, payload, snaplen = 65535, malformedBlock = false, truncatedBlock = false,
+  legacyPacket = false,
+} = {}) {
+  const section = makePcapngBlock(0x0a0d0d0a, 16, littleEndian, (view) => {
+    view.setUint32(8, 0x1a2b3c4d, littleEndian);
+    view.setUint16(12, 1, littleEndian);
+    view.setUint16(14, 0, littleEndian);
+  });
+  const networkInterface = makePcapngBlock(1, 8, littleEndian, (view) => {
+    view.setUint16(8, 1, littleEndian);
+    view.setUint32(12, snaplen, littleEndian);
+  });
+  const paddedPayloadLength = Math.ceil(payload.length / 4) * 4;
+  const packet = makePcapngBlock(
+    legacyPacket ? 2 : 6,
+    20 + paddedPayloadLength,
+    littleEndian,
+    (view) => {
+      view.setUint32(8, 0, littleEndian);
+      view.setUint32(12, 1700000000, littleEndian);
+      view.setUint32(16, 123456, littleEndian);
+      view.setUint32(20, payload.length, littleEndian);
+      view.setUint32(24, payload.length + 4, littleEndian);
+      new Uint8Array(view.buffer, 28, payload.length).set(payload);
+    },
+  );
+  if (!malformedBlock && !truncatedBlock) return joinBuffers([section, networkInterface, packet]);
+
+  const malformed = new ArrayBuffer(truncatedBlock ? 8 : 12);
+  const malformedView = new DataView(malformed);
+  malformedView.setUint32(0, 0x00000005, littleEndian);
+  malformedView.setUint32(4, truncatedBlock ? 32 : 12, littleEndian);
+  if (!truncatedBlock) malformedView.setUint32(8, 0, littleEndian);
+  return joinBuffers([section, networkInterface, malformed, packet]);
+}
+
 describe('parsePcap', () => {
   it('parses a little-endian classic PCAP global header and packet metadata', () => {
     const result = parsePcap(makePcap());
@@ -92,10 +151,67 @@ describe('parsePcap', () => {
     expect(result.packets[0]).not.toHaveProperty('sourceIp');
   });
 
-  it('rejects PCAPNG distinctly', () => {
-    const buffer = new ArrayBuffer(4);
-    new DataView(buffer).setUint32(0, 0x0a0d0d0a, false);
-    expect(() => parsePcap(buffer)).toThrow(/PCAPNG files are not supported/);
+  it('parses little-endian PCAPNG packets and decodes Ethernet, IPv4, and TCP headers', () => {
+    const result = parsePcap(makePcapng({
+      payload: makeEthernetIpv4Packet({ protocol: 6, ports: [1, 187, 31, 144] }),
+    }));
+    expect(result).toMatchObject({
+      format: 'PCAPNG',
+      header: { byteOrder: 'Little-endian', versionMajor: 1, versionMinor: 0 },
+      interfaces: [{ index: 0, linkType: 1, linkTypeName: 'Ethernet', snaplen: 65535 }],
+    });
+    expect(result.packets[0]).toMatchObject({
+      interfaceId: 0, timestampSeconds: 1700000000, timestampFraction: 123456,
+      sourceIp: '192.0.2.1', destIp: '198.51.100.2', protocolName: 'TCP',
+      sourcePort: 443, destPort: 8080,
+    });
+  });
+
+  it('parses big-endian PCAPNG packets', () => {
+    const result = parsePcap(makePcapng({
+      littleEndian: false,
+      payload: makeEthernetIpv4Packet({ protocol: 17, ports: [0, 53, 207, 8] }),
+    }));
+    expect(result.header.byteOrder).toBe('Big-endian');
+    expect(result.packets[0]).toMatchObject({
+      protocolName: 'UDP', sourcePort: 53, destPort: 53000,
+    });
+  });
+
+  it('parses legacy PCAPNG Packet Blocks', () => {
+    const result = parsePcap(makePcapng({
+      legacyPacket: true,
+      payload: makeEthernetIpv4Packet({ protocol: 6, ports: [1, 187, 31, 144] }),
+    }));
+    expect(result.packets[0]).toMatchObject({
+      interfaceId: 0, protocolName: 'TCP', sourcePort: 443, destPort: 8080,
+    });
+  });
+
+  it('isolates malformed PCAPNG blocks and continues with subsequent packets', () => {
+    const result = parsePcap(makePcapng({
+      malformedBlock: true,
+      payload: makeEthernetIpv4Packet({ protocol: 6, ports: [1, 187, 31, 144] }),
+    }));
+    expect(result.packets).toHaveLength(1);
+    expect(result.packets[0].sourceIp).toBe('192.0.2.1');
+  });
+
+  it('isolates truncated PCAPNG blocks and continues with subsequent packets', () => {
+    const result = parsePcap(makePcapng({
+      truncatedBlock: true,
+      payload: makeEthernetIpv4Packet({ protocol: 17, ports: [0, 53, 207, 8] }),
+    }));
+    expect(result.packets).toHaveLength(1);
+    expect(result.packets[0].protocolName).toBe('UDP');
+  });
+
+  it('limits PCAPNG Ethernet decoding to the interface snaplen', () => {
+    const result = parsePcap(makePcapng({
+      snaplen: 14,
+      payload: makeEthernetIpv4Packet({ protocol: 6, ports: [1, 187, 31, 144] }),
+    }));
+    expect(result.packets[0]).not.toHaveProperty('sourceIp');
   });
 
   it('rejects non-PCAP and truncated PCAP input without reading beyond the buffer', () => {

@@ -3,7 +3,7 @@ import { formatPacketTimestamp, parsePcapFile } from './pcapInspector.utils.js';
 import './pcapInspector.css';
 
 /**
- * Renders a client-side inspector for classic libpcap file headers and packet records.
+ * Renders a client-side inspector for PCAP and PCAPNG packet records.
  * @returns {React.JSX.Element} The PCAP inspector UI.
  */
 export default function PcapInspectorTool() {
@@ -44,13 +44,13 @@ export default function PcapInspectorTool() {
     <section className="pcap-inspector" aria-label="PCAP File Header Inspector">
       <div className="pcap-inspector__toolbar">
         <label className="pcap-inspector__button pcap-inspector__file-button">
-          Choose PCAP file
+          Choose PCAP or PCAPNG file
           <input
             ref={fileInputRef}
             className="pcap-inspector__file-input"
             type="file"
-            accept=".pcap,application/vnd.tcpdump.pcap,application/octet-stream"
-            aria-label="Choose a PCAP file to inspect"
+            accept=".pcap,.pcapng,application/vnd.tcpdump.pcap,application/octet-stream"
+            aria-label="Choose a PCAP or PCAPNG file to inspect"
             onChange={handleFileChange}
           />
         </label>
@@ -65,9 +65,10 @@ export default function PcapInspectorTool() {
       {result && (
         <div className="pcap-inspector__results">
           <h2>{fileName}</h2>
-          <section aria-labelledby="pcap-global-header">
-            <h3 id="pcap-global-header">Global header</h3>
+          <section aria-labelledby="pcap-capture-details">
+            <h3 id="pcap-capture-details">Capture details</h3>
             <dl className="pcap-inspector__header-grid">
+              <div><dt>Format</dt><dd>{result.format}</dd></div>
               <div><dt>Magic</dt><dd>{result.header.magic}</dd></div>
               <div><dt>Byte order</dt><dd>{result.header.byteOrder}</dd></div>
               <div>
@@ -78,14 +79,23 @@ export default function PcapInspectorTool() {
                 <dt>Timestamp resolution</dt>
                 <dd>{result.header.timestampResolution}</dd>
               </div>
-              <div><dt>Timezone offset</dt><dd>{result.header.timezoneOffset}</dd></div>
-              <div><dt>Timestamp accuracy</dt><dd>{result.header.timestampAccuracy}</dd></div>
-              <div><dt>Snaplen</dt><dd>{result.header.snaplen}</dd></div>
-              <div>
-                <dt>Link-layer type</dt>
-                <dd>{result.header.linkTypeName} ({result.header.linkType})</dd>
-              </div>
+              {result.format === 'PCAP' && <>
+                <div><dt>Timezone offset</dt><dd>{result.header.timezoneOffset}</dd></div>
+                <div><dt>Timestamp accuracy</dt><dd>{result.header.timestampAccuracy}</dd></div>
+              </>}
             </dl>
+          </section>
+
+          <section aria-labelledby="pcap-interfaces">
+            <h3 id="pcap-interfaces">Interfaces ({result.interfaces.length})</h3>
+            <ul className="pcap-inspector__interfaces" aria-label="Capture interfaces">
+              {result.interfaces.map((networkInterface) => (
+                <li key={networkInterface.index}>
+                  Interface {networkInterface.index}: {networkInterface.linkTypeName}
+                  {' '}({networkInterface.linkType}), snaplen {networkInterface.snaplen} B
+                </li>
+              ))}
+            </ul>
           </section>
 
           <section aria-labelledby="pcap-packets">

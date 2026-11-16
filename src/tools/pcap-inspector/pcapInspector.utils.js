@@ -18,6 +18,13 @@ const LINKTYPE_NAMES = new Map([
   [276, 'Linux SLL2'],
 ]);
 
+const PCAPNG_SECTION_HEADER_BLOCK = 0x0a0d0d0a;
+const PCAPNG_INTERFACE_DESCRIPTION_BLOCK = 0x00000001;
+const PCAPNG_PACKET_BLOCK = 0x00000002;
+const PCAPNG_ENHANCED_PACKET_BLOCK = 0x00000006;
+const PCAPNG_BYTE_ORDER_MAGIC = 0x1a2b3c4d;
+const PCAPNG_BYTE_ORDER_MAGIC_REVERSED = 0x4d3c2b1a;
+
 function requireBytes(view, offset, length, label) {
   if (!Number.isSafeInteger(offset) || !Number.isSafeInteger(length) ||
       offset < 0 || length < 0 || offset > view.byteLength - length) {
@@ -92,6 +99,126 @@ function decodeEthernetPacket(view, payloadOffset, capturedLength) {
   }
 }
 
+function isCompletePcapngBlock(view, offset, blockLength, littleEndian) {
+  return Number.isSafeInteger(blockLength) && blockLength >= 12 && blockLength % 4 === 0 &&
+    offset <= view.byteLength - blockLength &&
+    view.getUint32(offset + blockLength - 4, littleEndian) === blockLength;
+}
+
+function getPcapngSectionFormat(view, offset) {
+  if (offset > view.byteLength - 12) return null;
+  const byteOrderMagic = view.getUint32(offset + 8, false);
+  if (byteOrderMagic === PCAPNG_BYTE_ORDER_MAGIC) return { littleEndian: false };
+  if (byteOrderMagic === PCAPNG_BYTE_ORDER_MAGIC_REVERSED) return { littleEndian: true };
+  return null;
+}
+
+function parsePcapngPacket(view, offset, blockLength, littleEndian, interfaces, packets, legacy) {
+  const fixedLength = 28;
+  if (blockLength < fixedLength + 4) return;
+  const interfaceId = legacy
+    ? view.getUint16(offset + 8, littleEndian)
+    : view.getUint32(offset + 8, littleEndian);
+  const timestampSeconds = view.getUint32(offset + 12, littleEndian);
+  const timestampFraction = view.getUint32(offset + 16, littleEndian);
+  const capturedLength = view.getUint32(offset + 20, littleEndian);
+  const originalLength = view.getUint32(offset + 24, littleEndian);
+  const payloadOffset = offset + fixedLength;
+  const paddedLength = Math.ceil(capturedLength / 4) * 4;
+  const packetEnd = payloadOffset + paddedLength;
+
+  if (!Number.isSafeInteger(paddedLength) || packetEnd > offset + blockLength - 4) return;
+
+  const packet = {
+    index: packets.length + 1,
+    interfaceId,
+    timestampSeconds,
+    timestampFraction,
+    capturedLength,
+    originalLength,
+  };
+  const networkInterface = interfaces[interfaceId];
+  if (networkInterface?.linkType === 1) {
+    const decodableLength = Math.min(capturedLength, networkInterface.snaplen);
+    Object.assign(packet, decodeEthernetPacket(view, payloadOffset, decodableLength));
+  }
+  packets.push(packet);
+}
+
+function parsePcapng(buffer) {
+  const view = new DataView(buffer);
+  const packets = [];
+  const interfaces = [];
+  let offset = 0;
+  let littleEndian = null;
+  let sectionHeader = null;
+
+  while (offset <= view.byteLength - 8) {
+    const rawBlockType = view.getUint32(offset, false);
+    if (rawBlockType === PCAPNG_SECTION_HEADER_BLOCK) {
+      const sectionFormat = getPcapngSectionFormat(view, offset);
+      if (!sectionFormat) {
+        offset += 4;
+        continue;
+      }
+      const blockLength = view.getUint32(offset + 4, sectionFormat.littleEndian);
+      if (!isCompletePcapngBlock(view, offset, blockLength, sectionFormat.littleEndian) ||
+          blockLength < 28) {
+        offset += 4;
+        continue;
+      }
+      littleEndian = sectionFormat.littleEndian;
+      interfaces.length = 0;
+      sectionHeader = {
+        magic: '0x0a0d0d0a',
+        versionMajor: view.getUint16(offset + 12, littleEndian),
+        versionMinor: view.getUint16(offset + 14, littleEndian),
+        byteOrder: littleEndian ? 'Little-endian' : 'Big-endian',
+        timestampResolution: 'microseconds',
+      };
+      offset += blockLength;
+      continue;
+    }
+
+    if (littleEndian === null) {
+      offset += 4;
+      continue;
+    }
+    const blockType = view.getUint32(offset, littleEndian);
+    const blockLength = view.getUint32(offset + 4, littleEndian);
+    if (!isCompletePcapngBlock(view, offset, blockLength, littleEndian)) {
+      offset += 4;
+      continue;
+    }
+
+    if (blockType === PCAPNG_INTERFACE_DESCRIPTION_BLOCK && blockLength >= 20) {
+      const linkType = view.getUint16(offset + 8, littleEndian);
+      const snaplen = view.getUint32(offset + 12, littleEndian);
+      interfaces.push({
+        index: interfaces.length,
+        linkType,
+        linkTypeName: getLinkTypeName(linkType),
+        snaplen,
+      });
+    } else if (blockType === PCAPNG_ENHANCED_PACKET_BLOCK) {
+      parsePcapngPacket(view, offset, blockLength, littleEndian, interfaces, packets, false);
+    } else if (blockType === PCAPNG_PACKET_BLOCK) {
+      parsePcapngPacket(view, offset, blockLength, littleEndian, interfaces, packets, true);
+    }
+    offset += blockLength;
+  }
+
+  if (!sectionHeader) {
+    throw new Error('Unsupported format: this is not a classic PCAP file.');
+  }
+  return {
+    format: 'PCAPNG',
+    header: sectionHeader,
+    interfaces,
+    packets,
+  };
+}
+
 /**
  * Returns a readable name for a libpcap LINKTYPE value.
  * @param {number} linkType
@@ -102,9 +229,10 @@ export function getLinkTypeName(linkType) {
 }
 
 /**
- * Parses the global header and packet record metadata from a classic libpcap buffer.
+ * Parses packet metadata from a classic libpcap or PCAPNG buffer.
  * @param {ArrayBuffer} buffer
- * @returns {{header: object, packets: Array<object>}}
+ * @returns {{format: 'PCAP'|'PCAPNG', header: object, interfaces: Array<object>,
+ *   packets: Array<object>}}
  */
 export function parsePcap(buffer) {
   if (!(buffer instanceof ArrayBuffer)) {
@@ -119,9 +247,7 @@ export function parsePcap(buffer) {
   const view = new DataView(buffer);
   requireBytes(view, 0, 4, 'magic number');
   const firstWord = view.getUint32(0, false);
-  if (firstWord === 0x0a0d0d0a) {
-    throw new Error('Unsupported format: PCAPNG files are not supported. Please use classic PCAP.');
-  }
+  if (firstWord === PCAPNG_SECTION_HEADER_BLOCK) return parsePcapng(buffer);
 
   const format = MAGIC_FORMATS.get(firstWord);
   if (!format) {
@@ -162,6 +288,7 @@ export function parsePcap(buffer) {
   }
 
   return {
+    format: 'PCAP',
     header: {
       magic: `0x${firstWord.toString(16).padStart(8, '0')}`,
       versionMajor,
@@ -174,14 +301,21 @@ export function parsePcap(buffer) {
       byteOrder: littleEndian ? 'Little-endian' : 'Big-endian',
       timestampResolution,
     },
+    interfaces: [{
+      index: 0,
+      linkType,
+      linkTypeName: getLinkTypeName(linkType),
+      snaplen,
+    }],
     packets,
   };
 }
 
 /**
- * Reads and parses a selected PCAP file entirely in the browser.
+ * Reads and parses a selected PCAP or PCAPNG file entirely in the browser.
  * @param {File|Blob} file
- * @returns {Promise<{header: object, packets: Array<object>}>}
+ * @returns {Promise<{format: 'PCAP'|'PCAPNG', header: object, interfaces: Array<object>,
+ *   packets: Array<object>}>}
  */
 export async function parsePcapFile(file) {
   if (!file || typeof file.arrayBuffer !== 'function') {
