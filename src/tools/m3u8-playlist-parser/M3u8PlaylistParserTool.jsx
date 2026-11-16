@@ -43,14 +43,28 @@ export default function M3u8PlaylistParserTool() {
     return searchable.toLowerCase().includes(filter.trim().toLowerCase());
   });
 
+  function resetFileInput() {
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
   async function handleFileChange(event) {
     const file = event.target.files?.[0];
-    if (file) setSource(await file.text());
+    if (!file) return;
+
+    setSource(await file.text());
+    resetFileInput();
   }
 
   function loadSample(sample) {
     setSource(sample);
     setFilter('');
+    resetFileInput();
+  }
+
+  function clearSource() {
+    setSource('');
+    setFilter('');
+    resetFileInput();
   }
 
   return (
@@ -81,7 +95,7 @@ export default function M3u8PlaylistParserTool() {
         >
           Load media sample
         </button>
-        <button type="button" className="m3u8-parser__button" onClick={() => setSource('')}>
+        <button type="button" className="m3u8-parser__button" onClick={clearSource}>
           Clear
         </button>
       </div>

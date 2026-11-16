@@ -1,6 +1,8 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it } from 'vitest';
 import M3u8PlaylistParserTool from './M3u8PlaylistParserTool.jsx';
+
+afterEach(cleanup);
 
 describe('M3u8PlaylistParserTool', () => {
   it('loads a sample playlist and presents its parsed summary', () => {
