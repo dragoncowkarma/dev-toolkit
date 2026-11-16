@@ -1,0 +1,113 @@
+.bmp-header-inspector {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  color: var(--color-text);
+}
+
+.bmp-header-inspector__privacy,
+.bmp-header-inspector__status {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+  margin-bottom: 0.75rem;
+}
+
+.bmp-header-inspector__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+.bmp-header-inspector__dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 2rem 1rem;
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  text-align: center;
+  transition: border-color var(--transition), color var(--transition);
+}
+
+.bmp-header-inspector__dropzone:hover,
+.bmp-header-inspector__dropzone:focus-visible {
+  border-color: var(--color-primary);
+  color: var(--color-text);
+  outline: none;
+}
+
+.bmp-header-inspector__alert,
+.bmp-header-inspector__warning {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+}
+
+.bmp-header-inspector__warning {
+  border-color: var(--color-warning);
+  color: var(--color-warning);
+}
+
+.bmp-header-inspector__results {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.bmp-header-inspector__results h2 {
+  overflow-wrap: anywhere;
+  font-size: 1.1rem;
+}
+
+.bmp-header-inspector__table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.bmp-header-inspector table {
+  width: 100%;
+  min-width: 440px;
+  border-collapse: collapse;
+}
+
+.bmp-header-inspector caption,
+.bmp-header-inspector th,
+.bmp-header-inspector td {
+  padding: 0.7rem 0.85rem;
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+}
+
+.bmp-header-inspector caption {
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-weight: 700;
+}
+
+.bmp-header-inspector thead th,
+.bmp-header-inspector tbody th {
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
+.bmp-header-inspector tr:last-child th,
+.bmp-header-inspector tr:last-child td {
+  border-bottom: 0;
+}
+
+@media (min-width: 768px) {
+  .bmp-header-inspector {
+    padding: 0 2rem 3rem;
+  }
+}
