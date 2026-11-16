@@ -79,6 +79,37 @@ function rotateImageData({ data, width, height }, degrees) {
   return { data: rotatedData, width: rotatedWidth, height: rotatedHeight };
 }
 
+function padAndRotateImageData({ data, width, height }, angleDegrees) {
+  const paddedHeight = height + 40;
+  const paddedData = new Uint8ClampedArray(width * paddedHeight * 4).fill(255);
+  const verticalOffset = Math.floor((paddedHeight - height) / 2);
+  for (let y = 0; y < height; y += 1) {
+    const sourceOffset = y * width * 4;
+    const targetOffset = ((y + verticalOffset) * width) * 4;
+    paddedData.set(data.subarray(sourceOffset, sourceOffset + width * 4), targetOffset);
+  }
+
+  const angle = (angleDegrees * Math.PI) / 180;
+  const cosine = Math.cos(angle);
+  const sine = Math.sin(angle);
+  const centerX = (width - 1) / 2;
+  const centerY = (paddedHeight - 1) / 2;
+  const rotatedData = new Uint8ClampedArray(paddedData.length).fill(255);
+  for (let y = 0; y < paddedHeight; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const relativeX = x - centerX;
+      const relativeY = y - centerY;
+      const sourceX = Math.round(centerX + relativeX * cosine + relativeY * sine);
+      const sourceY = Math.round(centerY - relativeX * sine + relativeY * cosine);
+      if (sourceX < 0 || sourceX >= width || sourceY < 0 || sourceY >= paddedHeight) continue;
+      const sourceOffset = (sourceY * width + sourceX) * 4;
+      const targetOffset = (y * width + x) * 4;
+      rotatedData.set(paddedData.subarray(sourceOffset, sourceOffset + 4), targetOffset);
+    }
+  }
+  return { data: rotatedData, width, height: paddedHeight };
+}
+
 function code128Modules() {
   return '2112141113231311232331112'
     .split('')
@@ -159,5 +190,21 @@ describe('barcode decoding', () => {
   ])('decodes a 270-degree rotated %s image', (_name, modules, expected) => {
     const rotatedBarcode = rotateImageData(imageFromModules(modules), 270);
     expect(decodeBarcodeFromImageData(rotatedBarcode)).toEqual(expected);
+  });
+
+  it.each([
+    ['Code 128', code128Modules(), { value: 'A', symbology: 'Code 128', checksumValid: true }],
+    ['EAN-13', eanModules('4006381333931'), {
+      value: '4006381333931', symbology: 'EAN-13', checksumValid: true,
+    }],
+    ['UPC-A', eanModules('0036000291452'), {
+      value: '036000291452', symbology: 'UPC-A', checksumValid: true,
+    }],
+  ])('decodes +3-degree and -4-degree skewed %s images', (_name, modules, expected) => {
+    for (const angle of [3, -4]) {
+      const highResolutionBarcode = imageFromModules(modules, 6);
+      expect(decodeBarcodeFromImageData(padAndRotateImageData(highResolutionBarcode, angle)))
+        .toEqual(expected);
+    }
   });
 });
