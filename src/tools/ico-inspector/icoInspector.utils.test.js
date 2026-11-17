@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getCompressionName, parseIco } from './icoInspector.utils.js';
+import { formatByteSize, getCompressionName, parseIco } from './icoInspector.utils.js';
 
 function writeEntry(view, entryOffset, { width, height, bitDepth, size, offset }) {
   view.setUint8(entryOffset, width);
@@ -73,7 +73,9 @@ describe('parseIco', () => {
     const result = parseIco(new Uint8Array([0, 0, 1]));
 
     expect(result.images).toEqual([]);
-    expect(result.warnings).toContain('The file is truncated: an ICO header requires at least 6 bytes.');
+    expect(result.warnings).toContain(
+      'The file is truncated: an ICO header requires at least 6 bytes.'
+    );
   });
 
   it('warns when an entry declares image bytes beyond the file length', () => {
@@ -91,5 +93,15 @@ describe('getCompressionName', () => {
   it('names known and unknown bitmap compression values', () => {
     expect(getCompressionName(0)).toBe('BI_RGB');
     expect(getCompressionName(99)).toBe('Unknown (99)');
+  });
+});
+
+describe('formatByteSize', () => {
+  it('formats invalid values, bytes, kilobytes, and megabytes', () => {
+    expect(formatByteSize(-1)).toBe('0 B');
+    expect(formatByteSize(Number.NaN)).toBe('0 B');
+    expect(formatByteSize(512)).toBe('512 B');
+    expect(formatByteSize(1024)).toBe('1.0 KB');
+    expect(formatByteSize(1024 * 1024)).toBe('1.0 MB');
   });
 });

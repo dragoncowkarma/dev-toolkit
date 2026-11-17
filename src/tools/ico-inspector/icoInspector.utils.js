@@ -84,7 +84,8 @@ export function parseIco(input) {
   const availableEntries = Math.floor((bytes.byteLength - ICONDIR_SIZE) / ICONDIRENTRY_SIZE);
   if (availableEntries < header.imageCount) {
     warnings.push(
-      `The icon directory declares ${header.imageCount} entries, but only ${availableEntries} complete entries are available.`
+      `The icon directory declares ${header.imageCount} entries, but only ${availableEntries} `
+        + 'complete entries are available.'
     );
   }
 

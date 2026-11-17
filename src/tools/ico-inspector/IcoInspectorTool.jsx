@@ -16,6 +16,8 @@ export default function IcoInspectorTool() {
   async function inspectFile(file) {
     if (!file) return;
     if (!file.name.toLowerCase().endsWith('.ico')) {
+      setResult(null);
+      setFileName('');
       setError('Choose a Windows .ico file.');
       return;
     }
@@ -26,6 +28,7 @@ export default function IcoInspectorTool() {
       setError('');
     } catch {
       setResult(null);
+      setFileName('');
       setError('The selected file could not be read.');
     }
   }
