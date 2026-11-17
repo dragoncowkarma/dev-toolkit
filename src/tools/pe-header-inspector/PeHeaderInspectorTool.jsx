@@ -114,11 +114,11 @@ export default function PeHeaderInspectorTool() {
             rows={[
               ['Machine', result.coff.machine],
               ['Sections', result.coff.sectionCount],
-            ['Timestamp', result.coff.timestamp],
-            [
-              'Characteristics',
-              `${result.coff.characteristics} — ${result.coff.flags.join(', ') || 'None'}`,
-            ],
+              ['Timestamp', result.coff.timestamp],
+              [
+                'Characteristics',
+                `${result.coff.characteristics} — ${result.coff.flags.join(', ') || 'None'}`,
+              ],
             ]}
           />
           <HeaderTable
@@ -128,12 +128,12 @@ export default function PeHeaderInspectorTool() {
               ['Entry point (RVA)', result.optional.entryPoint],
               ['Image base', result.optional.imageBase],
               ['Subsystem', result.optional.subsystem],
-            [
-              'DLL characteristics',
-              `${result.optional.dllCharacteristics} — ${
-                result.optional.flags.join(', ') || 'None'
-              }`,
-            ],
+              [
+                'DLL characteristics',
+                `${result.optional.dllCharacteristics} — ${
+                  result.optional.flags.join(', ') || 'None'
+                }`,
+              ],
             ]}
           />
           <section className="pe-header-inspector__group" aria-labelledby="sections-heading">
