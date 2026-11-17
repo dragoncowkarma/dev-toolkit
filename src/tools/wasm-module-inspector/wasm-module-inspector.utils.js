@@ -59,9 +59,20 @@ function readUnsignedLeb128(bytes, cursor, end, description) {
 function readName(bytes, cursor, end, description) {
   const length = readUnsignedLeb128(bytes, cursor, end, `${description} length`);
   ensureAvailable(cursor, end, length, description);
-  const value = textDecoder.decode(bytes.subarray(cursor.offset, cursor.offset + length));
+  let value;
+  try {
+    value = textDecoder.decode(bytes.subarray(cursor.offset, cursor.offset + length));
+  } catch {
+    throw parseError(`invalid UTF-8 ${description}.`);
+  }
   cursor.offset += length;
   return value;
+}
+
+function ensureVectorCanFit(cursor, end, count, minimumItemSize, description) {
+  if (count > Math.floor((end - cursor.offset) / minimumItemSize)) {
+    throw parseError(`truncated ${description}.`);
+  }
 }
 
 function skipLimits(bytes, cursor, end) {
@@ -90,6 +101,8 @@ function skipImportDescription(bytes, cursor, end, kind) {
 
 function parseImports(bytes, cursor, end) {
   const count = readUnsignedLeb128(bytes, cursor, end, 'import count');
+  // Every import has two length fields, a kind, and at least one descriptor byte.
+  ensureVectorCanFit(cursor, end, count, 4, 'import entries');
   const entries = [];
   for (let index = 0; index < count; index += 1) {
     const moduleName = readName(bytes, cursor, end, 'import module name');
@@ -103,6 +116,8 @@ function parseImports(bytes, cursor, end) {
 
 function parseExports(bytes, cursor, end) {
   const count = readUnsignedLeb128(bytes, cursor, end, 'export count');
+  // Every export has a name length, a kind, and an index, even with an empty name.
+  ensureVectorCanFit(cursor, end, count, 3, 'export entries');
   const entries = [];
   for (let index = 0; index < count; index += 1) {
     const name = readName(bytes, cursor, end, 'export name');

@@ -7,7 +7,7 @@ import './wasm-module-inspector.css';
  *
  * @returns {React.JSX.Element} The WebAssembly module inspector UI.
  */
-export default function WasmModuleInspector() {
+export default function WasmModuleInspectorTool() {
   const [moduleInfo, setModuleInfo] = useState(null);
   const [error, setError] = useState('');
   const [isDragging, setIsDragging] = useState(false);
@@ -48,7 +48,9 @@ export default function WasmModuleInspector() {
   return (
     <section className="wasm-inspector" aria-label="WebAssembly Module Inspector">
       <div
-        className={`wasm-inspector__drop-zone ${isDragging ? 'wasm-inspector__drop-zone--active' : ''}`}
+        className={`wasm-inspector__drop-zone ${
+          isDragging ? 'wasm-inspector__drop-zone--active' : ''
+        }`}
         onDragEnter={(event) => {
           event.preventDefault();
           setIsDragging(true);
@@ -77,11 +79,7 @@ export default function WasmModuleInspector() {
         </button>
       )}
 
-      {error && (
-        <div className="wasm-inspector__error" role="alert">
-          {error}
-        </div>
-      )}
+      {error && <div className="wasm-inspector__error" role="alert">{error}</div>}
 
       {moduleInfo && (
         <div className="wasm-inspector__results">
@@ -95,21 +93,14 @@ export default function WasmModuleInspector() {
             <table>
               <thead>
                 <tr>
-                  <th>Section</th>
-                  <th>ID</th>
-                  <th>Offset</th>
-                  <th>Byte size</th>
-                  <th>Items</th>
+                  <th>Section</th><th>ID</th><th>Offset</th><th>Byte size</th><th>Items</th>
                 </tr>
               </thead>
               <tbody>
                 {moduleInfo.sections.map((section, index) => (
                   <tr key={`${section.offset}-${index}`}>
-                    <td>{section.name}</td>
-                    <td>{section.id}</td>
-                    <td>{section.offset}</td>
-                    <td>{section.byteSize}</td>
-                    <td>{section.count ?? '—'}</td>
+                    <td>{section.name}</td><td>{section.id}</td><td>{section.offset}</td>
+                    <td>{section.byteSize}</td><td>{section.count ?? '—'}</td>
                   </tr>
                 ))}
               </tbody>

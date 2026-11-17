@@ -26,15 +26,32 @@ describe('parseWasmModule', () => {
   });
 
   it('rejects a truncated section payload', () => {
-    expect(() => parseWasmModule(new Uint8Array([...header, 1, 3, 0]))).toThrow(/truncated section payload/);
+    expect(() => parseWasmModule(new Uint8Array([...header, 1, 3, 0]))).toThrow(
+      /truncated section payload/
+    );
   });
 
   it('rejects invalid magic numbers and unsupported versions', () => {
-    expect(() => parseWasmModule(new Uint8Array([1, ...header.slice(1)]))).toThrow(/Not a WebAssembly/);
-    expect(() => parseWasmModule(new Uint8Array([...header.slice(0, 4), 2, 0, 0, 0]))).toThrow(/Unsupported/);
+    expect(() => parseWasmModule(new Uint8Array([1, ...header.slice(1)]))).toThrow(
+      /Not a WebAssembly/
+    );
+    expect(
+      () => parseWasmModule(new Uint8Array([...header.slice(0, 4), 2, 0, 0, 0]))
+    ).toThrow(/Unsupported/);
   });
 
   it('rejects a malformed LEB128 section size', () => {
-    expect(() => parseWasmModule(new Uint8Array([...header, 1, 0x80, 0x80, 0x80, 0x80, 0x80]))).toThrow(/malformed section size/);
+    expect(
+      () => parseWasmModule(new Uint8Array([...header, 1, 0x80, 0x80, 0x80, 0x80, 0x80]))
+    ).toThrow(/malformed section size/);
+  });
+
+  it('rejects impossible import and export counts before iterating them', () => {
+    expect(() => parseWasmModule(new Uint8Array([...header, 2, 1, 1]))).toThrow(
+      /truncated import entries/
+    );
+    expect(() => parseWasmModule(new Uint8Array([...header, 7, 1, 1]))).toThrow(
+      /truncated export entries/
+    );
   });
 });
