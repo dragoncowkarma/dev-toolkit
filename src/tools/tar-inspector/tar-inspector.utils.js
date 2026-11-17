@@ -188,21 +188,54 @@ export function parseOctalBytes(bytes) {
 
 /**
  * Parses file size, supporting both octal and GNU base-256 binary encoding.
+ * In GNU base-256, the high bit (0x80) is set as marker. The next bit (0x40)
+ * is the sign bit (0 = positive, 1 = negative two's complement). The remaining
+ * 6 bits of the first byte carry the most significant value bits.
+ *
+ * Values exceeding JavaScript safe integer limits are explicitly rejected.
+ *
  * @param {Uint8Array} bytes
+ * @param {number} [offset]
  * @returns {number}
  */
-export function parseSizeBytes(bytes) {
-  if (bytes.length > 0 && (bytes[0] & 0x80) !== 0) {
-    // GNU 256-base binary encoding (high bit set)
-    if (bytes[0] === 0x80) {
-      let size = 0;
-      for (let i = 1; i < bytes.length; i += 1) {
-        size = size * 256 + bytes[i];
-      }
-      return size;
-    }
+export function parseSizeBytes(bytes, offset) {
+  if (!bytes || bytes.length === 0) {
+    return 0;
   }
-  return parseOctalBytes(bytes);
+
+  if ((bytes[0] & 0x80) !== 0) {
+    // Negative values in base-256 have sign bit (0x40) set
+    if ((bytes[0] & 0x40) !== 0) {
+      throw new TarParseError(
+        'Negative file size in base-256 encoding is not supported.',
+        offset,
+      );
+    }
+
+    // High 6 bits of bytes[0] carry the most significant value bits
+    let val = BigInt(bytes[0] & 0x3f);
+    for (let i = 1; i < bytes.length; i += 1) {
+      val = (val << 8n) | BigInt(bytes[i]);
+    }
+
+    if (val > BigInt(Number.MAX_SAFE_INTEGER)) {
+      throw new TarParseError(
+        `File size (${val.toString()}) exceeds JavaScript safe integer limit.`,
+        offset,
+      );
+    }
+
+    return Number(val);
+  }
+
+  const num = parseOctalBytes(bytes);
+  if (!Number.isSafeInteger(num) || num < 0) {
+    throw new TarParseError(
+      `File size (${num}) is invalid or exceeds JavaScript safe integer limit.`,
+      offset,
+    );
+  }
+  return num;
 }
 
 /**
@@ -443,7 +476,7 @@ export function parseTarArchive(input) {
     const mode = parseOctalBytes(header.subarray(100, 108));
     const uid = parseOctalBytes(header.subarray(108, 116));
     const gid = parseOctalBytes(header.subarray(116, 124));
-    const size = parseSizeBytes(header.subarray(124, 136));
+    const size = parseSizeBytes(header.subarray(124, 136), offset);
     const mtime = parseOctalBytes(header.subarray(136, 148));
     const typeflagByte = header[156];
     const typeflag = typeflagByte === 0 ? '0' : String.fromCharCode(typeflagByte);
@@ -501,6 +534,12 @@ export function parseTarArchive(input) {
       if (effectivePax.size !== undefined) {
         const parsedSize = parseInt(effectivePax.size, 10);
         if (!Number.isNaN(parsedSize) && parsedSize >= 0) {
+          if (!Number.isSafeInteger(parsedSize)) {
+            throw new TarParseError(
+              `PAX size (${effectivePax.size}) exceeds JavaScript safe integer limit.`,
+              headerOffset,
+            );
+          }
           resolvedSize = parsedSize;
         }
       }

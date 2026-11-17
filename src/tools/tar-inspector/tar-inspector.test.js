@@ -106,6 +106,46 @@ describe('parseOctalBytes and parseSizeBytes', () => {
     bytes[11] = 0x00; // 256
     expect(parseSizeBytes(bytes)).toBe(256);
   });
+
+  it('parses GNU base-256 encoded sizes carrying non-zero high byte within safe integer limit', () => {
+    // 0x81 (marker bit 0x80 set, sign bit 0x40 clear, value bit 0x01) with 5 trailing bytes:
+    // 1 * 256^5 = 1,099,511,627,776 (1 TiB, well within Number.MAX_SAFE_INTEGER)
+    const bytes = new Uint8Array([0x81, 0x00, 0x00, 0x00, 0x00, 0x00]);
+    expect(parseSizeBytes(bytes)).toBe(1099511627776);
+  });
+
+  it('parses 12-byte GNU base-256 value at maximum safe integer boundary', () => {
+    // Number.MAX_SAFE_INTEGER is 9007199254740991 (0x1f_ffff_ffff_ffff)
+    const bytes = new Uint8Array(12);
+    bytes[0] = 0x80;
+    bytes[5] = 0x1f;
+    bytes.fill(0xff, 6, 12);
+    expect(parseSizeBytes(bytes)).toBe(Number.MAX_SAFE_INTEGER);
+  });
+
+  it('rejects GNU base-256 size with non-zero high byte exceeding JavaScript safe integer limit', () => {
+    // 12-byte field starting with 0x81 (2^88)
+    const bytes = new Uint8Array(12);
+    bytes[0] = 0x81;
+    expect(() => parseSizeBytes(bytes)).toThrow(TarParseError);
+    expect(() => parseSizeBytes(bytes)).toThrow(/exceeds JavaScript safe integer limit/i);
+  });
+
+  it('rejects GNU base-256 size with 0x80 marker exceeding JavaScript safe integer limit', () => {
+    // 12-byte field with 0x80 followed by high bytes (e.g. byte 1 is 1 -> 2^80)
+    const bytes = new Uint8Array(12);
+    bytes[0] = 0x80;
+    bytes[1] = 0x01;
+    expect(() => parseSizeBytes(bytes)).toThrow(TarParseError);
+    expect(() => parseSizeBytes(bytes)).toThrow(/exceeds JavaScript safe integer limit/i);
+  });
+
+  it('rejects negative base-256 size', () => {
+    const bytes = new Uint8Array(12);
+    bytes[0] = 0xff; // high bit set and sign bit set
+    expect(() => parseSizeBytes(bytes)).toThrow(TarParseError);
+    expect(() => parseSizeBytes(bytes)).toThrow(/negative file size in base-256/i);
+  });
 });
 
 describe('readNullTerminatedString and formatMtime', () => {
@@ -578,5 +618,23 @@ describe('parseTarArchive', () => {
     expect(() => parseTarArchive(truncated)).toThrow(
       /Archive is truncated: missing two consecutive zero end-of-archive blocks/i,
     );
+  });
+
+  it('rejects an archive whose member header specifies a base-256 size exceeding safe integer limits', () => {
+    const archive = createMockTarArchive([{ name: 'overflow.bin', content: '' }]);
+    // In header for overflow.bin (offset 0), set size field (offset 124..136) to 0x81 followed by 11 zeros (2^88)
+    const sizeSlice = archive.subarray(124, 136);
+    sizeSlice.fill(0);
+    sizeSlice[0] = 0x81;
+
+    // Recompute header checksum
+    for (let i = 148; i < 156; i += 1) archive[i] = 32;
+    let sum = 0;
+    for (let i = 0; i < TAR_BLOCK_SIZE; i += 1) sum += archive[i];
+    const chkStr = sum.toString(8).padStart(6, '0') + '\0 ';
+    archive.set(new TextEncoder().encode(chkStr), 148);
+
+    expect(() => parseTarArchive(archive)).toThrow(TarParseError);
+    expect(() => parseTarArchive(archive)).toThrow(/exceeds JavaScript safe integer limit/i);
   });
 });
