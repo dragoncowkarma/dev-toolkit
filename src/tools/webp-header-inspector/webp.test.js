@@ -80,4 +80,14 @@ describe('parseWebp', () => {
     expect(() => parseWebp(truncated)).toThrow(WebpParseError);
     expect(() => parseWebp(unpadded)).toThrow(/non-even chunk padding|truncated/i);
   });
+
+  it('rejects files with invalid RIFF or WEBP magic', () => {
+    const invalidRiff = webp([chunk('VP8L', [0x2f, 0, 0, 0, 0])]);
+    invalidRiff[0] = 0;
+    const invalidWebp = webp([chunk('VP8L', [0x2f, 0, 0, 0, 0])]);
+    invalidWebp[8] = 0;
+
+    expect(() => parseWebp(invalidRiff)).toThrow(/RIFF magic/i);
+    expect(() => parseWebp(invalidWebp)).toThrow(/WEBP form type/i);
+  });
 });

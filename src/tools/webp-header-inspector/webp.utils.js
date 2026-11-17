@@ -1,139 +1,145 @@
-const OPTIONAL_CHUNK_NAMES = new Set(['ICCP', 'ANIM', 'ANMF', 'ALPH', 'EXIF', 'XMP ']);
-const IMAGE_CHUNK_NAMES = new Set(['VP8 ', 'VP8L', 'VP8X']);
+const PRIMARY_CHUNKS = new Set(['VP8 ', 'VP8L', 'VP8X']);
+const OPTIONAL_CHUNKS = new Set(['ICCP', 'ANIM', 'ANMF', 'ALPH', 'EXIF', 'XMP ']);
 
-function fourCcAt(bytes, offset) {
-  return String.fromCharCode(...bytes.slice(offset, offset + 4));
+/** Error raised when bytes cannot be parsed as a complete WebP container. */
+export class WebpParseError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'WebpParseError';
+  }
 }
 
-function readUint24LE(bytes, offset) {
+function requireBytes(bytes, offset, length, label) {
+  if (offset + length > bytes.length) {
+    throw new WebpParseError(`The WebP file is truncated while reading ${label}.`);
+  }
+}
+
+function readFourCc(bytes, offset, label) {
+  requireBytes(bytes, offset, 4, label);
+  return String.fromCharCode(...bytes.subarray(offset, offset + 4));
+}
+
+function readUint24LE(bytes, offset, label) {
+  requireBytes(bytes, offset, 3, label);
   return bytes[offset] | (bytes[offset + 1] << 8) | (bytes[offset + 2] << 16);
 }
 
-function readUint32LE(bytes, offset) {
-  return (
-    bytes[offset] |
-    (bytes[offset + 1] << 8) |
-    (bytes[offset + 2] << 16) |
-    (bytes[offset + 3] << 24)
-  ) >>> 0;
+function readUint32LE(bytes, offset, label) {
+  requireBytes(bytes, offset, 4, label);
+  return new DataView(bytes.buffer, bytes.byteOffset + offset, 4).getUint32(0, true);
 }
 
-function parseVp8Dimensions(data) {
-  if (data.length < 10) {
-    throw new Error('The VP8 chunk is truncated before its frame header.');
+function parseVp8Dimensions(payload) {
+  requireBytes(payload, 0, 10, 'the VP8 image header');
+  if (payload[3] !== 0x9d || payload[4] !== 0x01 || payload[5] !== 0x2a) {
+    throw new WebpParseError('The VP8 image header has an invalid start code.');
   }
-  if (data[3] !== 0x9d || data[4] !== 0x01 || data[5] !== 0x2a) {
-    throw new Error('The VP8 chunk has an invalid frame start code.');
+  const width = (payload[6] | (payload[7] << 8)) & 0x3fff;
+  const height = (payload[8] | (payload[9] << 8)) & 0x3fff;
+  if (width === 0 || height === 0) {
+    throw new WebpParseError('The VP8 image header has invalid dimensions.');
   }
+  return { width, height };
+}
+
+function parseVp8lDimensions(payload) {
+  requireBytes(payload, 0, 5, 'the VP8L image header');
+  if (payload[0] !== 0x2f) {
+    throw new WebpParseError('The VP8L image header has an invalid signature byte.');
+  }
+  const packed = readUint32LE(payload, 1, 'the VP8L image dimensions');
   return {
-    width: (data[6] | (data[7] << 8)) & 0x3fff,
-    height: (data[8] | (data[9] << 8)) & 0x3fff,
+    width: (packed & 0x3fff) + 1,
+    height: ((packed >>> 14) & 0x3fff) + 1,
   };
 }
 
-function parseVp8lDimensions(data) {
-  if (data.length < 5) {
-    throw new Error('The VP8L chunk is truncated before its image header.');
-  }
-  if (data[0] !== 0x2f) {
-    throw new Error('The VP8L chunk has an invalid signature byte.');
-  }
+function parseVp8x(payload) {
+  requireBytes(payload, 0, 10, 'the VP8X image header');
+  const flags = payload[0];
   return {
-    width: ((data[1] | (data[2] << 8)) & 0x3fff) + 1,
-    height: (((data[2] >> 6) | (data[3] << 2) | (data[4] << 10)) & 0x3fff) + 1,
-  };
-}
-
-function parseVp8xDetails(data) {
-  if (data.length < 10) {
-    throw new Error('The VP8X chunk is truncated before its extended header.');
-  }
-  const flags = data[0];
-  return {
-    width: readUint24LE(data, 4) + 1,
-    height: readUint24LE(data, 7) + 1,
-    features: [
-      ['ICC profile', 5],
-      ['Alpha', 4],
-      ['Exif metadata', 3],
-      ['XMP metadata', 2],
-      ['Animation', 1],
-    ].filter(([, bit]) => (flags & (1 << bit)) !== 0).map(([name]) => name),
+    width: readUint24LE(payload, 4, 'the VP8X canvas width') + 1,
+    height: readUint24LE(payload, 7, 'the VP8X canvas height') + 1,
+    features: {
+      iccProfile: Boolean(flags & 0x20),
+      alpha: Boolean(flags & 0x10),
+      exif: Boolean(flags & 0x08),
+      xmp: Boolean(flags & 0x04),
+      animation: Boolean(flags & 0x02),
+    },
   };
 }
 
 /**
- * Parses a WebP RIFF container and its top-level chunks.
+ * Parses a WebP RIFF container without decoding image pixels.
  *
- * @param {ArrayBuffer|Uint8Array} input - Raw WebP file bytes.
- * @returns {{declaredSize: number, fileSize: number, imageType: string, width?: number,
- * height?: number, features: string[], optionalChunks: {name: string, size: number}[]}}
- * @throws {Error} When the file is not a complete, well-formed WebP RIFF container.
+ * @param {ArrayBuffer|Uint8Array} input - Complete bytes of a local WebP file.
+ * @returns {{declaredSize: number, formType: string, chunkType: string, width: number,
+ * height: number, features: object, optionalChunks: Array<{name: string, size: number}>}}
+ * @throws {WebpParseError} When the RIFF container or required image header is malformed.
  */
 export function parseWebp(input) {
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
-  if (bytes.length < 12) {
-    throw new Error('File is truncated: a WebP RIFF header needs 12 bytes.');
+  requireBytes(bytes, 0, 12, 'the RIFF container header');
+  if (readFourCc(bytes, 0, 'the RIFF magic') !== 'RIFF') {
+    throw new WebpParseError('This file is not a RIFF container (missing RIFF magic).');
   }
-  if (fourCcAt(bytes, 0) !== 'RIFF') {
-    throw new Error('Not a WebP file: the RIFF magic is missing.');
-  }
-  const declaredSize = readUint32LE(bytes, 4);
+
+  const declaredSize = readUint32LE(bytes, 4, 'the declared RIFF size');
   if (declaredSize + 8 !== bytes.length) {
-    throw new Error('RIFF declared file size does not match the selected file.');
+    throw new WebpParseError('The declared RIFF file size does not match the file length.');
   }
-  if (fourCcAt(bytes, 8) !== 'WEBP') {
-    throw new Error('Not a WebP file: the RIFF form type must be WEBP.');
+  if (bytes.length % 2 !== 0) {
+    throw new WebpParseError('The RIFF container has non-even chunk padding.');
+  }
+  const formType = readFourCc(bytes, 8, 'the RIFF form type');
+  if (formType !== 'WEBP') {
+    throw new WebpParseError('This RIFF container is not a WEBP file (missing WEBP form type).');
   }
 
   const chunks = [];
   let offset = 12;
   while (offset < bytes.length) {
-    if (bytes.length - offset < 8) {
-      throw new Error('File is truncated in a WebP chunk header.');
-    }
-    const name = fourCcAt(bytes, offset);
-    const size = readUint32LE(bytes, offset + 4);
-    const dataStart = offset + 8;
-    const dataEnd = dataStart + size;
-    if (dataEnd > bytes.length) {
-      throw new Error(`The ${name} chunk is truncated.`);
-    }
-    const paddedEnd = dataEnd + (size % 2);
-    if (paddedEnd > bytes.length) {
-      throw new Error(`The ${name} chunk is missing its required even-byte padding.`);
-    }
-    chunks.push({ name, size, data: bytes.slice(dataStart, dataEnd) });
-    offset = paddedEnd;
+    requireBytes(bytes, offset, 8, 'a chunk header');
+    const name = readFourCc(bytes, offset, 'a chunk name');
+    const size = readUint32LE(bytes, offset + 4, `${name} chunk size`);
+    const dataOffset = offset + 8;
+    requireBytes(bytes, dataOffset, size, `${name} chunk data`);
+    const paddedSize = size + (size % 2);
+    requireBytes(bytes, dataOffset, paddedSize, `${name} chunk padding`);
+    chunks.push({ name, size, payload: bytes.subarray(dataOffset, dataOffset + size) });
+    offset = dataOffset + paddedSize;
+  }
+  if (offset !== bytes.length || chunks.length === 0) {
+    throw new WebpParseError('The RIFF container has invalid chunk padding.');
   }
 
-  if (chunks.length === 0) {
-    throw new Error('The WebP file contains no image chunk.');
-  }
-  const [imageChunk] = chunks;
-  if (!IMAGE_CHUNK_NAMES.has(imageChunk.name)) {
-    throw new Error('The first WebP chunk must be VP8 , VP8L, or VP8X.');
+  const primary = chunks[0];
+  if (!PRIMARY_CHUNKS.has(primary.name)) {
+    throw new WebpParseError('The first WebP chunk must be VP8, VP8L, or VP8X.');
   }
 
-  let details = { features: [] };
-  if (imageChunk.name === 'VP8 ') details = parseVp8Dimensions(imageChunk.data);
-  if (imageChunk.name === 'VP8L') details = parseVp8lDimensions(imageChunk.data);
-  if (imageChunk.name === 'VP8X') details = parseVp8xDetails(imageChunk.data);
+  let details;
+  if (primary.name === 'VP8 ') details = { ...parseVp8Dimensions(primary.payload), features: {} };
+  if (primary.name === 'VP8L') details = { ...parseVp8lDimensions(primary.payload), features: {} };
+  if (primary.name === 'VP8X') details = parseVp8x(primary.payload);
 
   return {
     declaredSize,
-    fileSize: bytes.length,
-    imageType: imageChunk.name,
-    ...details,
-    features: details.features ?? [],
+    formType,
+    chunkType: primary.name,
+    width: details.width,
+    height: details.height,
+    features: details.features,
     optionalChunks: chunks
-      .filter((chunk) => OPTIONAL_CHUNK_NAMES.has(chunk.name))
-      .map(({ name, size }) => ({ name, size })),
+      .filter((chunk) => OPTIONAL_CHUNKS.has(chunk.name))
+      .map((chunk) => ({ name: chunk.name, size: chunk.size })),
   };
 }
 
 /**
- * Formats a byte count for presentation.
+ * Formats a byte count for a compact inspection result.
  *
  * @param {number} bytes
  * @returns {string}

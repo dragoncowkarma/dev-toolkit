@@ -2,106 +2,118 @@ import { useRef, useState } from 'react';
 import { formatBytes, parseWebp } from './webp.utils.js';
 import './webp-header-inspector.css';
 
-/**
- * Renders a local WebP RIFF container inspector.
- *
- * @returns {React.JSX.Element} The WebP inspector UI.
- */
+const FEATURE_LABELS = {
+  iccProfile: 'ICC profile',
+  alpha: 'Alpha',
+  exif: 'Exif metadata',
+  xmp: 'XMP metadata',
+  animation: 'Animation',
+};
+
+/** Renders a local WebP RIFF container inspector. */
 export default function WebpHeaderInspectorTool() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
   const [fileName, setFileName] = useState('');
+  const [isDragging, setIsDragging] = useState(false);
   const inputRef = useRef(null);
 
   async function inspectFile(file) {
     if (!file) return;
     try {
-      const parsed = parseWebp(await readFileBytes(file));
-      setResult(parsed);
+      const bytes = await file.arrayBuffer();
+      setResult(parseWebp(bytes));
       setFileName(file.name);
       setError('');
     } catch (caughtError) {
       setResult(null);
       setFileName(file.name);
-      setError(caughtError.message);
+      setError(caughtError instanceof Error ? caughtError.message : 'Unable to read this file.');
     }
+  }
+
+  function handleFileChange(event) {
+    inspectFile(event.target.files?.[0]);
   }
 
   function handleDrop(event) {
     event.preventDefault();
+    setIsDragging(false);
     inspectFile(event.dataTransfer.files?.[0]);
   }
 
-  function handleClear() {
-    setResult(null);
-    setError('');
-    setFileName('');
-    if (inputRef.current) inputRef.current.value = '';
-  }
+  const enabledFeatures = result
+    ? Object.entries(result.features)
+      .filter(([, enabled]) => enabled)
+      .map(([name]) => FEATURE_LABELS[name])
+    : [];
 
   return (
-    <section className="webp-inspector" aria-label="WebP Header Inspector">
-      <div
-        className="webp-inspector__dropzone"
+    <section className="webp-header-inspector" aria-label="WebP Header Inspector">
+      <input
+        ref={inputRef}
+        className="webp-header-inspector__input"
+        type="file"
+        accept="image/webp,.webp"
+        aria-label="Select a WebP file"
+        onChange={handleFileChange}
+      />
+      <button
+        type="button"
+        className={`webp-header-inspector__dropzone ${
+          isDragging ? 'webp-header-inspector__dropzone--active' : ''
+        }`}
+        onClick={() => inputRef.current?.click()}
+        onDragEnter={(event) => {
+          event.preventDefault();
+          setIsDragging(true);
+        }}
         onDragOver={(event) => event.preventDefault()}
+        onDragLeave={() => setIsDragging(false)}
         onDrop={handleDrop}
       >
-        <p>Drop a .webp file here, or choose one to inspect locally.</p>
-        <label className="webp-inspector__button">
-          Choose WebP file
-          <input
-            ref={inputRef}
-            type="file"
-            accept="image/webp,.webp"
-            onChange={(event) => inspectFile(event.target.files?.[0])}
-            aria-label="Choose a WebP file"
-          />
-        </label>
-      </div>
+        <span className="webp-header-inspector__dropzone-title">Choose a WebP file</span>
+        <span>or drag and drop it here. Files are parsed only in your browser.</span>
+      </button>
 
-      {fileName && <p className="webp-inspector__filename">File: {fileName}</p>}
-      {error && <div className="webp-inspector__alert" role="alert">⚠ {error}</div>}
+      {fileName && (
+        <p className="webp-header-inspector__file-name">Inspecting: {fileName}</p>
+      )}
+      {error && <div className="webp-header-inspector__error" role="alert">⚠ {error}</div>}
 
       {result && (
-        <div className="webp-inspector__results">
-          <div className="webp-inspector__heading">
-            <h3>RIFF / WEBP container</h3>
-            <button type="button" className="webp-inspector__clear" onClick={handleClear}>Clear</button>
-          </div>
-          <dl className="webp-inspector__details">
-            <dt>Declared file size</dt><dd>{formatBytes(result.declaredSize)}</dd>
-            <dt>Actual file size</dt><dd>{formatBytes(result.fileSize)}</dd>
-            <dt>Image chunk</dt><dd><code>{result.imageType}</code></dd>
-            <dt>Dimensions</dt><dd>{result.width} × {result.height} px</dd>
-            {result.imageType === 'VP8X' && (
-              <><dt>VP8X features</dt><dd>{result.features.join(', ') || 'None'}</dd></>
-            )}
+        <div className="webp-header-inspector__results" aria-live="polite">
+          <dl className="webp-header-inspector__details">
+            <div><dt>Container</dt><dd>RIFF / {result.formType}</dd></div>
+            <div>
+              <dt>Declared file size</dt>
+              <dd>{formatBytes(result.declaredSize)}</dd>
+            </div>
+            <div><dt>Image chunk</dt><dd>{result.chunkType}</dd></div>
+            <div><dt>Dimensions</dt><dd>{result.width} × {result.height}</dd></div>
           </dl>
-          <h4>Optional extended chunks</h4>
-          {result.optionalChunks.length === 0 ? <p>None found.</p> : (
-            <ul className="webp-inspector__chunks">
-              {result.optionalChunks.map((chunk, index) => (
-                <li key={`${chunk.name}-${index}`}><code>{chunk.name}</code> — {formatBytes(chunk.size)}</li>
-              ))}
-            </ul>
+
+          {result.chunkType === 'VP8X' && (
+            <section className="webp-header-inspector__section" aria-labelledby="webp-features">
+              <h3 id="webp-features">VP8X features</h3>
+              <p>
+                {enabledFeatures.length ? enabledFeatures.join(', ') : 'No optional features flagged.'}
+              </p>
+            </section>
           )}
+
+          <section className="webp-header-inspector__section" aria-labelledby="webp-chunks">
+            <h3 id="webp-chunks">Optional extended chunks</h3>
+            {result.optionalChunks.length ? (
+              <ul>
+                {result.optionalChunks.map((chunk, index) => (
+                  <li key={`${chunk.name}-${index}`}>{chunk.name}: {formatBytes(chunk.size)}</li>
+                ))}
+              </ul>
+            ) : <p>None found.</p>}
+          </section>
         </div>
       )}
     </section>
   );
-}
-
-/**
- * Reads a browser File as raw bytes without transmitting it anywhere.
- *
- * @param {File} file
- * @returns {Promise<ArrayBuffer>}
- */
-function readFileBytes(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(/** @type {ArrayBuffer} */ (reader.result));
-    reader.onerror = () => reject(new Error('Failed to read the selected file.'));
-    reader.readAsArrayBuffer(file);
-  });
 }
