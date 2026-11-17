@@ -5,14 +5,14 @@
  */
 export function parseAttributeList(value) {
   const attributes = {};
-  const parts = value.match(/(?:[^,\"]|\"[^\"]*\")+/g) ?? [];
+  const parts = value.match(/(?:[^,"]|"[^"]*")+/g) ?? [];
 
   parts.forEach((part) => {
     const separator = part.indexOf('=');
     if (separator === -1) return;
     const name = part.slice(0, separator).trim().toUpperCase();
     const rawValue = part.slice(separator + 1).trim();
-    attributes[name] = rawValue.replace(/^\"|\"$/g, '');
+    attributes[name] = rawValue.replace(/^"|"$/g, '');
   });
 
   return attributes;
