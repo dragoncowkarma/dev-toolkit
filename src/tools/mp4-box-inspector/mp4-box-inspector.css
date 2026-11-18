@@ -1,0 +1,111 @@
+.mp4-box-inspector {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+}
+
+.mp4-box-inspector__toolbar,
+.mp4-box-inspector__results {
+  display: flex;
+  gap: 1rem;
+}
+
+.mp4-box-inspector__toolbar {
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.mp4-box-inspector__upload,
+.mp4-box-inspector button {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  padding: 0.6rem 1rem;
+}
+
+.mp4-box-inspector__upload:hover,
+.mp4-box-inspector button:hover {
+  border-color: var(--color-primary);
+}
+
+.mp4-box-inspector__upload input {
+  display: block;
+  margin-top: 0.4rem;
+  max-width: 100%;
+}
+
+.mp4-box-inspector__error {
+  margin-top: 1rem;
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+  padding: 0.75rem 1rem;
+}
+
+.mp4-box-inspector__results {
+  flex-direction: column;
+  margin-top: 1rem;
+}
+
+.mp4-box-inspector__boxes,
+.mp4-box-inspector__summary {
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  padding: 1rem;
+}
+
+.mp4-box-inspector h2 {
+  font-size: 1rem;
+}
+
+.mp4-box-inspector h3 {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  margin-top: 1rem;
+}
+
+.mp4-box-inspector__boxes > p,
+.mp4-box-inspector__summary p {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+.mp4-box-inspector__tree {
+  list-style: none;
+  margin-top: 0.75rem;
+}
+
+.mp4-box-inspector__tree .mp4-box-inspector__tree {
+  margin-left: 0.75rem;
+}
+
+.mp4-box-inspector__box {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  border-left: 2px solid var(--color-primary);
+  color: var(--color-text-muted);
+  padding: 0.35rem 0 0.35rem 0.6rem;
+}
+
+.mp4-box-inspector code {
+  color: var(--color-accent);
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+}
+
+@media (min-width: 768px) {
+  .mp4-box-inspector {
+    padding: 0 2rem 3rem;
+  }
+
+  .mp4-box-inspector__results {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(260px, 2fr);
+  }
+}
