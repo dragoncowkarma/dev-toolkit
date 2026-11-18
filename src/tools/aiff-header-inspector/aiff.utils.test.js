@@ -56,7 +56,7 @@ describe('parseAiffHeader', () => {
 
   it('rejects malformed or truncated containers and chunks with readable errors', () => {
     expect(() => parseAiffHeader(new Uint8Array([1, 2, 3]))).toThrow(/too short/i);
-    expect(() => parseAiffHeader(form('AIFF', [[...fourCC('COMM'), ...uint32(99), 0]])).toThrow(
+    expect(() => parseAiffHeader(form('AIFF', [[...fourCC('COMM'), ...uint32(99), 0]]))).toThrow(
       /exceeds the remaining/i
     );
   });
