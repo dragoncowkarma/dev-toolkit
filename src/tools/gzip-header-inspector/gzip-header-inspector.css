@@ -1,0 +1,74 @@
+.gzip-inspector {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  display: grid;
+  gap: 1rem;
+}
+.gzip-file-input {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  opacity: 0;
+}
+.gzip-drop-zone {
+  padding: 2rem;
+  text-align: center;
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+.gzip-drop-zone:hover,
+.gzip-drop-zone:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  color: var(--color-text);
+}
+.gzip-member {
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+.gzip-member h3,
+.gzip-member h4 {
+  margin: 0 0 0.75rem;
+  color: var(--color-text);
+}
+.gzip-member h4 {
+  margin-top: 1rem;
+  font-size: 0.9rem;
+}
+.gzip-member dl {
+  margin: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+.gzip-member dl > div {
+  display: grid;
+  grid-template-columns: minmax(10rem, 0.7fr) 1.3fr;
+  gap: 0.75rem;
+}
+.gzip-member dt {
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+.gzip-member dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.gzip-error {
+  padding: 0.75rem 1rem;
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  color: var(--color-error-light);
+}
+@media (max-width: 500px) {
+  .gzip-member dl > div {
+    grid-template-columns: 1fr;
+    gap: 0.15rem;
+  }
+}
