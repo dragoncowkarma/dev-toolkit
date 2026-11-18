@@ -1,0 +1,125 @@
+.jws-inspector {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+}
+
+.jws-inspector__heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.jws-inspector__heading h2,
+.jws-inspector__results h3 {
+  margin: 0;
+}
+
+.jws-inspector__heading p {
+  color: var(--color-text-muted);
+  margin: 0.5rem 0 0;
+}
+
+.jws-inspector__label {
+  display: block;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.5rem;
+  text-transform: uppercase;
+}
+
+.jws-inspector__input,
+.jws-inspector__code,
+.jws-inspector__definition-list dd {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+}
+
+.jws-inspector__input {
+  box-sizing: border-box;
+  min-height: 9rem;
+  padding: 1rem;
+  resize: vertical;
+  transition: border-color var(--transition);
+  width: 100%;
+}
+
+.jws-inspector__input:focus {
+  border-color: var(--color-primary);
+  outline: none;
+}
+
+.jws-inspector__button {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.85rem;
+  padding: 0.5rem 1rem;
+}
+
+.jws-inspector__button:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.jws-inspector__error {
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  color: var(--color-error-light);
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+}
+
+.jws-inspector__results {
+  display: grid;
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+.jws-inspector__definition-list {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0.75rem 0 0;
+}
+
+.jws-inspector__definition-list dt {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.jws-inspector__definition-list dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  padding: 0.75rem;
+}
+
+.jws-inspector__field {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.jws-inspector__code {
+  margin: 0.75rem 0 0;
+  overflow-x: auto;
+  padding: 1rem;
+  white-space: pre-wrap;
+}
+
+@media (min-width: 768px) {
+  .jws-inspector {
+    padding: 0 2rem 3rem;
+  }
+}
