@@ -91,6 +91,16 @@ describe("parseGzipMembers", () => {
       ),
     ).toThrow(/FNAME/);
     expect(() =>
+      parseGzipMembers(
+        new Uint8Array([0x1f, 0x8b, 8, 16, 0, 0, 0, 0, 0, 3, 65]),
+      ),
+    ).toThrow(/FCOMMENT/);
+    expect(() =>
+      parseGzipMembers(
+        new Uint8Array([0x1f, 0x8b, 8, 2, 0, 0, 0, 0, 0, 3, 3]),
+      ),
+    ).toThrow(/FHCRC/);
+    expect(() =>
       parseGzipMembers(member({ payload: [3, 0] }).slice(0, -2)),
     ).toThrow(/trailer/);
   });
