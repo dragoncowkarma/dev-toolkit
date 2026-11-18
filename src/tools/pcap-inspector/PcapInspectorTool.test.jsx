@@ -34,6 +34,26 @@ function makeDecodedPcap() {
   return buffer;
 }
 
+function makeDecodedIpv6Pcap() {
+  const payload = new Uint8Array(58);
+  payload.set([0, 17, 34, 51, 68, 85, 102, 119, 136, 153, 170, 187, 134, 221]);
+  payload.set([0x60, 0, 0, 0, 0, 4, 6, 64], 14);
+  payload.set([32, 1, 13, 184, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1], 22);
+  payload.set([32, 1, 13, 184, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2], 38);
+  payload.set([1, 187, 31, 144], 54);
+  const buffer = new ArrayBuffer(40 + payload.length);
+  const view = new DataView(buffer);
+  view.setUint32(0, 0xd4c3b2a1, false);
+  view.setUint16(4, 2, true);
+  view.setUint16(6, 4, true);
+  view.setUint32(16, 65535, true);
+  view.setUint32(20, 1, true);
+  view.setUint32(32, payload.length, true);
+  view.setUint32(36, payload.length, true);
+  new Uint8Array(buffer, 40).set(payload);
+  return buffer;
+}
+
 function makePcapng() {
   const buffer = new ArrayBuffer(48);
   const view = new DataView(buffer);
@@ -90,6 +110,17 @@ describe('PcapInspectorTool', () => {
     expect(screen.getByText('00:11:22:33:44:55')).toBeInTheDocument();
     expect(screen.getByText('192.0.2.1')).toBeInTheDocument();
     expect(screen.getByText('TCP')).toBeInTheDocument();
+  });
+
+  it('renders decoded IPv6 packet fields in the existing packet columns', async () => {
+    render(<PcapInspectorTool />);
+    selectFile({ name: 'ipv6.pcap', size: 98, arrayBuffer: async () => makeDecodedIpv6Pcap() });
+
+    expect(await screen.findByText('2001:db8::1')).toBeInTheDocument();
+    expect(screen.getByText('2001:db8::2')).toBeInTheDocument();
+    expect(screen.getByText('TCP')).toBeInTheDocument();
+    expect(screen.getByText('443')).toBeInTheDocument();
+    expect(screen.getByText('8080')).toBeInTheDocument();
   });
 
   it('shows the detected PCAPNG format and its interface list', async () => {

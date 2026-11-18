@@ -49,11 +49,42 @@ function formatIpv4Address(view, offset) {
   return Array.from({ length: 4 }, (_, index) => view.getUint8(offset + index)).join('.');
 }
 
+function formatIpv6Address(view, offset) {
+  const groups = Array.from(
+    { length: 8 },
+    (_, index) => view.getUint16(offset + index * 2, false).toString(16),
+  );
+  let longestZeroRunStart = -1;
+  let longestZeroRunLength = 0;
+  let zeroRunStart = -1;
+
+  for (let index = 0; index <= groups.length; index += 1) {
+    if (index < groups.length && groups[index] === '0') {
+      if (zeroRunStart === -1) zeroRunStart = index;
+      continue;
+    }
+    if (zeroRunStart !== -1) {
+      const zeroRunLength = index - zeroRunStart;
+      if (zeroRunLength > longestZeroRunLength) {
+        longestZeroRunStart = zeroRunStart;
+        longestZeroRunLength = zeroRunLength;
+      }
+      zeroRunStart = -1;
+    }
+  }
+
+  if (longestZeroRunLength < 2) return groups.join(':');
+  const before = groups.slice(0, longestZeroRunStart).join(':');
+  const after = groups.slice(longestZeroRunStart + longestZeroRunLength).join(':');
+  return `${before}::${after}`;
+}
+
 function getProtocolName(protocol) {
   return new Map([
     [1, 'ICMP'],
     [6, 'TCP'],
     [17, 'UDP'],
+    [58, 'ICMPv6'],
   ]).get(protocol);
 }
 
@@ -61,6 +92,35 @@ function decodeEthernetPacket(view, payloadOffset, capturedLength) {
   try {
     requirePacketBytes(view, payloadOffset, capturedLength, 0, 14, 'Ethernet header');
     const etherType = view.getUint16(payloadOffset + 12, false);
+    if (etherType === 0x86dd) {
+      const ipOffset = 14;
+      requirePacketBytes(view, payloadOffset, capturedLength, ipOffset, 40, 'IPv6 header');
+      const version = view.getUint8(payloadOffset + ipOffset) >> 4;
+      if (version !== 6) return {};
+
+      const protocol = view.getUint8(payloadOffset + ipOffset + 6);
+      const payloadLength = view.getUint16(payloadOffset + ipOffset + 4, false);
+      const decodedPacket = {
+        destMac: formatMacAddress(view, payloadOffset),
+        sourceMac: formatMacAddress(view, payloadOffset + 6),
+        etherType,
+        sourceIp: formatIpv6Address(view, payloadOffset + ipOffset + 8),
+        destIp: formatIpv6Address(view, payloadOffset + ipOffset + 24),
+        protocol,
+        protocolName: getProtocolName(protocol),
+        payloadLength,
+      };
+
+      if (protocol === 6 || protocol === 17) {
+        const transportOffset = ipOffset + 40;
+        requirePacketBytes(
+          view, payloadOffset, capturedLength, transportOffset, 4, 'transport header',
+        );
+        decodedPacket.sourcePort = view.getUint16(payloadOffset + transportOffset, false);
+        decodedPacket.destPort = view.getUint16(payloadOffset + transportOffset + 2, false);
+      }
+      return decodedPacket;
+    }
     if (etherType !== 0x0800) return {};
 
     const ipOffset = 14;
