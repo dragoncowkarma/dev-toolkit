@@ -98,7 +98,8 @@ export function describeIcnsType(type) {
  * The parser returns errors and warnings rather than throwing for malformed data.
  *
  * @param {ArrayBuffer} buffer - Raw bytes from an ICNS file.
- * @returns {{entries: Array, warnings: string[], error: string | null, declaredLength: number | null}}
+ * @returns {{entries: Array, warnings: string[], error: string | null,
+ *   declaredLength: number | null}}
  */
 export function parseIcns(buffer) {
   const view = new DataView(buffer);
@@ -125,7 +126,8 @@ export function parseIcns(buffer) {
 
   if (declaredLength !== view.byteLength) {
     warnings.push(
-      `Header declares ${declaredLength} bytes, but the selected file contains ${view.byteLength} bytes.`
+      `Header declares ${declaredLength} bytes, but the selected file contains ` +
+        `${view.byteLength} bytes.`
     );
   }
 
@@ -151,7 +153,8 @@ export function parseIcns(buffer) {
     }
 
     if (length > remaining) {
-      entry.warning = `Entry length ${length} exceeds the ${remaining} bytes remaining in the container.`;
+      entry.warning =
+        `Entry length ${length} exceeds the ${remaining} bytes remaining in the container.`;
       warnings.push(`${type} at byte ${offset}: ${entry.warning}`);
       break;
     }

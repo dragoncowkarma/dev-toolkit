@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { describeIcnsType, parseIcns } from './icns.utils.js';
 
 function icnsBuffer(entries, declaredLength) {
-  const totalLength = declaredLength ?? 8 + entries.reduce((total, entry) => total + entry.length, 0);
+  const contentLength = entries.reduce((total, entry) => total + entry.length, 0);
+  const totalLength = declaredLength ?? 8 + contentLength;
   const bytes = new Uint8Array(totalLength);
   const view = new DataView(bytes.buffer);
   for (const [index, character] of [...'icns'].entries()) bytes[index] = character.charCodeAt(0);
@@ -37,7 +38,9 @@ describe('parseIcns', () => {
 
     expect(parsed.error).toBeNull();
     expect(parsed.entries).toHaveLength(3);
-    expect(parsed.entries[0]).toMatchObject({ type: 'ic07', dimensions: '128 × 128', format: 'PNG' });
+    expect(parsed.entries[0]).toMatchObject({
+      type: 'ic07', dimensions: '128 × 128', format: 'PNG',
+    });
     expect(parsed.entries[1]).toMatchObject({ label: 'Table of contents', isImage: false });
     expect(parsed.entries[2]).toMatchObject({ label: 'Version information', isImage: false });
   });
