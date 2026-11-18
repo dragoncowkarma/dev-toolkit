@@ -33,6 +33,7 @@ const CODE128_PATTERNS = [
 const CODE128_BY_PATTERN = Object.fromEntries(
   CODE128_PATTERNS.map((pattern, value) => [pattern, value]),
 );
+const SKEW_ANGLES = [-5, -4, -3, -2, -1, 1, 2, 3, 4, 5];
 
 /**
  * Validates an EAN-13 or UPC-A check digit.
@@ -147,15 +148,19 @@ function rowRuns(data, width, y) {
   return trimmed.match(/1+|0+/g)?.map((run) => run.length) ?? null;
 }
 
-function decodeHorizontalScanLines(imageData) {
+function decodeHorizontalScanLines(imageData, tolerateUnevenRuns = false) {
   const rows = new Set([Math.floor(imageData.height / 2)]);
   for (let ratio = 0.2; ratio <= 0.8; ratio += 0.1) rows.add(Math.floor(imageData.height * ratio));
   for (const y of rows) {
     const runs = rowRuns(imageData.data, imageData.width, y);
     if (!runs?.length) continue;
     const narrow = Math.min(...runs);
-    for (let scale = 1; scale <= 4; scale += 1) {
-      const unit = narrow / scale;
+    const units = new Set([1, 2, 3, 4].map((scale) => narrow / scale));
+    if (tolerateUnevenRuns) {
+      const shortestRuns = [...new Set(runs)].sort((left, right) => left - right).slice(0, 4);
+      shortestRuns.forEach((run) => units.add(run));
+    }
+    for (const unit of units) {
       const normalized = runs.map((run) => Math.round(run / unit));
       if (normalized.some((run) => run < 1 || run > 4)) continue;
       const modules = normalized
@@ -192,6 +197,44 @@ function reverseImageDataRows({ data, width, height }) {
   return { data: reversedData, width, height };
 }
 
+function rotateImageData({ data, width, height }, angleDegrees) {
+  const angle = (angleDegrees * Math.PI) / 180;
+  const cosine = Math.cos(angle);
+  const sine = Math.sin(angle);
+  const centerX = (width - 1) / 2;
+  const centerY = (height - 1) / 2;
+  const rotatedData = new Uint8ClampedArray(data.length).fill(255);
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const relativeX = x - centerX;
+      const relativeY = y - centerY;
+      const sourceX = Math.round(centerX + relativeX * cosine + relativeY * sine);
+      const sourceY = Math.round(centerY - relativeX * sine + relativeY * cosine);
+      if (sourceX < 0 || sourceX >= width || sourceY < 0 || sourceY >= height) continue;
+      const sourceOffset = (sourceY * width + sourceX) * 4;
+      const targetOffset = (y * width + x) * 4;
+      rotatedData.set(data.subarray(sourceOffset, sourceOffset + 4), targetOffset);
+    }
+  }
+  return { data: rotatedData, width, height };
+}
+
+function decodeAxisAlignedScanLines(imageData, tolerateUnevenRuns = false) {
+  const transposed = transposeImageData(imageData);
+  const scanVariants = [
+    imageData,
+    transposed,
+    reverseImageDataRows(imageData),
+    reverseImageDataRows(transposed),
+  ];
+  for (const scanVariant of scanVariants) {
+    const decoded = decodeHorizontalScanLines(scanVariant, tolerateUnevenRuns);
+    if (decoded) return decoded;
+  }
+  return null;
+}
+
 /**
  * Decodes an ImageData-like raster by sampling horizontal scan lines.
  * @param {{data: Uint8ClampedArray, width: number, height: number}} imageData
@@ -205,16 +248,16 @@ export function decodeBarcodeFromImageData(imageData) {
     imageData.width < 20 ||
     imageData.height < 1
   ) return null;
-  const transposedImage = transposeImageData(imageData);
-  const orientations = [
-    imageData,
-    transposedImage,
-    reverseImageDataRows(imageData),
-    reverseImageDataRows(transposedImage),
-  ];
-  for (const orientation of orientations) {
-    const decoded = decodeHorizontalScanLines(orientation);
-    if (decoded) return decoded;
+  const axisAlignedResult = decodeAxisAlignedScanLines(imageData);
+  if (axisAlignedResult) return axisAlignedResult;
+
+  // Keep this fixed list small: a failed image performs at most 40 extra scan variants.
+  for (const angle of SKEW_ANGLES) {
+    const skewCorrectedResult = decodeAxisAlignedScanLines(
+      rotateImageData(imageData, angle),
+      true,
+    );
+    if (skewCorrectedResult) return skewCorrectedResult;
   }
   return null;
 }
