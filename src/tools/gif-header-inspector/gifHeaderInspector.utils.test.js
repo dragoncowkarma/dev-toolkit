@@ -57,6 +57,47 @@ describe('parseGif', () => {
     });
   });
 
+  it('parses an Image Descriptor with a Local Color Table and Image Data', () => {
+    const result = parseGif(gifBytes('GIF89a', [
+      1, 0, 1, 0, 0, 0, 0,
+      0x2c, 2, 0, 3, 0, 4, 0, 5, 0, 0x80,
+      0, 0, 0, 255, 0, 0,
+      2, 3, 0x4c, 0x01, 0, 0,
+      0x3b,
+    ]));
+
+    expect(result.blocks[0]).toMatchObject({
+      type: 'Image Descriptor',
+      details: { left: 2, top: 3, width: 4, height: 5, interlaced: false },
+      localColorTable: {
+        size: 2,
+        colors: [{ hex: '#000000' }, { hex: '#FF0000' }],
+      },
+      imageData: { lzwMinimumCodeSize: 2, byteLength: 3 },
+    });
+    expect(result.hasTrailer).toBe(true);
+  });
+
+  it('parses an Application Extension and its NETSCAPE2.0 identifier', () => {
+    const result = parseGif(gifBytes('GIF89a', [
+      1, 0, 1, 0, 0, 0, 0,
+      0x21, 0xff, 11,
+      ...'NETSCAPE2.0'.split('').map((character) => character.charCodeAt(0)),
+      3, 1, 0, 0, 0,
+      0x3b,
+    ]));
+
+    expect(result.blocks[0]).toMatchObject({
+      type: 'Application Extension',
+      details: {
+        label: '0xFF',
+        applicationIdentifier: 'NETSCAPE2.0',
+        dataLength: 3,
+      },
+    });
+    expect(result.hasTrailer).toBe(true);
+  });
+
   it.each([
     ['a truncated descriptor', gifBytes('GIF89a', [1, 0])],
     [

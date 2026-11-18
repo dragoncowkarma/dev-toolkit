@@ -29,7 +29,7 @@ function RawBytes({ bytes }) {
  *
  * @returns {React.JSX.Element} The GIF inspector UI.
  */
-export default function GifHeaderInspector() {
+export default function GifHeaderInspectorTool() {
   const [inspection, setInspection] = useState(null);
   const [fileName, setFileName] = useState('');
   const [readError, setReadError] = useState('');
