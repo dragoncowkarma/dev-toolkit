@@ -37,6 +37,21 @@ function makeEthernetIpv4Packet({ protocol, ports = [], etherType = 0x0800 } = {
   return Array.from(payload);
 }
 
+function makeEthernetIpv6Packet({ protocol, ports = [] } = {}) {
+  const payload = new Uint8Array(14 + 40 + ports.length);
+  payload.set([0, 17, 34, 51, 68, 85, 102, 119, 136, 153, 170, 187], 0);
+  const view = new DataView(payload.buffer);
+  view.setUint16(12, 0x86dd, false);
+  payload.set([0x60, 0, 0, 0], 14);
+  view.setUint16(18, ports.length, false);
+  payload[20] = protocol;
+  payload[21] = 64;
+  payload.set([32, 1, 13, 184, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1], 22);
+  payload.set([32, 1, 13, 184, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2], 38);
+  payload.set(ports, 54);
+  return Array.from(payload);
+}
+
 function joinBuffers(buffers) {
   const byteLength = buffers.reduce((total, buffer) => total + buffer.byteLength, 0);
   const result = new Uint8Array(byteLength);
@@ -135,9 +150,9 @@ describe('parsePcap', () => {
     });
   });
 
-  it('leaves non-IPv4 Ethernet packets undecoded', () => {
+  it('leaves unsupported Ethernet packets undecoded', () => {
     const result = parsePcap(makePcap({
-      payload: makeEthernetIpv4Packet({ etherType: 0x86dd }),
+      payload: makeEthernetIpv4Packet({ etherType: 0x0806 }),
     }));
     expect(result.packets[0]).not.toHaveProperty('etherType');
     expect(result.packets[0]).not.toHaveProperty('sourceIp');
@@ -145,6 +160,33 @@ describe('parsePcap', () => {
 
   it('leaves a truncated inner header undecoded while parsing the file', () => {
     const truncatedPayload = makeEthernetIpv4Packet({ protocol: 6 }).slice(0, 20);
+    const result = parsePcap(makePcap({ payload: truncatedPayload }));
+    expect(result.packets).toHaveLength(1);
+    expect(result.packets[0]).not.toHaveProperty('sourceMac');
+    expect(result.packets[0]).not.toHaveProperty('sourceIp');
+  });
+
+  it('decodes Ethernet, IPv6, and TCP headers', () => {
+    const result = parsePcap(makePcap({
+      payload: makeEthernetIpv6Packet({ protocol: 6, ports: [1, 187, 31, 144] }),
+    }));
+    expect(result.packets[0]).toMatchObject({
+      destMac: '00:11:22:33:44:55', sourceMac: '66:77:88:99:aa:bb', etherType: 0x86dd,
+      sourceIp: '2001:db8::1', destIp: '2001:db8::2', protocol: 6, protocolName: 'TCP',
+      payloadLength: 4, sourcePort: 443, destPort: 8080,
+    });
+  });
+
+  it('labels IPv6 ICMP packets without attempting to decode ports', () => {
+    const result = parsePcap(makePcap({
+      payload: makeEthernetIpv6Packet({ protocol: 58 }),
+    }));
+    expect(result.packets[0]).toMatchObject({ protocol: 58, protocolName: 'ICMPv6' });
+    expect(result.packets[0]).not.toHaveProperty('sourcePort');
+  });
+
+  it('leaves truncated IPv6 headers undecoded while parsing the file', () => {
+    const truncatedPayload = makeEthernetIpv6Packet({ protocol: 6 }).slice(0, 30);
     const result = parsePcap(makePcap({ payload: truncatedPayload }));
     expect(result.packets).toHaveLength(1);
     expect(result.packets[0]).not.toHaveProperty('sourceMac');
@@ -164,6 +206,16 @@ describe('parsePcap', () => {
       interfaceId: 0, timestampSeconds: 1700000000, timestampFraction: 123456,
       sourceIp: '192.0.2.1', destIp: '198.51.100.2', protocolName: 'TCP',
       sourcePort: 443, destPort: 8080,
+    });
+  });
+
+  it('parses PCAPNG packets and decodes Ethernet, IPv6, and UDP headers', () => {
+    const result = parsePcap(makePcapng({
+      payload: makeEthernetIpv6Packet({ protocol: 17, ports: [0, 53, 207, 8] }),
+    }));
+    expect(result.packets[0]).toMatchObject({
+      sourceIp: '2001:db8::1', destIp: '2001:db8::2', protocolName: 'UDP',
+      payloadLength: 4, sourcePort: 53, destPort: 53000,
     });
   });
 

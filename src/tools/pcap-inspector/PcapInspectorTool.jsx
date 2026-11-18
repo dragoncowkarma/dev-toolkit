@@ -137,7 +137,7 @@ export default function PcapInspectorTool() {
                       <span>{packet.sourceIp ?? '—'}</span>
                       <span>{packet.destIp ?? '—'}</span>
                       <span>{packet.protocolName ?? packet.protocol ?? '—'}</span>
-                      <span>{packet.totalLength ?? '—'}</span>
+                      <span>{packet.totalLength ?? packet.payloadLength ?? '—'}</span>
                       <span>{packet.sourcePort ?? '—'}</span>
                       <span>{packet.destPort ?? '—'}</span>
                     </>}
