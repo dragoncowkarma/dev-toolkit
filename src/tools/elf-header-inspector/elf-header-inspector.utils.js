@@ -197,7 +197,7 @@ function parseSectionHeaders(bytes, header, read) {
  *   sectionHeaders: object[]}}
  * @throws {Error} If the supplied file is malformed or incomplete.
  */
-export function parseElf(input) {
+function parseElfStrict(input) {
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
   requireRange(bytes, 0, 16, 'ELF identification');
   if (!ELF_MAGIC.every((byte, index) => bytes[index] === byte)) {
@@ -243,4 +243,24 @@ export function parseElf(input) {
     machine: namedValue(MACHINE_NAMES, header.machine), flags: formatHex(header.flags) },
   programHeaders: parseProgramHeaders(bytes, header, read),
   sectionHeaders: parseSectionHeaders(bytes, header, read) };
+}
+
+/**
+ * Parses a local ELF file and reports malformed input as warnings.
+ * @param {ArrayBuffer|Uint8Array} input
+ * @returns {{identification: object|null, header: object|null, programHeaders: object[],
+ *   sectionHeaders: object[], warnings: string[]}}
+ */
+export function parseElf(input) {
+  try {
+    return { ...parseElfStrict(input), warnings: [] };
+  } catch (error) {
+    return {
+      identification: null,
+      header: null,
+      programHeaders: [],
+      sectionHeaders: [],
+      warnings: [error instanceof Error ? error.message : 'Unable to parse ELF data.'],
+    };
+  }
 }

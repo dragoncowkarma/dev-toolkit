@@ -77,18 +77,18 @@ describe('parseElf', () => {
     expect(result.sectionHeaders[2].name).toBe('.text');
   });
 
-  it('reports a path-qualified error for truncated input', () => {
-    expect(() => parseElf(new Uint8Array([0x7f, 0x45]))).toThrow(/^ELF identification:/);
+  it('reports a path-qualified warning for truncated input', () => {
+    expect(parseElf(new Uint8Array([0x7f, 0x45])).warnings[0]).toMatch(/^ELF identification:/);
   });
 
-  it('reports a path-qualified error for invalid magic', () => {
+  it('reports a path-qualified warning for invalid magic', () => {
     const bytes = new Uint8Array(16);
-    expect(() => parseElf(bytes)).toThrow(/^ELF identification\.magic:/);
+    expect(parseElf(bytes).warnings[0]).toMatch(/^ELF identification\.magic:/);
   });
 
-  it('reports an out-of-range section name table', () => {
+  it('reports an out-of-range section name table as a warning', () => {
     const bytes = makeElf({ is64: true, littleEndian: true });
     new DataView(bytes.buffer).setUint16(62, 5, true);
-    expect(() => parseElf(bytes)).toThrow(/^ELF header\.e_shstrndx:/);
+    expect(parseElf(bytes).warnings[0]).toMatch(/^ELF header\.e_shstrndx:/);
   });
 });

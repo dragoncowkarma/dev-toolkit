@@ -136,7 +136,10 @@ export default function ElfHeaderInspectorTool() {
         Inspect pasted bytes
       </button>
       {error && <div className="elf-error" role="alert">⚠ {error}</div>}
-      {result && (
+      {result?.warnings.map((warning) => (
+        <div className="elf-error" role="alert" key={warning}>⚠ {warning}</div>
+      ))}
+      {result?.identification && result.header && (
         <div className="elf-results">
           <FieldTable title="ELF identification" values={result.identification} />
           <FieldTable title="ELF header" values={result.header} />
