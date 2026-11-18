@@ -1,0 +1,103 @@
+.aba-routing-validator {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+}
+
+.aba-routing-validator__card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1.25rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.aba-routing-validator__label {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.aba-routing-validator__help {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+.aba-routing-validator__controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.aba-routing-validator__input,
+.aba-routing-validator__copy-button {
+  min-height: 2.75rem;
+  border-radius: var(--radius);
+  font: inherit;
+}
+
+.aba-routing-validator__input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  letter-spacing: 0.08em;
+}
+
+.aba-routing-validator__input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.aba-routing-validator__copy-button {
+  padding: 0.75rem 1rem;
+  background: var(--color-primary);
+  border: 1px solid var(--color-primary);
+  color: #fff;
+  cursor: pointer;
+  transition: background var(--transition);
+}
+
+.aba-routing-validator__copy-button:hover:not(:disabled) {
+  background: var(--color-primary-light);
+}
+
+.aba-routing-validator__copy-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.aba-routing-validator__error,
+.aba-routing-validator__success {
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+}
+
+.aba-routing-validator__error {
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  color: var(--color-error-light);
+}
+
+.aba-routing-validator__success {
+  background: color-mix(in srgb, var(--color-success) 12%, transparent);
+  border: 1px solid var(--color-success);
+  color: var(--color-success);
+}
+
+@media (min-width: 640px) {
+  .aba-routing-validator {
+    padding: 0 2rem 3rem;
+  }
+
+  .aba-routing-validator__controls {
+    flex-direction: row;
+  }
+
+  .aba-routing-validator__copy-button {
+    flex: 0 0 auto;
+  }
+}
