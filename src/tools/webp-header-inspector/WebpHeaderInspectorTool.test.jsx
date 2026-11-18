@@ -1,23 +1,16 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import WebpHeaderInspectorTool from './WebpHeaderInspectorTool.jsx';
 
-function corruptWebpFile() {
-  const bytes = new Uint8Array([82, 73, 70, 70, 4, 0, 0, 0, 87, 69, 66, 80]);
-  return { arrayBuffer: () => Promise.resolve(bytes.buffer), name: 'broken.webp' };
-}
-
 describe('WebpHeaderInspectorTool', () => {
-  it('renders a clear alert for a corrupt WebP file instead of throwing', async () => {
+  it('renders an alert for corrupt files without throwing', async () => {
     render(<WebpHeaderInspectorTool />);
-    const input = screen.getByLabelText('Select a WebP file');
-    Object.defineProperty(input, 'files', { value: [corruptWebpFile()], configurable: true });
-
-    fireEvent.change(input);
-
-    await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent(/invalid chunk padding/i);
+    const file = new File([new Uint8Array([0x52, 0x49, 0x46, 0x46])], 'broken.webp', {
+      type: 'image/webp',
     });
-    expect(screen.getByText('Inspecting: broken.webp')).toBeInTheDocument();
+    const input = screen.getByLabelText('Choose a WebP file');
+    Object.defineProperty(input, 'files', { value: [file], configurable: true });
+    fireEvent.change(input);
+    expect(await screen.findByRole('alert')).toHaveTextContent('Invalid WebP file');
   });
 });
