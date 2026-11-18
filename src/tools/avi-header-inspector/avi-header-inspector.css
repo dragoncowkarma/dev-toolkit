@@ -1,0 +1,102 @@
+.avi-inspector {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+}
+
+.avi-inspector__dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 2.5rem 1rem;
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  text-align: center;
+}
+
+.avi-inspector__dropzone:focus,
+.avi-inspector__dropzone--active {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.avi-inspector__dropzone strong { color: var(--color-text); }
+
+.avi-inspector__button {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-primary);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+}
+
+.avi-inspector__input { display: none; }
+
+.avi-inspector__file { color: var(--color-text-muted); }
+
+.avi-inspector__error {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+}
+
+.avi-inspector__results {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.avi-inspector__card {
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.avi-inspector__card h2 { margin-top: 0; font-size: 1rem; }
+
+.avi-inspector__card dl { margin: 0; }
+
+.avi-inspector__card dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.avi-inspector__card dt { color: var(--color-text-muted); }
+.avi-inspector__card dd { margin: 0; font-weight: 600; text-align: right; }
+
+.avi-inspector__streams {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.avi-inspector__streams li {
+  display: grid;
+  gap: 0.25rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+}
+
+.avi-inspector__streams strong { color: var(--color-text); }
+
+@media (min-width: 768px) {
+  .avi-inspector { padding: 0 2rem 3rem; }
+  .avi-inspector__results { grid-template-columns: 1fr 1fr; }
+}
