@@ -336,9 +336,10 @@ export function formatMtime(epochSeconds) {
  * Record lengths in PAX headers are defined in UTF-8 bytes.
  *
  * @param {Uint8Array} dataBytes
+ * @param {number} [offset]
  * @returns {Record<string, string>}
  */
-export function parsePaxData(dataBytes) {
+export function parsePaxData(dataBytes, offset) {
   if (!dataBytes || dataBytes.length === 0) {
     return {};
   }
@@ -355,7 +356,7 @@ export function parsePaxData(dataBytes) {
 
     // Locate the space character delimiter (0x20 in ASCII)
     let spaceIdx = -1;
-    for (let i = pos; i < bytes.length; i++) {
+    for (let i = pos; i < bytes.length; i += 1) {
       if (bytes[i] === 0x20) {
         spaceIdx = i;
         break;
@@ -365,31 +366,57 @@ export function parsePaxData(dataBytes) {
       }
     }
     if (spaceIdx === -1) {
-      break;
+      throw new TarParseError(
+        `Malformed PAX record at byte ${pos}: missing length delimiter.`,
+        offset,
+      );
     }
 
     let lenStr = '';
-    for (let i = pos; i < spaceIdx; i++) {
+    for (let i = pos; i < spaceIdx; i += 1) {
       lenStr += String.fromCharCode(bytes[i]);
     }
     const len = /^\d+$/.test(lenStr) ? parseInt(lenStr, 10) : NaN;
-    if (Number.isNaN(len) || len <= spaceIdx - pos) {
-      break;
+    if (Number.isNaN(len)) {
+      throw new TarParseError(
+        `Malformed PAX record at byte ${pos}: invalid length "${lenStr}".`,
+        offset,
+      );
+    }
+    if (len < (spaceIdx - pos) + 4) {
+      throw new TarParseError(
+        `Malformed PAX record at byte ${pos}: declared length ${len} is too short.`,
+        offset,
+      );
     }
 
-    let end = Math.min(pos + len, bytes.length);
-    // Strip trailing newline character (0x0A) if present
-    if (end > spaceIdx + 1 && bytes[end - 1] === 0x0a) {
-      end -= 1;
+    if (pos + len > bytes.length) {
+      throw new TarParseError(
+        `Malformed PAX record at byte ${pos}: declared length ${len} ` +
+        `extends beyond payload (${bytes.length - pos} bytes remaining).`,
+        offset,
+      );
     }
 
-    const line = decoder.decode(bytes.subarray(spaceIdx + 1, end));
+    if (bytes[pos + len - 1] !== 0x0a) {
+      throw new TarParseError(
+        `Malformed PAX record at byte ${pos}: missing trailing newline.`,
+        offset,
+      );
+    }
+
+    const line = decoder.decode(bytes.subarray(spaceIdx + 1, pos + len - 1));
     const eqIdx = line.indexOf('=');
-    if (eqIdx !== -1) {
-      const key = line.slice(0, eqIdx);
-      const val = line.slice(eqIdx + 1);
-      records[key] = val;
+    if (eqIdx <= 0) {
+      throw new TarParseError(
+        `Malformed PAX record at byte ${pos}: invalid key=value format "${line}".`,
+        offset,
+      );
     }
+
+    const key = line.slice(0, eqIdx);
+    const val = line.slice(eqIdx + 1);
+    records[key] = val;
 
     pos += len;
   }
@@ -667,7 +694,7 @@ export function parseTarArchive(input) {
       if (!detectedFormat) detectedFormat = 'GNU tar';
     } else if (typeflag === TYPE_FLAGS.PAX_EXTENDED || typeflag === TYPE_FLAGS.PAX_GLOBAL) {
       const payload = buffer.subarray(offset, offset + size);
-      const parsedRecords = parsePaxData(payload);
+      const parsedRecords = parsePaxData(payload, headerOffset);
       if (typeflag === TYPE_FLAGS.PAX_GLOBAL) {
         globalPax = { ...globalPax, ...parsedRecords };
       } else {

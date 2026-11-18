@@ -230,6 +230,46 @@ describe('parsePaxData', () => {
     expect(parsed.comment).toBe('🎉🚀');
     expect(parsed.gid).toBe('1000');
   });
+
+  it('rejects a PAX record whose declared length extends beyond payload', () => {
+    const raw = '100 path=x\n';
+    const bytes = new TextEncoder().encode(raw);
+    expect(() => parsePaxData(bytes)).toThrow(TarParseError);
+    expect(() => parsePaxData(bytes)).toThrow(/extends beyond payload/i);
+  });
+
+  it('rejects a PAX record with missing trailing newline', () => {
+    // 10 bytes ending in null instead of \n
+    const bytes = new TextEncoder().encode('10 path=x\0');
+    expect(() => parsePaxData(bytes)).toThrow(TarParseError);
+    expect(() => parsePaxData(bytes)).toThrow(/missing trailing newline/i);
+  });
+
+  it('rejects a PAX record with invalid key=value format', () => {
+    const missingEquals = new TextEncoder().encode('10 path:x\n');
+    expect(() => parsePaxData(missingEquals)).toThrow(TarParseError);
+    expect(() => parsePaxData(missingEquals)).toThrow(/invalid key=value format/i);
+
+    const emptyKey = new TextEncoder().encode('7 =val\n');
+    expect(() => parsePaxData(emptyKey)).toThrow(TarParseError);
+    expect(() => parsePaxData(emptyKey)).toThrow(/invalid key=value format/i);
+  });
+
+  it('rejects a PAX record with non-numeric or too short declared length', () => {
+    const nonNumeric = new TextEncoder().encode('abc path=x\n');
+    expect(() => parsePaxData(nonNumeric)).toThrow(TarParseError);
+    expect(() => parsePaxData(nonNumeric)).toThrow(/invalid length/i);
+
+    const tooShort = new TextEncoder().encode('2 \n');
+    expect(() => parsePaxData(tooShort)).toThrow(TarParseError);
+    expect(() => parsePaxData(tooShort)).toThrow(/too short/i);
+  });
+
+  it('rejects a PAX record missing space length delimiter', () => {
+    const noSpace = new TextEncoder().encode('100path=x\n');
+    expect(() => parsePaxData(noSpace)).toThrow(TarParseError);
+    expect(() => parsePaxData(noSpace)).toThrow(/missing length delimiter/i);
+  });
 });
 
 describe('parseTarArchive', () => {
@@ -499,7 +539,7 @@ describe('parseTarArchive', () => {
 
   it('applies effective per-entry PAX size to advance offset when raw header size differs', () => {
     // PAX header specifies size=1024, but raw header size is 0
-    const paxPayload = '14 size=1024\n';
+    const paxPayload = '13 size=1024\n';
     const file1Data = new Uint8Array(1024);
     file1Data.fill(0xaa);
 
@@ -535,7 +575,7 @@ describe('parseTarArchive', () => {
   });
 
   it('applies global PAX size override across entries when raw header sizes differ', () => {
-    const globalPaxPayload = '13 size=512\n';
+    const globalPaxPayload = '12 size=512\n';
     const file1Data = new Uint8Array(512);
     const file2Data = new Uint8Array(512);
 
@@ -578,7 +618,7 @@ describe('parseTarArchive', () => {
   });
 
   it('validates padded extent and rejects truncated archives using effective PAX size', () => {
-    const paxPayload = '14 size=1024\n';
+    const paxPayload = '13 size=1024\n';
     const file1Data = new Uint8Array(1024);
 
     const validData = createMockTarArchive([
@@ -648,4 +688,45 @@ describe('parseTarArchive', () => {
       expect(() => parseTarArchive(archive)).toThrow(/exceeds JavaScript safe integer limit/i);
     },
   );
+
+  it(
+    'rejects an archive with overdeclared PAX record length without overriding entry fields',
+    () => {
+      const archive = createMockTarArchive([
+        {
+          name: 'PaxHeader/actual.txt',
+          typeflag: TYPE_FLAGS.PAX_EXTENDED,
+          content: '100 path=x\n',
+        },
+        {
+          name: 'actual.txt',
+          content: 'regular file content',
+        },
+      ]);
+
+      expect(() => parseTarArchive(archive)).toThrow(TarParseError);
+      expect(() => parseTarArchive(archive)).toThrow(
+        /Malformed PAX record at byte 0: declared length 100 extends beyond payload/i,
+      );
+    },
+  );
+
+  it('rejects an archive with PAX record missing trailing newline', () => {
+    const archive = createMockTarArchive([
+      {
+        name: 'PaxHeader/actual.txt',
+        typeflag: TYPE_FLAGS.PAX_EXTENDED,
+        content: '10 path=x\0',
+      },
+      {
+        name: 'actual.txt',
+        content: 'regular file content',
+      },
+    ]);
+
+    expect(() => parseTarArchive(archive)).toThrow(TarParseError);
+    expect(() => parseTarArchive(archive)).toThrow(
+      /Malformed PAX record at byte 0: missing trailing newline/i,
+    );
+  });
 });
