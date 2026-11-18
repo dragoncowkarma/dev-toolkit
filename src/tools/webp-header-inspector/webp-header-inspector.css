@@ -1,0 +1,98 @@
+.webp-header-inspector {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  color: var(--color-text);
+}
+
+.webp-header-inspector__dropzone {
+  padding: 2rem 1.25rem;
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  text-align: center;
+}
+
+.webp-header-inspector__button,
+.webp-header-inspector__clear {
+  display: inline-block;
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius);
+  background: var(--color-primary);
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  padding: 0.55rem 1rem;
+}
+
+.webp-header-inspector__button input {
+  display: none;
+}
+
+.webp-header-inspector__filename,
+.webp-header-inspector__empty {
+  color: var(--color-text-muted);
+}
+
+.webp-header-inspector__alert {
+  margin-top: 1rem;
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+  padding: 0.75rem 1rem;
+}
+
+.webp-header-inspector__results {
+  margin-top: 1.25rem;
+  padding: 1.25rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.webp-header-inspector__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.webp-header-inspector__heading h2,
+.webp-header-inspector__results h3 {
+  margin: 0;
+}
+
+.webp-header-inspector__results h3 {
+  margin-top: 1.5rem;
+  font-size: 1rem;
+}
+
+.webp-header-inspector__details {
+  display: grid;
+  grid-template-columns: minmax(7rem, 1fr) 2fr;
+  gap: 0.6rem 1rem;
+  margin: 1.25rem 0 0;
+}
+
+.webp-header-inspector__details dt {
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
+.webp-header-inspector__details dd {
+  margin: 0;
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+}
+
+.webp-header-inspector__chunks {
+  margin-bottom: 0;
+  padding-left: 1.25rem;
+}
+
+@media (min-width: 768px) {
+  .webp-header-inspector {
+    padding: 0 2rem 3rem;
+  }
+}
