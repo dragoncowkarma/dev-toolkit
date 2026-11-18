@@ -1,0 +1,106 @@
+.icns-inspector {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+}
+
+.icns-inspector__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.icns-inspector__button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.icns-inspector__button:hover,
+.icns-inspector__button:focus-within {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.icns-inspector__file-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.icns-inspector__error,
+.icns-inspector__warnings {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  color: var(--color-error-light);
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+}
+
+.icns-inspector__warnings {
+  padding-left: 2rem;
+}
+
+.icns-inspector__results {
+  margin-top: 1rem;
+}
+
+.icns-inspector__summary {
+  color: var(--color-text-muted);
+}
+
+.icns-inspector__table-wrap {
+  overflow-x: auto;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.icns-inspector table {
+  width: 100%;
+  min-width: 650px;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.icns-inspector caption {
+  padding: 0.75rem 1rem;
+  color: var(--color-text-muted);
+  font-weight: 600;
+  text-align: left;
+}
+
+.icns-inspector th,
+.icns-inspector td {
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--color-border);
+  vertical-align: top;
+}
+
+.icns-inspector th {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+}
+
+.icns-inspector code {
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+}
+
+@media (min-width: 768px) {
+  .icns-inspector {
+    padding: 0 2rem 3rem;
+  }
+}
