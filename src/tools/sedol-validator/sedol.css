@@ -1,0 +1,104 @@
+.sedol-validator {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+}
+
+.sedol-validator__intro h2 {
+  margin: 0;
+  color: var(--color-text);
+}
+
+.sedol-validator__intro p,
+.sedol-validator__hint {
+  color: var(--color-text-muted);
+}
+
+.sedol-validator__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+}
+
+.sedol-validator__field label {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.sedol-validator__input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sedol-validator__input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.sedol-validator__hint {
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.sedol-validator__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+
+.sedol-validator__button {
+  padding: 0.6rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.sedol-validator__button:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.sedol-validator__button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.sedol-validator__message {
+  margin: 1rem 0 0;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius);
+}
+
+.sedol-validator__message--error {
+  border: 1px solid var(--color-error-border);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+}
+
+.sedol-validator__message--valid {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+@media (min-width: 768px) {
+  .sedol-validator {
+    padding: 0 2rem 3rem;
+  }
+}
