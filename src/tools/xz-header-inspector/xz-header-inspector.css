@@ -1,0 +1,51 @@
+.xz-inspector {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+}
+.xz-inspector__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+.xz-inspector .btn {
+  position: relative;
+  padding: 0.6rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+}
+.xz-inspector .btn:hover {
+  border-color: var(--color-primary);
+}
+.xz-inspector input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  width: 100%;
+}
+.xz-inspector__hint {
+  color: var(--color-text-muted);
+}
+.xz-inspector__error {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  color: var(--color-error-light);
+  background: var(--color-error-bg);
+}
+.xz-inspector__result {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+.xz-inspector pre {
+  overflow: auto;
+  white-space: pre-wrap;
+}
