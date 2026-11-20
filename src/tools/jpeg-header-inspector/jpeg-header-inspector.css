@@ -1,0 +1,203 @@
+.jpeg-tool {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.jpeg-tool .jpeg-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.jpeg-tool .toolbar-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.jpeg-tool .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.jpeg-tool .btn:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.jpeg-tool .btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.jpeg-tool .file-btn {
+  position: relative;
+  overflow: hidden;
+}
+
+.jpeg-tool .file-btn:focus-within {
+  outline: 2px solid var(--color-primary-light);
+  outline-offset: 3px;
+}
+
+.jpeg-tool .file-input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  width: 100%;
+}
+
+.jpeg-tool .jpeg-alert {
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  color: var(--color-error-light);
+  border-radius: var(--radius);
+  padding: 0.85rem 1.15rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.jpeg-tool .jpeg-empty-state {
+  background: var(--color-surface);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius);
+  padding: 3rem 1.5rem;
+  text-align: center;
+  color: var(--color-text-muted);
+}
+
+.jpeg-tool .jpeg-empty-icon {
+  font-size: 2.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.jpeg-tool .jpeg-empty-state p {
+  max-width: 460px;
+  margin: 0 auto;
+  font-size: 0.95rem;
+}
+
+.jpeg-tool .jpeg-summary-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1.25rem 1.5rem;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+.jpeg-tool .summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.jpeg-tool .summary-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+}
+
+.jpeg-tool .summary-value {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text);
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+}
+
+.jpeg-tool .jpeg-table-container {
+  overflow-x: auto;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.jpeg-tool .jpeg-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  text-align: left;
+}
+
+.jpeg-tool .jpeg-table th,
+.jpeg-tool .jpeg-table td {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.jpeg-tool .jpeg-table th {
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--color-text-muted);
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.jpeg-tool .jpeg-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.jpeg-tool .jpeg-table tbody tr:hover {
+  background: var(--color-surface-hover);
+}
+
+.jpeg-tool .marker-badge {
+  display: inline-block;
+  padding: 0.2rem 0.5rem;
+  border-radius: 6px;
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: rgba(99, 102, 241, 0.15);
+  color: var(--color-primary-light);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+}
+
+.jpeg-tool .mono-text {
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+  font-size: 0.825rem;
+}
+
+.jpeg-tool .details-tag {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
+@media (min-width: 640px) {
+  .jpeg-tool .jpeg-summary-card {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 860px) {
+  .jpeg-tool {
+    padding: 0 2rem 3rem;
+  }
+
+  .jpeg-tool .jpeg-summary-card {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
