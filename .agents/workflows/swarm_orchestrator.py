@@ -726,14 +726,57 @@ class ProcessTracker:
             if record.status == ProcessStatus.RUNNING
         }
 
+    def _inherited_running_records(self) -> list[TrackedProcess]:
+        """RUNNING records with no attached Popen handle.
+
+        These are sessions restored from the registry — inherited across a
+        self-restart exec(), or adopted by a freshly started orchestrator.
+        `busy_ai_names()` counts them as holding their AI's session slot, so
+        queued work can be waiting behind them.
+        """
+        return [
+            record for record in self._history
+            if record.status == ProcessStatus.RUNNING
+        ]
+
+    def _record_has_exited(self, record: TrackedProcess) -> bool:
+        """Check whether an inherited record's process exited, without reaping.
+
+        `waitid(WNOWAIT)` detects an exited child while leaving it waitable, so
+        `poll_all()` still collects its exit code. A PID that is not our child
+        (a plain orchestrator restart) raises ECHILD; those fall back to a
+        signal-0 liveness probe, which reaps nothing.
+        """
+        waitid = getattr(os, "waitid", None)
+        if waitid is not None and hasattr(os, "WNOWAIT"):
+            try:
+                result = waitid(
+                    os.P_PID,
+                    record.pid,
+                    os.WEXITED | os.WNOHANG | os.WNOWAIT,
+                )
+            except (ChildProcessError, OSError, ValueError):
+                pass  # Not a child of ours — probe liveness instead.
+            else:
+                return result is not None
+        return not self.check_pid_alive(record.pid)
+
     def has_finished_process(self) -> bool:
-        """Report whether an attached session exited, without finalizing it.
+        """Report whether any tracked session exited, without finalizing it.
 
         `Popen.poll()` caches the return code, so the next `poll_all()` still
-        records the outcome normally. Records inherited across exec() are left
-        to `poll_all()`: probing them here would reap the child.
+        records the outcome normally. Inherited records (restored from the
+        registry, no Popen handle) are probed non-destructively as well — they
+        hold their AI's slot per `busy_ai_names()`, so a queued event can be
+        waiting on one, and skipping them would stall that queue until the next
+        full GitHub poll.
         """
-        return any(proc.poll() is not None for proc, _ in self._active.values())
+        if any(proc.poll() is not None for proc, _ in self._active.values()):
+            return True
+        return any(
+            self._record_has_exited(record)
+            for record in self._inherited_running_records()
+        )
 
     @property
     def active_count(self) -> int:
@@ -3962,7 +4005,9 @@ def wait_for_next_cycle(interval: int):
     The next GitHub poll always waits the whole interval. Meanwhile, while
     events are still queued, finished sessions are checked locally every
     `SLOT_CHECK_INTERVAL_SECONDS` and the finishing AI's next queued event
-    starts immediately (agy1 → agy2 → agy3 within one interval).
+    starts immediately (agy1 → agy2 → agy3 within one interval). Sessions
+    inherited from the registry across an orchestrator restart are checked the
+    same way, so queued work behind one drains without waiting for a poll.
     """
     finished = getattr(tracker, "has_finished_process", None)
     if not callable(finished):

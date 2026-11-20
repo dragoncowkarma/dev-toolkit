@@ -65,6 +65,9 @@ This project uses a **vendor-agnostic autonomous multi-agent swarm** where multi
   `SLOT_CHECK_INTERVAL_SECONDS`, no GitHub call). GitHub is polled only once
   per interval; events produced by those sessions (a new PR, a review) are
   picked up by the next cycle, whose fresh snapshot replaces the queue.
+  A session inherited from the process registry across an orchestrator restart
+  holds its AI's slot the same way and is probed non-destructively at each slot
+  check, so queued work behind it drains locally too.
 - A queued event is re-checked against the local tracker right before launch
   and dropped if it already ran or its provider entered a cooldown. A launch
   that fails before a process starts frees the slot for the AI's next queued

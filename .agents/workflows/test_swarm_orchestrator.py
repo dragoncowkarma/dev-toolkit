@@ -3505,6 +3505,68 @@ class SingleSessionSchedulingTests(unittest.TestCase):
 
         sleep.assert_called_once_with(3600)
 
+    @staticmethod
+    def _dead_pid() -> int:
+        """A PID that exited and was reaped, so it is no longer a child."""
+        proc = subprocess.Popen([sys.executable, "-c", ""])
+        proc.wait()
+        return proc.pid
+
+    @staticmethod
+    def inherited_record(pid, ai_name="codex", task_ref="issue#1:initial"):
+        """A RUNNING registry record with no Popen handle (restart-inherited)."""
+        return swarm.TrackedProcess(
+            pid=pid,
+            role="worker",
+            ai_name=ai_name,
+            model="",
+            reasoning="",
+            task_ref=task_ref,
+            branch="worker/1",
+            command="codex exec",
+            cwd=".",
+            log_file="",
+            started_at=datetime.now(timezone.utc).isoformat(),
+        )
+
+    def test_has_finished_process_sees_exited_inherited_session(self):
+        tracker = make_tracker([self.inherited_record(self._dead_pid())])
+        self.assertTrue(tracker.has_finished_process())
+
+    def test_has_finished_process_ignores_live_inherited_session(self):
+        tracker = make_tracker([self.inherited_record(os.getpid())])
+        self.assertFalse(tracker.has_finished_process())
+
+    def test_wait_drains_queue_after_inherited_session_finishes(self):
+        """An orchestrator restart must not stall its queue for a whole poll.
+
+        The live session is restored from the registry into `_history`, so it
+        has no Popen handle. `busy_ai_names()` still reports its AI busy, so
+        the queued event waits — and must start at the next local slot check
+        once that inherited PID is gone, not at the next GitHub poll.
+        """
+        launched = []
+        tracker = make_tracker([self.inherited_record(self._dead_pid())])
+        swarm._PENDING_DISPATCH[:] = [
+            self.candidate("maintainer", 2, "codex", launched),
+        ]
+        registry = Path(tempfile.mkdtemp()) / "registry.json"
+        self.addCleanup(shutil.rmtree, registry.parent, ignore_errors=True)
+        with (
+            patch.object(swarm, "tracker", tracker),
+            patch.object(swarm, "PROCESS_REGISTRY_FILE", registry),
+            patch.object(swarm.time, "sleep"),
+        ):
+            # The slot is held while the inherited record still reads RUNNING.
+            self.assertEqual([], swarm.drain_pending_dispatch())
+            self.assertEqual({"codex"}, tracker.busy_ai_names())
+
+            swarm.wait_for_next_cycle(swarm.SLOT_CHECK_INTERVAL_SECONDS * 2)
+
+        self.assertEqual(["maintainer#2"], launched)
+        self.assertEqual([], swarm._PENDING_DISPATCH)
+        self.assertEqual(set(), tracker.busy_ai_names())
+
 
 class ModelAvailabilityTests(unittest.TestCase):
     """Tests for AVAILABLE_MODELS registry and validate_model_availability()."""
