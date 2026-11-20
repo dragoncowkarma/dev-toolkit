@@ -1,0 +1,104 @@
+.sqlite-header-inspector {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.sqlite-header-inspector__dropzone {
+  position: relative;
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  padding: 2.5rem 1rem;
+  text-align: center;
+  transition: border-color var(--transition), background var(--transition);
+}
+
+.sqlite-header-inspector__dropzone.is-dragging {
+  border-color: var(--color-primary);
+  background: var(--color-bg);
+}
+
+.sqlite-header-inspector__file-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.sqlite-header-inspector__hint {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.sqlite-header-inspector__status {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  color: var(--color-text-muted);
+}
+
+.sqlite-header-inspector__status button {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  padding: 0.35rem 0.75rem;
+  cursor: pointer;
+}
+
+.sqlite-header-inspector__error {
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+  padding: 0.75rem 1rem;
+}
+
+.sqlite-header-inspector__results h2 {
+  font-size: 1.1rem;
+}
+
+.sqlite-header-inspector__table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.sqlite-header-inspector table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.sqlite-header-inspector th,
+.sqlite-header-inspector td {
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: top;
+}
+
+.sqlite-header-inspector tbody tr:last-child th,
+.sqlite-header-inspector tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.sqlite-header-inspector thead {
+  background: var(--color-surface);
+}
+
+.sqlite-header-inspector code {
+  white-space: nowrap;
+}
+
+@media (min-width: 768px) {
+  .sqlite-header-inspector {
+    padding: 0 2rem 3rem;
+  }
+}
