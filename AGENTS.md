@@ -53,6 +53,31 @@ This project uses a **vendor-agnostic autonomous multi-agent swarm** where multi
 - An event whose AI process crashed IS retried, without an attempt limit, so a
   transient CLI failure cannot deadlock the swarm.
 
+### 2.6 Dispatch Scheduling — one session per AI
+- Each AI CLI (`codex`, `antigravity`, `claude`) runs **at most one** session at
+  a time, so the swarm runs at most one session per AI concurrently.
+- When several events are eligible for the same AI, the orchestrator launches
+  the one closest to merge — Maintainer → Reviewer → Worker revision → initial
+  Worker (`DISPATCH_STAGE_PRIORITY`) — and breaks ties by the lowest PR/Issue
+  number (oldest first). The rest wait in that cycle's queue.
+- Within one poll interval each AI drains its own queue in order: when its
+  session finishes, its next queued event starts (checked locally every
+  `SLOT_CHECK_INTERVAL_SECONDS`, no GitHub call). GitHub is polled only once
+  per interval; events produced by those sessions (a new PR, a review) are
+  picked up by the next cycle, whose fresh snapshot replaces the queue.
+  A session inherited from the process registry across an orchestrator restart
+  holds its AI's slot the same way and is probed non-destructively at each slot
+  check, so queued work behind it drains locally too.
+- A queued event is re-checked against the local tracker right before launch
+  and dropped if it already ran or its provider entered a cooldown. A launch
+  that fails before a process starts frees the slot for the AI's next queued
+  event. Cooldown probes are skipped while the AI holds its slot.
+- Verify: `cd .agents/workflows && python3 -m unittest
+  test_swarm_orchestrator.SingleSessionSchedulingTests`, then
+  `python3 .agents/workflows/swarm_orchestrator.py --dry-run --once` shows one
+  `Would execute` per AI and `Queued ...: '<ai>' session slot is taken` for
+  the rest.
+
 ---
 
 ## 3. Available AI Agents & Parameters
@@ -133,6 +158,11 @@ Rules for this table:
    Maintainer and `중간` for Worker revisions, by design — those roles do not
    need Worker-level reasoning. Raising a tag's `Reasoning:` will not make a
    review or a merge deeper; change the override table instead.
+6. While a `gemini 4 argon` run's quota pause is unexpired, every
+   Argon-tagged dispatch (any role) runs as `gemini 3.8 flash` at `high`
+   instead of waiting — `AGY_ARGON_QUOTA_FALLBACK`, which bypasses rule 5's
+   overrides. An Argon pause does not block other antigravity dispatches; a
+   quota pause on Flash still blocks antigravity entirely.
 
 Verify what a tag actually dispatches, rather than reading it off the table:
 

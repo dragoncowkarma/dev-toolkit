@@ -6,8 +6,10 @@ Polls GitHub Issues and PRs via `gh` CLI, parses role metadata tags,
 creates isolated git worktrees, and dispatches AI agents as subprocesses.
 
 Usage:
-    python .agents/workflows/swarm_orchestrator.py [--interval 30] [--dry-run]
+    python .agents/workflows/swarm_orchestrator.py [--interval 3600] [--dry-run]
     python .agents/workflows/swarm_orchestrator.py --status
+    python .agents/workflows/swarm_orchestrator.py --clear-cooldown [AI ...]
+    python .agents/workflows/swarm_orchestrator.py --probe-cooldown
 
 Requires: gh CLI authenticated, git, and at least one AI CLI installed.
 """
@@ -29,7 +31,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -39,7 +41,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 ORCHESTRATOR_PATH = Path(__file__).resolve()
 WORKTREE_DIR = REPO_ROOT / ".worktrees"
 LOG_DIR = REPO_ROOT / ".agents" / "logs"
-POLL_INTERVAL_SECONDS = 30
+POLL_INTERVAL_SECONDS = 3600  # 1 hour
 PROCESS_REGISTRY_FILE = REPO_ROOT / ".agents" / ".process_registry.json"
 OPEN_ITEMS_LIMIT = 1000
 
@@ -73,6 +75,9 @@ MAIN_SYNC_EVERY_CYCLES = 5
 # after a conservative fallback cooldown.
 PROVIDER_COOLDOWN_SECONDS = 60 * 60
 PROVIDER_COOLDOWN_BUFFER_SECONDS = 60
+PROVIDER_COOLDOWN_PROBE_INTERVAL_SECONDS = 3 * 60 * 60  # 3 hours
+PROVIDER_PROBE_TIMEOUT_SECONDS = 60
+PROVIDER_PROBE_PROMPT = "Reply with OK."
 PROVIDER_LIMIT_PATTERNS = (
     "individual quota reached",
     "monthly spend limit",
@@ -120,6 +125,23 @@ DISPATCH_RUNNING = "already running"
 DISPATCH_COMPLETED = "already completed"
 DISPATCH_UNCONFIRMED = "completed without confirmed lifecycle transition"
 DISPATCH_PROVIDER_COOLDOWN = "provider cooldown"
+
+# Each AI CLI runs at most ONE session at a time. When several events are
+# eligible for the same AI, the one closest to merge wins the slot: Maintainer,
+# then Reviewer, then Worker revision, then initial Worker. Ties go to the
+# lowest Issue/PR number (the oldest item). Lower rank dispatches first.
+DISPATCH_STAGE_PRIORITY: dict[str, int] = {
+    "maintainer": 0,
+    "reviewer": 1,
+    "worker_revise": 2,
+    "worker": 3,
+}
+
+# While events from the current cycle are still queued, check locally this
+# often (Popen.poll(), no GitHub call) whether a session finished, so that
+# AI's next queued event starts at once. The GitHub poll itself still runs
+# only every poll interval.
+SLOT_CHECK_INTERVAL_SECONDS = 10 * 60  # 10 minutes
 
 # Upper bound on persisted history so the registry cannot grow without limit.
 MAX_HISTORY_RECORDS = 500
@@ -311,6 +333,22 @@ class TrackedProcess:
     defer_scope: Optional[str] = None
 
 
+@dataclass
+class DispatchCandidate:
+    """An eligible lifecycle event waiting for its AI's single session slot."""
+    role: str            # key of DISPATCH_STAGE_PRIORITY
+    number: int          # Issue number (initial Worker) or PR number
+    ai_name: str
+    task_ref: str
+    announce: str        # INFO line logged right before launch
+    launch: Callable[[], bool]
+
+    @property
+    def sort_key(self) -> tuple[int, int, str]:
+        rank = DISPATCH_STAGE_PRIORITY.get(self.role, len(DISPATCH_STAGE_PRIORITY))
+        return rank, self.number, self.task_ref
+
+
 # ---------------------------------------------------------------------------
 # Process Tracker — PID registry with poll()-based status checks
 # ---------------------------------------------------------------------------
@@ -321,7 +359,25 @@ class ProcessTracker:
     def __init__(self):
         self._active: dict[int, tuple[subprocess.Popen, TrackedProcess]] = {}
         self._history: list[TrackedProcess] = []
+        self._cooldown_probed_at: dict[str, str] = {}
+        self._cycle_probed_buckets: set[str] = set()
+        self._forced_probe_buckets: set[str] = set()
         self._load_registry()
+
+    def _probed_at_map(self) -> dict[str, str]:
+        if not hasattr(self, "_cooldown_probed_at"):
+            self._cooldown_probed_at = {}
+        return self._cooldown_probed_at
+
+    def _cycle_probed_set(self) -> set[str]:
+        if not hasattr(self, "_cycle_probed_buckets"):
+            self._cycle_probed_buckets = set()
+        return self._cycle_probed_buckets
+
+    def _forced_probe_set(self) -> set[str]:
+        if not hasattr(self, "_forced_probe_buckets"):
+            self._forced_probe_buckets = set()
+        return self._forced_probe_buckets
 
     # --- Persistence ---
 
@@ -333,6 +389,13 @@ class ProcessTracker:
                     data = json.load(f)
                 for entry in data.get("history", []):
                     self._history.append(TrackedProcess(**entry))
+                probed_at = data.get("cooldown_probed_at")
+                if isinstance(probed_at, dict):
+                    self._probed_at_map().update({
+                        str(k): str(v)
+                        for k, v in probed_at.items()
+                        if isinstance(k, str) and isinstance(v, str)
+                    })
             except (json.JSONDecodeError, TypeError):
                 log.warning("Corrupted process registry, starting fresh.")
         self._reconcile_orphans()
@@ -436,11 +499,15 @@ class ProcessTracker:
         if len(self._history) > MAX_HISTORY_RECORDS:
             self._history = self._history[-MAX_HISTORY_RECORDS:]
         all_records = self._history + [tp for _, tp in self._active.values()]
+        payload: dict[str, object] = {
+            "last_updated": datetime.now(timezone.utc).isoformat(),
+            "history": [vars(r) for r in all_records],
+        }
+        probed_at = self._probed_at_map()
+        if probed_at:
+            payload["cooldown_probed_at"] = dict(probed_at)
         with open(PROCESS_REGISTRY_FILE, "w") as f:
-            json.dump({
-                "last_updated": datetime.now(timezone.utc).isoformat(),
-                "history": [vars(r) for r in all_records],
-            }, f, indent=2, ensure_ascii=False)
+            json.dump(payload, f, indent=2, ensure_ascii=False)
 
     # --- Registration ---
 
@@ -596,11 +663,14 @@ class ProcessTracker:
         ]
         if any(record.status == ProcessStatus.RUNNING for record in attempts):
             return False, DISPATCH_RUNNING
+        # An exhausted Gemini 4 Argon quota does not block antigravity: those
+        # events fall back to AGY_ARGON_QUOTA_FALLBACK at dispatch time.
         provider_cooldowns = [
             self._parse_timestamp(record.retry_after)
             for record in self.all_records
             if record.ai_name == ai_name
             and self._is_active_provider_cooldown(record)
+            and not self._is_argon_quota_record(record)
         ] if ai_name else []
         if provider_cooldowns:
             retry_at = self._describe_timestamp(max(provider_cooldowns))
@@ -615,7 +685,7 @@ class ProcessTracker:
         if deferred:
             latest = deferred[-1]
             retry_at = self._parse_timestamp(latest.retry_after)
-            if retry_at:
+            if retry_at and not self._is_argon_quota_record(latest):
                 if datetime.now(timezone.utc) < retry_at:
                     return (
                         False,
@@ -643,6 +713,70 @@ class ProcessTracker:
         if deferred:
             return True, "retry after provider cooldown"
         return True, f"retry {budget_count + 1} after failure"
+
+    def busy_ai_names(self) -> set[str]:
+        """AI CLIs that currently hold their single session slot.
+
+        Includes records inherited RUNNING across a self-restart exec(), whose
+        Popen handles are gone but whose processes still occupy the AI.
+        """
+        return {
+            record.ai_name
+            for record in self.all_records
+            if record.status == ProcessStatus.RUNNING
+        }
+
+    def _inherited_running_records(self) -> list[TrackedProcess]:
+        """RUNNING records with no attached Popen handle.
+
+        These are sessions restored from the registry — inherited across a
+        self-restart exec(), or adopted by a freshly started orchestrator.
+        `busy_ai_names()` counts them as holding their AI's session slot, so
+        queued work can be waiting behind them.
+        """
+        return [
+            record for record in self._history
+            if record.status == ProcessStatus.RUNNING
+        ]
+
+    def _record_has_exited(self, record: TrackedProcess) -> bool:
+        """Check whether an inherited record's process exited, without reaping.
+
+        `waitid(WNOWAIT)` detects an exited child while leaving it waitable, so
+        `poll_all()` still collects its exit code. A PID that is not our child
+        (a plain orchestrator restart) raises ECHILD; those fall back to a
+        signal-0 liveness probe, which reaps nothing.
+        """
+        waitid = getattr(os, "waitid", None)
+        if waitid is not None and hasattr(os, "WNOWAIT"):
+            try:
+                result = waitid(
+                    os.P_PID,
+                    record.pid,
+                    os.WEXITED | os.WNOHANG | os.WNOWAIT,
+                )
+            except (ChildProcessError, OSError, ValueError):
+                pass  # Not a child of ours — probe liveness instead.
+            else:
+                return result is not None
+        return not self.check_pid_alive(record.pid)
+
+    def has_finished_process(self) -> bool:
+        """Report whether any tracked session exited, without finalizing it.
+
+        `Popen.poll()` caches the return code, so the next `poll_all()` still
+        records the outcome normally. Inherited records (restored from the
+        registry, no Popen handle) are probed non-destructively as well — they
+        hold their AI's slot per `busy_ai_names()`, so a queued event can be
+        waiting on one, and skipping them would stall that queue until the next
+        full GitHub poll.
+        """
+        if any(proc.poll() is not None for proc, _ in self._active.values()):
+            return True
+        return any(
+            self._record_has_exited(record)
+            for record in self._inherited_running_records()
+        )
 
     @property
     def active_count(self) -> int:
@@ -940,10 +1074,190 @@ class ProcessTracker:
             return False
         return datetime.now(timezone.utc) < retry_at
 
+    @staticmethod
+    def _is_argon_quota_record(record) -> bool:
+        """Whether `record` is an antigravity quota pause hit on Gemini 4 Argon."""
+        return (
+            record.ai_name == "antigravity"
+            and record.defer_scope == "provider"
+            and _agy_stem(record.model) == AGY_ARGON_STEM
+        )
+
+    def argon_quota_exhausted(self) -> bool:
+        """Whether an unexpired Gemini 4 Argon quota pause is on record."""
+        return any(
+            self._is_active_provider_cooldown(record)
+            and self._is_argon_quota_record(record)
+            for record in self.all_records
+        )
+
+    @staticmethod
+    def _cooldown_bucket_key(ai_name: str, is_argon: bool = False) -> str:
+        """Return a stable storage key for a provider or Argon cooldown bucket."""
+        scope = "argon" if is_argon and ai_name == "antigravity" else "provider"
+        return f"{ai_name}:{scope}"
+
+    @classmethod
+    def _record_matches_bucket(
+        cls, record, ai_name: str, is_argon: bool = False,
+    ) -> bool:
+        """Whether `record` belongs to the given active provider/Argon cooldown bucket."""
+        return (
+            record.ai_name == ai_name
+            and cls._is_active_provider_cooldown(record)
+            and (cls._is_argon_quota_record(record) == is_argon)
+        )
+
+    def active_cooldown_records(
+        self, ai_name: str, is_argon: bool = False,
+    ) -> list:
+        """Return all active cooldown records matching the bucket."""
+        return [
+            record for record in self.all_records
+            if self._record_matches_bucket(record, ai_name, is_argon)
+        ]
+
+    def reset_cycle_probe_state(self):
+        """Allow each cooldown bucket to be considered at most once per polling cycle."""
+        self._cycle_probed_set().clear()
+
+    def mark_cycle_probed(self, ai_name: str, is_argon: bool = False):
+        """Record that a cooldown bucket was handled in the current polling cycle."""
+        bucket_key = self._cooldown_bucket_key(ai_name, is_argon)
+        self._cycle_probed_set().add(bucket_key)
+        self._forced_probe_set().discard(bucket_key)
+
+    def arm_forced_probe(self):
+        """Allow one immediate probe per currently active cooldown bucket."""
+        forced = self._forced_probe_set()
+        forced.clear()
+        for record in self.all_records:
+            if self._is_active_provider_cooldown(record):
+                is_argon = self._is_argon_quota_record(record)
+                forced.add(self._cooldown_bucket_key(record.ai_name, is_argon))
+
+    def cooldown_probe_due(
+        self,
+        ai_name: str,
+        is_argon: bool = False,
+        probe_interval: Optional[int] = None,
+        force: bool = False,
+    ) -> bool:
+        """Whether an active cooldown bucket is due for an early-reset probe."""
+        records = self.active_cooldown_records(ai_name, is_argon=is_argon)
+        if not records:
+            return False
+        bucket_key = self._cooldown_bucket_key(ai_name, is_argon)
+        if bucket_key in self._cycle_probed_set():
+            return False
+        if force or bucket_key in self._forced_probe_set():
+            return True
+        interval = (
+            _cooldown_probe_interval_seconds
+            if probe_interval is None
+            else probe_interval
+        )
+        if interval < 0:
+            return False
+
+        anchors: list[datetime] = []
+        probed_at = self._parse_timestamp(self._probed_at_map().get(bucket_key))
+        if probed_at is not None:
+            anchors.append(probed_at)
+        for record in records:
+            ts = self._parse_timestamp(
+                getattr(record, "ended_at", None)
+                or getattr(record, "started_at", None)
+            )
+            if ts is not None:
+                anchors.append(ts)
+        if not anchors:
+            return True
+        last_known = max(anchors)
+        return (datetime.now(timezone.utc) - last_known).total_seconds() >= interval
+
+    def record_probe_result(
+        self,
+        ai_name: str,
+        is_argon: bool,
+        reset_confirmed: bool,
+        retry_after: Optional[str] = None,
+        failure_reason: Optional[str] = None,
+        ended_at: Optional[str] = None,
+        save: bool = True,
+    ) -> int:
+        """Apply a cooldown probe outcome to tracked cooldown state."""
+        bucket_key = self._cooldown_bucket_key(ai_name, is_argon)
+        self.mark_cycle_probed(ai_name, is_argon=is_argon)
+        probed_at_map = self._probed_at_map()
+
+        if reset_confirmed:
+            before = len(self._history)
+            self._history = [
+                record for record in self._history
+                if not self._record_matches_bucket(record, ai_name, is_argon)
+            ]
+            removed = before - len(self._history)
+            probed_at_map.pop(bucket_key, None)
+            if save:
+                self._save_registry()
+            return removed
+
+        now_iso = ended_at or datetime.now(timezone.utc).isoformat()
+        probed_at_map[bucket_key] = now_iso
+        if retry_after:
+            for record in self._history:
+                if not self._record_matches_bucket(record, ai_name, is_argon):
+                    continue
+                if record.retry_after != retry_after:
+                    # Drop stale log link so restart reclassification keeps the fresher deadline.
+                    record.log_file = ""
+                record.retry_after = retry_after
+                record.ended_at = now_iso
+                if failure_reason:
+                    record.failure_reason = failure_reason
+        if save:
+            self._save_registry()
+        return 0
+
+    def clear_cooldowns(
+        self,
+        buckets: Optional[set[tuple[str, bool]]] = None,
+        save: bool = True,
+    ) -> dict[str, int]:
+        """Remove active provider cooldown records for the selected buckets."""
+        probed_at_map = self._probed_at_map()
+        cleared: dict[str, int] = {}
+        kept: list = []
+        for record in self._history:
+            if self._is_active_provider_cooldown(record):
+                is_argon = self._is_argon_quota_record(record)
+                if buckets is None or (record.ai_name, is_argon) in buckets:
+                    key = self._cooldown_bucket_key(record.ai_name, is_argon)
+                    cleared[key] = cleared.get(key, 0) + 1
+                    continue
+            kept.append(record)
+
+        probed_removed = False
+        if buckets is None:
+            probed_removed = bool(probed_at_map)
+            probed_at_map.clear()
+        else:
+            for ai_name, is_argon in buckets:
+                key = self._cooldown_bucket_key(ai_name, is_argon)
+                if probed_at_map.pop(key, None) is not None:
+                    probed_removed = True
+
+        self._history = kept
+        if save and (cleared or probed_removed):
+            self._save_registry()
+        return cleared
+
 
 # Global tracker instance
 tracker = ProcessTracker()
 _restart_pending = False
+_cooldown_probe_interval_seconds = PROVIDER_COOLDOWN_PROBE_INTERVAL_SECONDS
 
 
 def reset_process_history(preserve_running: bool = False):
@@ -989,6 +1303,16 @@ def reset_process_history(preserve_running: bool = False):
                 tracker._describe_timestamp(record.retry_after),
             )
     tracker._history = surviving
+    surviving_buckets = {
+        tracker._cooldown_bucket_key(
+            record.ai_name, tracker._is_argon_quota_record(record),
+        )
+        for record in surviving
+        if tracker._is_active_provider_cooldown(record)
+    }
+    probed_at_map = tracker._probed_at_map()
+    for stale_key in [k for k in probed_at_map if k not in surviving_buckets]:
+        probed_at_map.pop(stale_key, None)
     if surviving:
         tracker._save_registry()
     elif PROCESS_REGISTRY_FILE.exists():
@@ -1973,6 +2297,13 @@ _AGY_SLUG_SUFFIX_RE = re.compile(r"^(?P<stem>.+?)-(?:low|medium|high)$")
 # _AGY_MODEL_EFFORTS; ModelTableIntegrityTests asserts that.
 _AGY_FALLBACK_STEM = "gemini-3.8-flash"
 
+# When Gemini 4 Argon's quota is exhausted, Argon-tagged events run on this
+# (model, reasoning) instead of waiting for the reset.  The reasoning is
+# pinned to `high` for every role, overriding ROLE_REASONING_OVERRIDE, to
+# offset the step down from Argon.
+AGY_ARGON_STEM = "gemini-4-argon"
+AGY_ARGON_QUOTA_FALLBACK: tuple[str, str] = ("gemini 3.8 flash", "high")
+
 # agy also serves models belonging to the other two swarm AIs' families.  They
 # are real `agy --model` values, but they MUST NOT fill an antigravity role:
 # validate_distinct_roles() compares only the `ai` string, so
@@ -2307,6 +2638,65 @@ def validate_model_availability(
     return default_model, default_reasoning
 
 
+def argon_quota_fallback(ai_name: str, model: str) -> Optional[tuple[str, str]]:
+    """Return AGY_ARGON_QUOTA_FALLBACK when an Argon tag hits an exhausted quota.
+
+    The caller dispatches and registers the returned (model, reasoning), so a
+    quota failure on the fallback is recorded against Flash — which then
+    blocks antigravity as a whole — rather than extending the Argon pause.
+    """
+    if ai_name != "antigravity" or _agy_stem(model) != AGY_ARGON_STEM:
+        return None
+    if not tracker.argon_quota_exhausted():
+        return None
+    log.warning(
+        "Gemini 4 Argon quota is exhausted; dispatching %s tag model '%s' "
+        "as '%s' (reasoning=%s) instead.",
+        ai_name, model, *AGY_ARGON_QUOTA_FALLBACK,
+    )
+    return AGY_ARGON_QUOTA_FALLBACK
+
+
+def _resolve_codex_model_and_effort(model: str, reasoning: str) -> tuple[str, str]:
+    """Resolve a Codex tag model and reasoning onto CLI values."""
+    model_key = model.lower().strip()
+    resolved_model = _CODEX_MODEL_MAP.get(model_key, model)
+    if resolved_model != model:
+        log.info(
+            "Model alias: '%s' → '%s' (codex)",
+            model, resolved_model,
+        )
+    supported = _CODEX_MODEL_EFFORTS.get(resolved_model)
+    if supported is None:
+        # Passed through on purpose so a genuinely custom provider model
+        # still works, but say so: a bad id fails identically across attempts
+        # and blocks the event until fixed.
+        log.warning(
+            "Unrecognized codex model '%s'; passing it through. Run "
+            "`codex debug models` to see valid ids.", resolved_model,
+        )
+        supported = _CODEX_FALLBACK_EFFORTS
+    return resolved_model, _resolve_effort(reasoning, supported)
+
+
+def _resolve_claude_model_and_effort(model: str, reasoning: str) -> tuple[str, str]:
+    """Resolve a Claude tag model and reasoning onto CLI values."""
+    resolved_model = _CLAUDE_MODEL_MAP.get(model.lower().strip(), model)
+    if resolved_model != model:
+        log.info(
+            "Model alias: '%s' → '%s' (claude)",
+            model, resolved_model,
+        )
+    elif resolved_model not in set(_CLAUDE_MODEL_MAP.values()):
+        # Same reasoning as the codex branch: pass through, but loudly.
+        log.warning(
+            "Unrecognized claude model '%s'; passing it through. Valid "
+            "aliases: %s", resolved_model,
+            ", ".join(sorted(k for k in _CLAUDE_MODEL_MAP if " " in k)),
+        )
+    return resolved_model, _resolve_effort(reasoning, _CLAUDE_EFFORTS)
+
+
 def build_ai_argv(ai_name: str, model: str, reasoning: str,
                   prompt_file: Path, cwd: str) -> list[str]:
     """Build an argv list for a specific AI CLI tool.
@@ -2322,24 +2712,7 @@ def build_ai_argv(ai_name: str, model: str, reasoning: str,
     prompt_text = prompt_file.read_text(encoding="utf-8")
 
     if ai_name == "codex":
-        model_key = model.lower().strip()
-        resolved_model = _CODEX_MODEL_MAP.get(model_key, model)
-        if resolved_model != model:
-            log.info(
-                "Model alias: '%s' → '%s' (codex)",
-                model, resolved_model,
-            )
-        supported = _CODEX_MODEL_EFFORTS.get(resolved_model)
-        if supported is None:
-            # Passed through on purpose so a genuinely custom provider model
-            # still works, but say so: a bad id fails identically on all three
-            # attempts and blocks the event for good.
-            log.warning(
-                "Unrecognized codex model '%s'; passing it through. Run "
-                "`codex debug models` to see valid ids.", resolved_model,
-            )
-            supported = _CODEX_FALLBACK_EFFORTS
-        effort = _resolve_effort(reasoning, supported)
+        resolved_model, effort = _resolve_codex_model_and_effort(model, reasoning)
         # codex exec: -C workdir, prompt is positional
         # --dangerously-bypass-approvals-and-sandbox for autonomous mode
         # -s workspace-write to allow file edits
@@ -2382,20 +2755,7 @@ def build_ai_argv(ai_name: str, model: str, reasoning: str,
         return argv
 
     elif ai_name == "claude":
-        resolved_model = _CLAUDE_MODEL_MAP.get(model.lower().strip(), model)
-        if resolved_model != model:
-            log.info(
-                "Model alias: '%s' → '%s' (claude)",
-                model, resolved_model,
-            )
-        elif resolved_model not in set(_CLAUDE_MODEL_MAP.values()):
-            # Same reasoning as the codex branch: pass through, but loudly.
-            log.warning(
-                "Unrecognized claude model '%s'; passing it through. Valid "
-                "aliases: %s", resolved_model,
-                ", ".join(sorted(k for k in _CLAUDE_MODEL_MAP if " " in k)),
-            )
-        effort = _resolve_effort(reasoning, _CLAUDE_EFFORTS)
+        resolved_model, effort = _resolve_claude_model_and_effort(model, reasoning)
         return [
             "claude",
             "-p",
@@ -2408,6 +2768,174 @@ def build_ai_argv(ai_name: str, model: str, reasoning: str,
     else:
         log.error("Unknown AI agent: %s", ai_name)
         return []
+
+
+def build_probe_argv(
+    ai_name: str,
+    model: str,
+    cwd: str,
+    prompt: str = PROVIDER_PROBE_PROMPT,
+) -> list[str]:
+    """Build a minimal, read-only argv to probe whether a cooldown reset early."""
+    if ai_name == "codex":
+        resolved_model, effort = _resolve_codex_model_and_effort(model, "low")
+        return [
+            "codex", "exec",
+            "-m", resolved_model,
+            "-c", f"model_reasoning_effort={effort}",
+            "-C", cwd,
+            "-s", "read-only",
+            "--ephemeral",
+            "--skip-git-repo-check",
+            "--dangerously-bypass-approvals-and-sandbox",
+            prompt,
+        ]
+    if ai_name == "antigravity":
+        resolved_model = _resolve_agy_model(model, "low")
+        return [
+            "agy",
+            "--dangerously-skip-permissions",
+            "--model", resolved_model,
+            "--print-timeout", f"{PROVIDER_PROBE_TIMEOUT_SECONDS}s",
+            "--disable-slash-commands",
+            "-p", prompt,
+        ]
+    if ai_name == "claude":
+        resolved_model, effort = _resolve_claude_model_and_effort(model, "low")
+        return [
+            "claude",
+            "-p",
+            "--model", resolved_model,
+            "--effort", effort,
+            "--no-session-persistence",
+            "--tools", "",
+            "--dangerously-skip-permissions",
+            prompt,
+        ]
+    log.error("Unknown AI agent: %s", ai_name)
+    return []
+
+
+def _probe_model_for_bucket(
+    ai_name: str,
+    is_argon: bool,
+    tracker_obj: ProcessTracker,
+) -> str:
+    """Choose the model to probe for an active cooldown bucket."""
+    if is_argon and ai_name == "antigravity":
+        return "gemini 4 argon"
+    for record in reversed(tracker_obj.all_records):
+        if tracker_obj._record_matches_bucket(record, ai_name, is_argon) and record.model:
+            return record.model
+    return DEFAULT_AI_CONFIG.get(ai_name, {}).get("model", "")
+
+
+def run_cooldown_probe(
+    ai_name: str,
+    model: str,
+    is_argon: bool = False,
+) -> tuple[bool, Optional[str], str]:
+    """Execute a lightweight CLI prompt to test whether a provider limit reset."""
+    probe_start = datetime.now(timezone.utc).isoformat()
+    with tempfile.TemporaryDirectory(prefix="swarm_probe_") as tmp_dir:
+        argv = build_probe_argv(ai_name, model, tmp_dir)
+        if not argv:
+            return False, None, f"unknown AI agent '{ai_name}'"
+        log.info(
+            "🔎 Probing '%s' (%s) to check if cooldown has reset early...",
+            ai_name,
+            "gemini 4 argon" if is_argon else model,
+        )
+        try:
+            result = subprocess.run(
+                argv,
+                cwd=tmp_dir,
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                timeout=PROVIDER_PROBE_TIMEOUT_SECONDS,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            return False, None, (
+                f"probe timed out after {PROVIDER_PROBE_TIMEOUT_SECONDS}s"
+            )
+        except FileNotFoundError:
+            return False, None, f"AI CLI '{argv[0]}' not found in PATH"
+        except OSError as exc:
+            return False, None, f"failed to launch probe: {exc}"
+
+    probe_end = datetime.now(timezone.utc).isoformat()
+    combined = "\n".join(
+        part for part in (result.stdout, result.stderr) if part
+    )
+    retry_after = ProcessTracker._provider_retry_after(
+        combined, probe_end, probe_start,
+    )
+    defer_scope = ProcessTracker._defer_scope(combined)
+    summary = ProcessTracker._failure_summary(combined)
+
+    if defer_scope == "provider" or (retry_after and defer_scope != "event"):
+        return False, retry_after, summary or "provider limit still active"
+    if result.returncode == 0 and defer_scope != "event":
+        return True, None, "probe succeeded"
+    return False, None, (
+        f"probe exited {result.returncode}"
+        + (f": {summary}" if summary else "")
+    )
+
+
+def maybe_probe_cooldown(
+    ai_name: str,
+    is_argon: bool = False,
+    dry_run: bool = False,
+) -> bool:
+    """Probe an active cooldown bucket if due; return True when cleared."""
+    cooldown_due = getattr(tracker, "cooldown_probe_due", None)
+    if not callable(cooldown_due) or not cooldown_due(ai_name, is_argon=is_argon):
+        return False
+
+    model = _probe_model_for_bucket(ai_name, is_argon, tracker)
+    label = "gemini 4 argon" if is_argon else ai_name
+    if dry_run:
+        tracker.mark_cycle_probed(ai_name, is_argon=is_argon)
+        log.info(
+            "[DRY RUN] Would probe '%s' (model=%s) for early cooldown reset.",
+            label, model,
+        )
+        return False
+
+    reset_confirmed, retry_after, summary = run_cooldown_probe(
+        ai_name, model, is_argon=is_argon,
+    )
+    cleared_count = tracker.record_probe_result(
+        ai_name,
+        is_argon=is_argon,
+        reset_confirmed=reset_confirmed,
+        retry_after=retry_after,
+        failure_reason=summary if not reset_confirmed else None,
+    )
+    if reset_confirmed:
+        log.info(
+            "✅ Cooldown probe succeeded for '%s'; cleared %d active cooldown record(s).",
+            label, cleared_count,
+        )
+        return True
+
+    if retry_after:
+        log.warning(
+            "⏸️ Cooldown probe for '%s' still limited (%s); retry after %s.",
+            label,
+            summary,
+            ProcessTracker._describe_timestamp(retry_after),
+        )
+    else:
+        log.warning(
+            "⏸️ Cooldown probe for '%s' did not confirm reset (%s); keeping cooldown.",
+            label,
+            summary,
+        )
+    return False
 
 
 def _format_argv_for_log(argv: list[str]) -> str:
@@ -2425,12 +2953,12 @@ def dispatch_worker(
     issue: TaskIssue,
     dry_run: bool = False,
     task_ref: Optional[str] = None,
-):
+) -> bool:
     """Dispatch a Worker AI to implement a task."""
     worker = issue.worker
     if not worker:
         log.warning("Issue #%d has no Worker tag, skipping.", issue.number)
-        return
+        return False
 
     # Extract short description from title, handling Korean/Unicode gracefully
     title_parts = issue.title.split("-")
@@ -2443,7 +2971,7 @@ def dispatch_worker(
     if not dry_run:
         worktree_path = create_worktree(issue.number, branch_name)
         if not worktree_path:
-            return
+            return False
 
     prompt = (
         f"You are the Worker for Issue #{issue.number}: {issue.title}.\n"
@@ -2469,16 +2997,19 @@ def dispatch_worker(
     valid_model, valid_reasoning = validate_model_availability(
         worker.ai, worker.model, worker.reasoning,
     )
+    fallback = argon_quota_fallback(worker.ai, valid_model)
+    if fallback:
+        valid_model, valid_reasoning = fallback
     argv = build_ai_argv(
         worker.ai, valid_model, valid_reasoning, prompt_file, str(worktree_path),
     )
 
     if dry_run:
         log.info("[DRY RUN] Would execute: %s", _format_argv_for_log(argv))
-        return
+        return True
 
     if not argv:
-        return
+        return False
 
     log_path, stdout_file, stderr_file = create_log_files("worker", task_ref, worker.ai)
     log.info("Dispatching Worker %s for Issue #%d (log: %s)", worker.ai, issue.number, log_path)
@@ -2504,10 +3035,13 @@ def dispatch_worker(
             cwd=str(worktree_path),
             log_file=str(log_path),
         )
+        return True
     except FileNotFoundError:
         log.error("AI CLI '%s' not found in PATH. Is it installed?", argv[0])
+        return False
     except Exception as e:
         log.error("Failed to dispatch Worker: %s", e)
+        return False
 
 
 def dispatch_reviewer(
@@ -2516,12 +3050,12 @@ def dispatch_reviewer(
     dry_run: bool = False,
     task_ref: Optional[str] = None,
     trigger: Optional[str] = None,
-):
+) -> bool:
     """Dispatch a Reviewer AI to review a PR."""
     reviewer = pr.reviewer
     if not reviewer:
         log.warning("PR #%d has no Reviewer tag, skipping.", pr.number)
-        return
+        return False
 
     trigger_context = ""
     if trigger == "maintainer_block":
@@ -2548,6 +3082,9 @@ def dispatch_reviewer(
     valid_model, valid_reasoning = validate_model_availability(
         reviewer.ai, reviewer.model, reviewer.reasoning,
     )
+    fallback = argon_quota_fallback(reviewer.ai, valid_model)
+    if fallback:
+        valid_model, valid_reasoning = fallback
 
     prompt = (
         f"You are the Reviewer for PR #{pr.number}: {pr.title}.\n"
@@ -2575,7 +3112,7 @@ def dispatch_reviewer(
 
     task_ref = task_ref or f"review#{pr.number}-{pr.head_sha or 'initial'}"
     prompt_file = write_prompt_file(prompt, "reviewer", task_ref)
-    effective_reasoning = ROLE_REASONING_OVERRIDE.get(
+    effective_reasoning = valid_reasoning if fallback else ROLE_REASONING_OVERRIDE.get(
         "reviewer", {},
     ).get(reviewer.ai, valid_reasoning)
     argv = build_ai_argv(
@@ -2588,10 +3125,10 @@ def dispatch_reviewer(
 
     if dry_run:
         log.info("[DRY RUN] Would execute reviewer: %s", _format_argv_for_log(argv))
-        return
+        return True
 
     if not argv:
-        return
+        return False
 
     log_path, stdout_file, stderr_file = create_log_files("reviewer", task_ref, reviewer.ai)
     log.info("Dispatching Reviewer %s for PR #%d (log: %s)", reviewer.ai, pr.number, log_path)
@@ -2615,10 +3152,13 @@ def dispatch_reviewer(
             cwd=str(REPO_ROOT),
             log_file=str(log_path),
         )
+        return True
     except FileNotFoundError:
         log.error("AI CLI '%s' not found in PATH. Is it installed?", argv[0])
+        return False
     except Exception as e:
         log.error("Failed to dispatch Reviewer: %s", e)
+        return False
 
 
 def dispatch_maintainer(
@@ -2627,7 +3167,7 @@ def dispatch_maintainer(
     maintainer: RoleAssignment,
     dry_run: bool = False,
     task_ref: Optional[str] = None,
-):
+) -> bool:
     """Dispatch AI3 to maintain the PR and seed the next autonomous task."""
     if issue is not None:
         issue_context = (
@@ -2659,6 +3199,9 @@ def dispatch_maintainer(
     valid_model, valid_reasoning = validate_model_availability(
         maintainer.ai, maintainer.model, maintainer.reasoning,
     )
+    fallback = argon_quota_fallback(maintainer.ai, valid_model)
+    if fallback:
+        valid_model, valid_reasoning = fallback
 
     prompt = (
         f"You are AI3, the Maintainer and post-merge Analyst for PR #{pr.number} "
@@ -2688,7 +3231,7 @@ def dispatch_maintainer(
 
     task_ref = task_ref or f"maintain#{pr.number}"
     prompt_file = write_prompt_file(prompt, "maintainer", task_ref)
-    effective_reasoning = ROLE_REASONING_OVERRIDE.get(
+    effective_reasoning = valid_reasoning if fallback else ROLE_REASONING_OVERRIDE.get(
         "maintainer", {},
     ).get(maintainer.ai, valid_reasoning)
     argv = build_ai_argv(
@@ -2701,10 +3244,10 @@ def dispatch_maintainer(
 
     if dry_run:
         log.info("[DRY RUN] Would execute maintainer: %s", _format_argv_for_log(argv))
-        return
+        return True
 
     if not argv:
-        return
+        return False
 
     log_path, stdout_file, stderr_file = create_log_files("maintainer", task_ref, maintainer.ai)
     log.info("Dispatching Maintainer %s for PR #%d (log: %s)", maintainer.ai, pr.number, log_path)
@@ -2728,10 +3271,13 @@ def dispatch_maintainer(
             cwd=str(REPO_ROOT),
             log_file=str(log_path),
         )
+        return True
     except FileNotFoundError:
         log.error("AI CLI '%s' not found in PATH. Is it installed?", argv[0])
+        return False
     except Exception as e:
         log.error("Failed to dispatch Maintainer: %s", e)
+        return False
 
 
 def dispatch_worker_revision(
@@ -2741,7 +3287,7 @@ def dispatch_worker_revision(
     dry_run: bool = False,
     task_ref: Optional[str] = None,
     worker: Optional[RoleAssignment] = None,
-):
+) -> bool:
     """Dispatch the original Worker AI to fix the PR based on feedback."""
     worker = (issue.worker if issue else None) or worker
     if not worker:
@@ -2750,13 +3296,13 @@ def dispatch_worker_revision(
             f"#{issue.number}" if issue else "none",
             pr.number,
         )
-        return
+        return False
 
     # Reuse the PR's actual branch so a title-derived branch cannot diverge.
     branch_name = pr.head_branch
     if not branch_name:
         log.warning("PR #%d has no head branch, cannot dispatch revision.", pr.number)
-        return
+        return False
 
     # Use issue number as worktree key when available, else PR number.
     worktree_key = issue.number if issue else pr.number
@@ -2764,7 +3310,7 @@ def dispatch_worker_revision(
     if not dry_run:
         worktree_path = create_worktree(worktree_key, branch_name)
         if not worktree_path:
-            return
+            return False
 
     issue_ref = f"(Issue #{issue.number}: {issue.title})" if issue else ""
     prompt = (
@@ -2793,7 +3339,10 @@ def dispatch_worker_revision(
     valid_model, valid_reasoning = validate_model_availability(
         worker.ai, worker.model, worker.reasoning,
     )
-    effective_reasoning = ROLE_REASONING_OVERRIDE.get(
+    fallback = argon_quota_fallback(worker.ai, valid_model)
+    if fallback:
+        valid_model, valid_reasoning = fallback
+    effective_reasoning = valid_reasoning if fallback else ROLE_REASONING_OVERRIDE.get(
         "worker_revise", {},
     ).get(worker.ai, valid_reasoning)
     argv = build_ai_argv(
@@ -2802,10 +3351,10 @@ def dispatch_worker_revision(
 
     if dry_run:
         log.info("[DRY RUN] Would execute worker revision: %s", _format_argv_for_log(argv))
-        return
+        return True
 
     if not argv:
-        return
+        return False
 
     log_path, stdout_file, stderr_file = create_log_files("worker_revise", task_ref, worker.ai)
     log.info("Dispatching Worker %s for PR #%d Revision (log: %s)", worker.ai, pr.number, log_path)
@@ -2830,22 +3379,160 @@ def dispatch_worker_revision(
             cwd=str(worktree_path),
             log_file=str(log_path),
         )
+        return True
     except FileNotFoundError:
         log.error("AI CLI '%s' not found in PATH. Is it installed?", argv[0])
+        return False
     except Exception as e:
         log.error("Failed to dispatch Worker Revision: %s", e)
+        return False
 
 
 # ---------------------------------------------------------------------------
 # Main Polling Loop
 # ---------------------------------------------------------------------------
 
+def _busy_ai_names() -> set[str]:
+    """AIs with a running session; empty for tracker doubles lacking the query."""
+    busy = getattr(tracker, "busy_ai_names", None)
+    return set(busy()) if callable(busy) else set()
+
+
+# Events queued by the latest polling cycle that have not started yet. Each
+# AI drains its own slice in order as its sessions finish; the next polling
+# cycle replaces the whole queue with a fresh GitHub snapshot, which is when
+# events produced by the sessions just run (a new PR, a review) are picked up.
+_PENDING_DISPATCH: list[DispatchCandidate] = []
+
+
+def _still_dispatchable(candidate: DispatchCandidate) -> bool:
+    """Re-check a queued event against local state right before launching it.
+
+    The snapshot may be up to one poll interval old: an earlier session of the
+    same AI may have hit a provider quota, or the event may already have run.
+    Only the local tracker is consulted — no GitHub call, no cooldown probe.
+    """
+    allowed, reason = tracker.should_dispatch(
+        candidate.task_ref,
+        role=candidate.role,
+        completion_confirmed=False,
+        ai_name=candidate.ai_name,
+    )
+    if not allowed:
+        log.info("Dropping queued %s: %s.", candidate.task_ref, reason)
+    return allowed
+
+
+def drain_pending_dispatch() -> list[DispatchCandidate]:
+    """Start the next queued event for every AI whose session slot is free.
+
+    An AI with a running session takes no new work. A launch that fails
+    before registering a process (worktree or CLI error) is dropped and frees
+    the slot for that AI's next queued event. Returns the candidates launched
+    (or that would be, in dry run).
+    """
+    busy = _busy_ai_names()
+    launched: list[DispatchCandidate] = []
+    remaining: list[DispatchCandidate] = []
+    for candidate in _PENDING_DISPATCH:
+        if candidate.ai_name in busy:
+            log_blocker(
+                f"dispatch-queued:{candidate.task_ref}",
+                "Queued %s (%s): '%s' session slot is taken.",
+                candidate.task_ref,
+                candidate.role,
+                candidate.ai_name,
+                level=logging.INFO,
+            )
+            remaining.append(candidate)
+            continue
+        if not _still_dispatchable(candidate):
+            continue
+        log.info("%s", candidate.announce)
+        if not candidate.launch():
+            log.warning(
+                "%s did not launch; trying the next '%s' candidate.",
+                candidate.task_ref,
+                candidate.ai_name,
+            )
+            continue
+        busy.add(candidate.ai_name)
+        launched.append(candidate)
+    _PENDING_DISPATCH[:] = remaining
+    return launched
+
+
+def run_dispatch_queue(
+    candidates: list[DispatchCandidate],
+) -> list[DispatchCandidate]:
+    """Replace the pending queue with this cycle's events and start what fits.
+
+    Order is closest-to-merge first (`DISPATCH_STAGE_PRIORITY`), then lowest
+    Issue/PR number. Events that do not fit now wait in `_PENDING_DISPATCH`
+    and start from `wait_for_next_cycle` as their AI's slot frees.
+    """
+    _PENDING_DISPATCH[:] = sorted(candidates, key=lambda c: c.sort_key)
+    return drain_pending_dispatch()
+
+
+def _evaluate_dispatch(
+    task_ref: str,
+    role: str,
+    assignment: RoleAssignment,
+    dry_run: bool = False,
+) -> tuple[bool, str]:
+    """Evaluate dispatch eligibility, probing due cooldowns before deferring.
+
+    A cooldown probe is itself a CLI invocation, so it is skipped while the AI
+    already runs a session: probing then would break the one-session limit,
+    and the AI could not take the event this cycle anyway.
+    """
+    allowed, reason = tracker.should_dispatch(
+        task_ref,
+        role=role,
+        completion_confirmed=False,
+        ai_name=assignment.ai,
+    )
+    ai_busy = assignment.ai in _busy_ai_names()
+    if (
+        not allowed
+        and reason.startswith(DISPATCH_PROVIDER_COOLDOWN)
+        and not ai_busy
+    ):
+        if maybe_probe_cooldown(assignment.ai, is_argon=False, dry_run=dry_run):
+            allowed, reason = tracker.should_dispatch(
+                task_ref,
+                role=role,
+                completion_confirmed=False,
+                ai_name=assignment.ai,
+            )
+
+    if allowed and assignment.ai == "antigravity" and not ai_busy:
+        argon_exhausted = getattr(tracker, "argon_quota_exhausted", None)
+        if callable(argon_exhausted) and argon_exhausted():
+            valid_model, _ = validate_model_availability(
+                assignment.ai, assignment.model, assignment.reasoning,
+            )
+            if _agy_stem(valid_model) == AGY_ARGON_STEM:
+                maybe_probe_cooldown("antigravity", is_argon=True, dry_run=dry_run)
+
+    return allowed, reason
+
+
 def process_issues(
     dry_run: bool = False,
     open_issues: Optional[list[dict]] = None,
     open_prs: Optional[list[dict]] = None,
+    queue: Optional[list[DispatchCandidate]] = None,
 ):
-    """Poll and dispatch each initial Issue event at most once."""
+    """Queue each eligible initial Issue event for its Worker.
+
+    With `queue`, candidates are appended for the caller to schedule together
+    with PR events; without it they are scheduled immediately.
+    """
+    own_queue = queue is None
+    if own_queue:
+        queue = []
     issues = open_issues if open_issues is not None else fetch_open_issues()
     if open_prs is None:
         open_prs = fetch_open_prs()
@@ -2880,11 +3567,11 @@ def process_issues(
         # The still-open Issue and missing PR prove that a prior zero exit code
         # did not complete the required GitHub transition.
         task_ref = f"issue#{num}:initial"
-        allowed, reason = tracker.should_dispatch(
+        allowed, reason = _evaluate_dispatch(
             task_ref,
             role="worker",
-            completion_confirmed=False,
-            ai_name=worker.ai,
+            assignment=worker,
+            dry_run=dry_run,
         )
         if not allowed:
             log_dispatch_blocker(
@@ -2903,16 +3590,28 @@ def process_issues(
             worker=worker,
         )
 
-        log.info(
-            "=== Open Task Issue #%d needs Worker (%s): %s ===",
-            num, reason, issue.title,
-        )
-        dispatch_worker(issue, dry_run, task_ref=task_ref)
+        queue.append(DispatchCandidate(
+            role="worker",
+            number=num,
+            ai_name=worker.ai,
+            task_ref=task_ref,
+            announce=(
+                f"=== Open Task Issue #{num} needs Worker ({reason}): "
+                f"{issue.title} ==="
+            ),
+            launch=lambda issue=issue, task_ref=task_ref: dispatch_worker(
+                issue, dry_run, task_ref=task_ref,
+            ),
+        ))
+
+    if own_queue:
+        run_dispatch_queue(queue)
 
 
 def process_prs(
     dry_run: bool = False,
     open_prs: Optional[list[dict]] = None,
+    queue: Optional[list[DispatchCandidate]] = None,
 ):
     """Advance each PR by one idempotent Worker/Reviewer/Maintainer event.
 
@@ -2920,7 +3619,12 @@ def process_prs(
     a [Reviewer: ...] tag in the body. Worker information is sourced from the
     linked Issue when available; for issue-less PRs the revision path is
     unavailable (no Worker to dispatch), but review and maintain events proceed.
+
+    Eligible events are queued, not launched: see `process_issues` for `queue`.
     """
+    own_queue = queue is None
+    if own_queue:
+        queue = []
     prs = open_prs if open_prs is not None else fetch_open_prs()
 
     for raw in prs:
@@ -3032,11 +3736,11 @@ def process_prs(
                 continue
 
             task_ref = f"maintain#{pr_num}-{signal_id}"
-            allowed, reason = tracker.should_dispatch(
+            allowed, reason = _evaluate_dispatch(
                 task_ref,
                 role="maintainer",
-                completion_confirmed=False,
-                ai_name=maintainer.ai,
+                assignment=maintainer,
+                dry_run=dry_run,
             )
             if not allowed:
                 log_dispatch_blocker(
@@ -3046,17 +3750,20 @@ def process_prs(
                 )
                 log.debug("Skipping Maintainer for PR #%d: %s.", pr_num, reason)
                 continue
-            log.info(
-                "=== PR #%d approved, dispatching AI3 Maintainer (%s) ===",
-                pr_num, reason,
-            )
-            dispatch_maintainer(
-                pr_obj,
-                issue_obj,
-                maintainer,
-                dry_run,
+            queue.append(DispatchCandidate(
+                role="maintainer",
+                number=pr_num,
+                ai_name=maintainer.ai,
                 task_ref=task_ref,
-            )
+                announce=(
+                    f"=== PR #{pr_num} approved, dispatching AI3 Maintainer "
+                    f"({reason}) ==="
+                ),
+                launch=lambda pr_obj=pr_obj, issue_obj=issue_obj,
+                maintainer=maintainer, task_ref=task_ref: dispatch_maintainer(
+                    pr_obj, issue_obj, maintainer, dry_run, task_ref=task_ref,
+                ),
+            ))
             continue
 
         valid, why = validate_distinct_roles(worker, reviewer)
@@ -3092,11 +3799,11 @@ def process_prs(
             else:
                 review_version = head_sha or signal_id
             task_ref = f"review#{pr_num}-{review_version}"
-            allowed, reason = tracker.should_dispatch(
+            allowed, reason = _evaluate_dispatch(
                 task_ref,
                 role="reviewer",
-                completion_confirmed=False,
-                ai_name=reviewer.ai,
+                assignment=reviewer,
+                dry_run=dry_run,
             )
             if not allowed:
                 log_dispatch_blocker(
@@ -3118,17 +3825,21 @@ def process_prs(
                     )
                 log.debug("Skipping Reviewer for PR #%d: %s.", pr_num, reason)
                 continue
-            log.info(
-                "=== PR #%d needs review for %s (%s) ===",
-                pr_num, review_version, reason,
-            )
-            dispatch_reviewer(
-                pr_obj,
-                worker,
-                dry_run,
+            queue.append(DispatchCandidate(
+                role="reviewer",
+                number=pr_num,
+                ai_name=reviewer.ai,
                 task_ref=task_ref,
-                trigger=review_trigger,
-            )
+                announce=(
+                    f"=== PR #{pr_num} needs review for {review_version} "
+                    f"({reason}) ==="
+                ),
+                launch=lambda pr_obj=pr_obj, worker=worker, task_ref=task_ref,
+                review_trigger=review_trigger: dispatch_reviewer(
+                    pr_obj, worker, dry_run,
+                    task_ref=task_ref, trigger=review_trigger,
+                ),
+            ))
             continue
 
         # \"revise\" action requires a Worker; skip if unavailable.
@@ -3141,21 +3852,6 @@ def process_prs(
             )
             continue
 
-        task_ref = f"revise#{pr_num}-{signal_id}"
-        allowed, reason = tracker.should_dispatch(
-            task_ref,
-            role="worker_revise",
-            completion_confirmed=False,
-            ai_name=worker.ai,
-        )
-        if not allowed:
-            log_dispatch_blocker(
-                f"dispatch-blocked:{task_ref}",
-                f"PR #{pr_num} Worker revision",
-                reason,
-            )
-            log.debug("Skipping Worker revision for PR #%d: %s.", pr_num, reason)
-            continue
         feedback_reviewer = parse_role(
             REVIEWER_PATTERN,
             signal_comment.get("body", ""),
@@ -3168,18 +3864,41 @@ def process_prs(
                 reviewer.ai,
             )
             continue
-        log.info(
-            "=== PR #%d needs Worker revision for %s (%s) ===",
-            pr_num, signal_id, reason,
+
+        task_ref = f"revise#{pr_num}-{signal_id}"
+        allowed, reason = _evaluate_dispatch(
+            task_ref,
+            role="worker_revise",
+            assignment=worker,
+            dry_run=dry_run,
         )
-        dispatch_worker_revision(
-            pr_obj,
-            issue_obj,
-            signal_comment.get("body", ""),
-            dry_run,
+        if not allowed:
+            log_dispatch_blocker(
+                f"dispatch-blocked:{task_ref}",
+                f"PR #{pr_num} Worker revision",
+                reason,
+            )
+            log.debug("Skipping Worker revision for PR #%d: %s.", pr_num, reason)
+            continue
+        queue.append(DispatchCandidate(
+            role="worker_revise",
+            number=pr_num,
+            ai_name=worker.ai,
             task_ref=task_ref,
-            worker=worker,
-        )
+            announce=(
+                f"=== PR #{pr_num} needs Worker revision for {signal_id} "
+                f"({reason}) ==="
+            ),
+            launch=lambda pr_obj=pr_obj, issue_obj=issue_obj,
+            feedback=signal_comment.get("body", ""), task_ref=task_ref,
+            worker=worker: dispatch_worker_revision(
+                pr_obj, issue_obj, feedback, dry_run,
+                task_ref=task_ref, worker=worker,
+            ),
+        ))
+
+    if own_queue:
+        run_dispatch_queue(queue)
 
 
 def close_issue_if_open(issue_num: int, pr_num: int, dry_run: bool):
@@ -3253,6 +3972,10 @@ def log_open_items(issues: list[dict], prs: list[dict]):
 
 def process_polling_cycle(dry_run: bool = False, initial: bool = False):
     """Fetch a consistent open-work snapshot and advance every eligible item."""
+    reset_cycle_probes = getattr(tracker, "reset_cycle_probe_state", None)
+    if callable(reset_cycle_probes):
+        reset_cycle_probes()
+
     # Fetch both collections before dispatch. If either critical query fails,
     # the cycle fails closed instead of creating a duplicate Worker while its
     # existing PR was merely unavailable.
@@ -3262,13 +3985,46 @@ def process_polling_cycle(dry_run: bool = False, initial: bool = False):
     if initial:
         log_open_items(open_issues, open_prs)
 
+    # Collect Issue and PR events into one queue so a single scheduler can
+    # rank them across both collections before any AI session starts.
+    queue: list[DispatchCandidate] = []
     process_issues(
         dry_run,
         open_issues=open_issues,
         open_prs=open_prs,
+        queue=queue,
     )
-    process_prs(dry_run, open_prs)
+    process_prs(dry_run, open_prs, queue=queue)
+    run_dispatch_queue(queue)
     cleanup_merged_prs(dry_run)
+
+
+def wait_for_next_cycle(interval: int):
+    """Sleep the full `interval`, starting queued events as AI slots free up.
+
+    The next GitHub poll always waits the whole interval. Meanwhile, while
+    events are still queued, finished sessions are checked locally every
+    `SLOT_CHECK_INTERVAL_SECONDS` and the finishing AI's next queued event
+    starts immediately (agy1 → agy2 → agy3 within one interval). Sessions
+    inherited from the registry across an orchestrator restart are checked the
+    same way, so queued work behind one drains without waiting for a poll.
+    """
+    finished = getattr(tracker, "has_finished_process", None)
+    if not callable(finished):
+        time.sleep(interval)
+        return
+    slept = 0
+    while slept < interval:
+        step = (
+            min(SLOT_CHECK_INTERVAL_SECONDS, interval - slept)
+            if _PENDING_DISPATCH
+            else interval - slept
+        )
+        time.sleep(step)
+        slept += step
+        if _PENDING_DISPATCH and finished():
+            tracker.poll_all()
+            drain_pending_dispatch()
 
 
 def run_loop(interval: int, dry_run: bool = False):
@@ -3290,6 +4046,7 @@ def run_loop(interval: int, dry_run: bool = False):
     signal.signal(signal.SIGTERM, handle_signal)
     signal.signal(signal.SIGINT, handle_signal)
 
+    _PENDING_DISPATCH.clear()
     initial = True
     idle_cycles = 0
     cycle_count = 0
@@ -3335,15 +4092,63 @@ def run_loop(interval: int, dry_run: bool = False):
         except Exception as e:
             log.error("Error in polling cycle: %s", e, exc_info=True)
 
-        log.info("Sleeping %ds...", interval)
-        time.sleep(interval)
+        log.info(
+            "Sleeping %ds (%d queued event(s) start as AI slots free)...",
+            interval,
+            len(_PENDING_DISPATCH),
+        )
+        wait_for_next_cycle(interval)
 
 
 # ---------------------------------------------------------------------------
 # Entry Point
 # ---------------------------------------------------------------------------
 
+def _parse_cooldown_clear_targets(
+    raw_targets: list[str],
+) -> tuple[Optional[set[tuple[str, bool]]], list[str]]:
+    """Parse `--clear-cooldown` arguments into (bucket_set_or_None, invalid_tokens)."""
+    if not raw_targets:
+        return None, []
+    buckets: set[tuple[str, bool]] = set()
+    invalid: list[str] = []
+    for token in raw_targets:
+        norm = token.strip().lower()
+        if norm == "all":
+            return None, []
+        if norm in ("argon", "gemini-4-argon", "gemini 4 argon"):
+            buckets.add(("antigravity", True))
+        elif norm in ("flash", "gemini-3.8-flash", "gemini 3.8 flash"):
+            buckets.add(("antigravity", False))
+        elif norm in ("antigravity", "agy"):
+            buckets.add(("antigravity", False))
+            buckets.add(("antigravity", True))
+        elif norm in DEFAULT_AI_CONFIG:
+            buckets.add((norm, False))
+        else:
+            invalid.append(token)
+    return buckets, invalid
+
+
+def _apply_clear_cooldown(
+    buckets: Optional[set[tuple[str, bool]]],
+    dry_run: bool = False,
+):
+    """Clear selected active provider cooldown buckets and report what changed."""
+    cleared = tracker.clear_cooldowns(buckets=buckets, save=not dry_run)
+    prefix = "[DRY RUN] Would clear" if dry_run else "🧹 Cleared"
+    if not cleared:
+        log.info("%s no active provider cooldown records.", prefix)
+        return
+    details = ", ".join(
+        f"{bucket} ({count})" for bucket, count in sorted(cleared.items())
+    )
+    log.info("%s active provider cooldown record(s): %s", prefix, details)
+
+
 def main():
+    global _cooldown_probe_interval_seconds
+
     parser = argparse.ArgumentParser(
         description="Swarm Orchestrator — Autonomous Multi-Agent Swarm for Dev Toolkit",
     )
@@ -3363,14 +4168,56 @@ def main():
         "--status", action="store_true",
         help="Print status of all tracked AI processes and exit",
     )
+    parser.add_argument(
+        "--clear-cooldown", nargs="*", metavar="AI", default=None,
+        help=(
+            "Clear active provider cooldowns before running (optional targets: "
+            "all, codex, claude, antigravity, argon, flash; default: all)"
+        ),
+    )
+    parser.add_argument(
+        "--probe-cooldown", action="store_true",
+        help=(
+            "Probe cooled-down AIs (including Argon fallback) immediately when "
+            "tasks are waiting, ignoring the probe interval once"
+        ),
+    )
+    parser.add_argument(
+        "--probe-interval",
+        type=int,
+        default=PROVIDER_COOLDOWN_PROBE_INTERVAL_SECONDS,
+        help=(
+            "Minimum seconds between lightweight quota probes during cooldown "
+            f"(default: {PROVIDER_COOLDOWN_PROBE_INTERVAL_SECONDS}, <0 disables)"
+        ),
+    )
     args = parser.parse_args()
 
+    clear_buckets: Optional[set[tuple[str, bool]]] = None
+    if args.clear_cooldown is not None:
+        clear_buckets, invalid_targets = _parse_cooldown_clear_targets(
+            args.clear_cooldown,
+        )
+        if invalid_targets:
+            parser.error(
+                "Unknown --clear-cooldown target(s): "
+                + ", ".join(invalid_targets)
+                + " (expected: all, codex, claude, antigravity, argon, flash)"
+            )
+
     if args.status:
+        if args.clear_cooldown is not None:
+            _apply_clear_cooldown(clear_buckets, dry_run=args.dry_run)
         print(tracker.get_summary())
         return
 
+    _cooldown_probe_interval_seconds = args.probe_interval
     preserve_running = not args.once and not args.dry_run
     reset_process_history(preserve_running=preserve_running)
+    if args.clear_cooldown is not None:
+        _apply_clear_cooldown(clear_buckets, dry_run=args.dry_run)
+    if args.probe_cooldown:
+        tracker.arm_forced_probe()
     cleanup_old_task_logs()
 
     if args.once:

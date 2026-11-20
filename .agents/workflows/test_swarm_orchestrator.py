@@ -63,6 +63,7 @@ def record(
     retry_after=None,
     ai_name="codex",
     defer_scope=None,
+    model="",
 ):
     return SimpleNamespace(
         task_ref=task_ref,
@@ -72,6 +73,7 @@ def record(
         retry_after=retry_after,
         ai_name=ai_name,
         defer_scope=defer_scope,
+        model=model,
     )
 
 
@@ -1502,17 +1504,22 @@ class StartupScanTests(unittest.TestCase):
             patch.object(swarm, "log_open_items") as log_open_items,
             patch.object(swarm, "process_issues") as process_issues,
             patch.object(swarm, "process_prs") as process_prs,
+            patch.object(swarm, "run_dispatch_queue") as run_dispatch_queue,
             patch.object(swarm, "cleanup_merged_prs") as cleanup_merged_prs,
         ):
             swarm.process_polling_cycle(initial=True)
 
         log_open_items.assert_called_once_with(issues, prs)
+        queue = process_issues.call_args.kwargs["queue"]
         process_issues.assert_called_once_with(
             False,
             open_issues=issues,
             open_prs=prs,
+            queue=queue,
         )
-        process_prs.assert_called_once_with(False, prs)
+        process_prs.assert_called_once_with(False, prs, queue=queue)
+        # Both collections feed ONE queue, scheduled once.
+        run_dispatch_queue.assert_called_once_with(queue)
         cleanup_merged_prs.assert_called_once_with(False)
 
     def test_critical_gh_failure_is_reported_and_raised(self):
@@ -1599,6 +1606,110 @@ class DispatchSafetyTests(unittest.TestCase):
         self.assertLess(prompt.index(draft_check), prompt.index(mark_ready))
         self.assertLess(prompt.index(mark_ready), prompt.index(reverify))
         self.assertLess(prompt.index(reverify), prompt.index(merge))
+
+
+class ArgonQuotaFallbackTests(unittest.TestCase):
+    """An exhausted Gemini 4 Argon quota falls back to Gemini 3.8 Flash high."""
+
+    def _cooldown(self, model, minutes=30, task_ref="review#9-abc"):
+        return record(
+            task_ref,
+            "reviewer",
+            swarm.ProcessStatus.DEFERRED,
+            retry_after=(
+                datetime.now(timezone.utc) + timedelta(minutes=minutes)
+            ).isoformat(),
+            ai_name="antigravity",
+            defer_scope="provider",
+            model=model,
+        )
+
+    def test_argon_quota_does_not_block_antigravity_dispatch(self):
+        tracker = make_tracker([self._cooldown("gemini 4 argon")])
+
+        other_event, _ = tracker.should_dispatch(
+            "issue#28:initial", "worker", ai_name="antigravity",
+        )
+        same_event, reason = tracker.should_dispatch(
+            "review#9-abc", "reviewer", ai_name="antigravity",
+        )
+
+        self.assertTrue(other_event)
+        self.assertTrue(same_event)
+        self.assertEqual("retry after provider cooldown", reason)
+        self.assertTrue(tracker.argon_quota_exhausted())
+
+    def test_flash_quota_still_blocks_antigravity_dispatch(self):
+        tracker = make_tracker([self._cooldown("gemini 3.8 flash")])
+
+        allowed, reason = tracker.should_dispatch(
+            "issue#28:initial", "worker", ai_name="antigravity",
+        )
+
+        self.assertFalse(allowed)
+        self.assertIn(swarm.DISPATCH_PROVIDER_COOLDOWN, reason)
+        self.assertFalse(tracker.argon_quota_exhausted())
+
+    def test_fallback_applies_only_to_argon_tags_while_quota_is_exhausted(self):
+        cases = [
+            ([self._cooldown("gemini 4 argon")], "antigravity", "gemini 4 argon",
+             swarm.AGY_ARGON_QUOTA_FALLBACK),
+            ([self._cooldown("gemini 4 argon")], "antigravity", "argon",
+             swarm.AGY_ARGON_QUOTA_FALLBACK),
+            ([self._cooldown("gemini 4 argon")], "antigravity",
+             "gemini 3.8 flash", None),
+            ([self._cooldown("gemini 4 argon")], "codex", "5.6 terra", None),
+            ([self._cooldown("gemini 4 argon", minutes=-1)], "antigravity",
+             "gemini 4 argon", None),
+            ([], "antigravity", "gemini 4 argon", None),
+        ]
+        for history, ai, model, expected in cases:
+            with self.subTest(ai=ai, model=model, history=len(history)):
+                with patch.object(swarm, "tracker", make_tracker(history)):
+                    self.assertEqual(
+                        expected, swarm.argon_quota_fallback(ai, model),
+                    )
+
+    def test_every_dispatcher_runs_flash_high_when_argon_is_exhausted(self):
+        argon = swarm.RoleAssignment("antigravity", "gemini 4 argon", "high")
+        issue = swarm.TaskIssue(
+            number=7, title="[Task] JSON - formatter", body="Do it.",
+            worker=argon,
+        )
+        pr = swarm.TaskPR(
+            number=12, title="[PR] 7 - formatter", body="",
+            head_branch="worker/7-antigravity-formatter", reviewer=argon,
+        )
+        dispatchers = {
+            "worker": lambda: swarm.dispatch_worker(issue, dry_run=True),
+            "reviewer": lambda: swarm.dispatch_reviewer(pr, None, dry_run=True),
+            "maintainer": lambda: swarm.dispatch_maintainer(
+                pr, issue=None, maintainer=argon, dry_run=True,
+            ),
+            "worker_revise": lambda: swarm.dispatch_worker_revision(
+                pr, issue, "Fix it.", dry_run=True,
+            ),
+        }
+        exhausted = make_tracker([self._cooldown("gemini 4 argon")])
+        for role, dispatch in dispatchers.items():
+            with self.subTest(role=role):
+                with (
+                    patch.object(swarm, "tracker", exhausted),
+                    patch.object(swarm, "gh", return_value=""),
+                    patch.object(swarm, "write_prompt_file", return_value=Path("prompt")),
+                    patch.object(swarm, "build_ai_argv", return_value=["agy"]) as build,
+                ):
+                    dispatch()
+
+                ai, model, reasoning = build.call_args.args[:3]
+                self.assertEqual(
+                    ("antigravity", "gemini 3.8 flash", "high"),
+                    (ai, model, reasoning),
+                )
+                self.assertEqual(
+                    "gemini-3.8-flash-high",
+                    swarm._resolve_agy_model(model, reasoning),
+                )
 
 
 class PollingLifecycleTests(unittest.TestCase):
@@ -3168,6 +3279,295 @@ class RuntimeLifecycleTests(unittest.TestCase):
         sleep.assert_not_called()
 
 
+class SingleSessionSchedulingTests(unittest.TestCase):
+    """Each AI runs one session at a time, closest-to-merge and oldest first."""
+
+    def setUp(self):
+        swarm._PENDING_DISPATCH.clear()
+        self.addCleanup(swarm._PENDING_DISPATCH.clear)
+
+    @staticmethod
+    def candidate(role, number, ai_name, launched, result=True):
+        task_ref = f"{role}#{number}"
+
+        def launch():
+            launched.append(task_ref)
+            return result
+
+        return swarm.DispatchCandidate(
+            role=role,
+            number=number,
+            ai_name=ai_name,
+            task_ref=task_ref,
+            announce=f"=== {task_ref} ===",
+            launch=launch,
+        )
+
+    def test_one_session_per_ai_by_stage_then_number(self):
+        launched = []
+        c = self.candidate
+        queue = [
+            c("worker", 3, "codex", launched),
+            c("reviewer", 9, "codex", launched),
+            c("maintainer", 12, "codex", launched),
+            c("maintainer", 8, "codex", launched),
+            c("worker_revise", 5, "claude", launched),
+            c("worker", 4, "claude", launched),
+            c("worker", 7, "antigravity", launched),
+            c("worker", 6, "antigravity", launched),
+        ]
+        with patch.object(swarm, "tracker", make_tracker([])):
+            result = swarm.run_dispatch_queue(queue)
+
+        self.assertEqual(
+            ["maintainer#8", "worker_revise#5", "worker#6"],
+            launched,
+        )
+        self.assertEqual(
+            {"codex", "claude", "antigravity"},
+            {cand.ai_name for cand in result},
+        )
+
+    def test_ai_with_running_session_takes_no_new_work(self):
+        launched = []
+        tracker = make_tracker([
+            record("issue#1:initial", "worker", swarm.ProcessStatus.RUNNING,
+                   ai_name="codex"),
+            record("issue#2:initial", "worker", swarm.ProcessStatus.COMPLETED,
+                   ai_name="claude"),
+        ])
+        queue = [
+            self.candidate("maintainer", 3, "codex", launched),
+            self.candidate("reviewer", 4, "claude", launched),
+        ]
+        with patch.object(swarm, "tracker", tracker):
+            swarm.run_dispatch_queue(queue)
+
+        self.assertEqual(["reviewer#4"], launched)
+
+    def test_failed_launch_frees_the_slot_for_the_next_candidate(self):
+        launched = []
+        queue = [
+            self.candidate("maintainer", 1, "codex", launched, result=False),
+            self.candidate("reviewer", 2, "codex", launched),
+            self.candidate("worker", 3, "codex", launched),
+        ]
+        with patch.object(swarm, "tracker", make_tracker([])):
+            swarm.run_dispatch_queue(queue)
+
+        self.assertEqual(["maintainer#1", "reviewer#2"], launched)
+
+    def test_polling_cycle_dispatches_maintainer_before_worker_for_same_ai(self):
+        issues = [{
+            "number": 30,
+            "title": "[Task] New tool",
+            "body": "[Worker: claude | Model: sonnet 5 | Reasoning: 높음]",
+        }]
+        prs = [{
+            "number": 25,
+            "title": "[PR] 20 - Old tool",
+            "body": "[Reviewer: antigravity | Model: gemini 3.8 flash | Reasoning: high]",
+            "headRefName": "worker/20-codex-old-tool",
+            "headRefOid": "abc123",
+        }]
+        approval = {
+            "id": 77,
+            "body": (
+                "[Reviewer: antigravity | Model: gemini 3.8 flash | Reasoning: high]\n"
+                "[Approved]\n"
+                "[Maintainer: claude | Model: sonnet 5 | Reasoning: 낮음]"
+            ),
+        }
+        linked_issue = {
+            "number": 20,
+            "title": "[Task] Old tool",
+            "body": "[Worker: codex | Model: 5.6 terra | Reasoning: 높음]",
+        }
+        with (
+            patch.object(swarm, "tracker", FakeTracker()),
+            patch.object(swarm, "fetch_open_issues", return_value=issues),
+            patch.object(swarm, "fetch_open_prs", return_value=prs),
+            patch.object(swarm, "fetch_issue", return_value=linked_issue),
+            patch.object(swarm, "fetch_pr_comments", return_value=[approval]),
+            patch.object(swarm, "cleanup_merged_prs"),
+            patch.object(swarm, "dispatch_worker") as dispatch_worker,
+            patch.object(swarm, "dispatch_maintainer") as dispatch_maintainer,
+        ):
+            swarm.process_polling_cycle(dry_run=False, initial=False)
+
+        dispatch_maintainer.assert_called_once()
+        self.assertEqual(25, dispatch_maintainer.call_args.args[0].number)
+        dispatch_worker.assert_not_called()
+
+    def test_busy_ai_is_not_probed_during_cooldown(self):
+        retry = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+        tracker = make_tracker([
+            record("issue#1:initial", "worker", swarm.ProcessStatus.RUNNING,
+                   ai_name="codex"),
+            record("issue#2:initial", "worker", swarm.ProcessStatus.DEFERRED,
+                   ai_name="codex", retry_after=retry, defer_scope="provider"),
+        ])
+        assignment = swarm.RoleAssignment("codex", "5.6 terra", "높음")
+        with (
+            patch.object(swarm, "tracker", tracker),
+            patch.object(swarm, "maybe_probe_cooldown") as probe,
+        ):
+            allowed, _ = swarm._evaluate_dispatch(
+                "issue#3:initial", "worker", assignment,
+            )
+
+        self.assertFalse(allowed)
+        probe.assert_not_called()
+
+    def test_each_ai_drains_its_queue_in_order_within_one_interval(self):
+        """agy1→agy2→agy3 / claude1→claude2 / codex1→codex2→codex3."""
+        running: set[str] = set()
+        launched: list[str] = []
+        tracker = SimpleNamespace(
+            busy_ai_names=lambda: set(running),
+            should_dispatch=lambda *a, **k: (True, "new event"),
+        )
+
+        def candidate(ai, number):
+            task_ref = f"{ai}{number}"
+
+            def launch():
+                launched.append(task_ref)
+                running.add(ai)
+                return True
+
+            return swarm.DispatchCandidate(
+                role="worker", number=number, ai_name=ai,
+                task_ref=task_ref, announce=task_ref, launch=launch,
+            )
+
+        queue = [
+            candidate(ai, n)
+            for ai, count in (("agy", 3), ("claude", 2), ("codex", 3))
+            for n in range(1, count + 1)
+        ]
+        with patch.object(swarm, "tracker", tracker):
+            swarm.run_dispatch_queue(queue)
+            self.assertEqual(["agy1", "claude1", "codex1"], launched)
+
+            for finished in ("agy", "codex", "claude", "agy", "codex"):
+                running.discard(finished)
+                swarm.drain_pending_dispatch()
+
+        self.assertEqual(
+            ["agy1", "claude1", "codex1",
+             "agy2", "codex2", "claude2", "agy3", "codex3"],
+            launched,
+        )
+        self.assertEqual([], swarm._PENDING_DISPATCH)
+
+    def test_queued_event_is_dropped_when_provider_entered_cooldown(self):
+        launched = []
+        tracker = SimpleNamespace(
+            busy_ai_names=lambda: set(),
+            should_dispatch=lambda *a, **k: (
+                False, f"{swarm.DISPATCH_PROVIDER_COOLDOWN} until later",
+            ),
+        )
+        with patch.object(swarm, "tracker", tracker):
+            swarm.run_dispatch_queue([
+                self.candidate("worker", 1, "codex", launched),
+            ])
+
+        self.assertEqual([], launched)
+        self.assertEqual([], swarm._PENDING_DISPATCH)
+
+    def test_wait_keeps_full_interval_and_starts_next_queued_event(self):
+        launched = []
+        tracker = make_tracker([])
+        tracker.has_finished_process = lambda: True
+        tracker.poll_all = lambda: None
+        swarm._PENDING_DISPATCH[:] = [
+            self.candidate("worker", 2, "codex", launched),
+        ]
+        with (
+            patch.object(swarm, "tracker", tracker),
+            patch.object(swarm.time, "sleep") as sleep,
+        ):
+            swarm.wait_for_next_cycle(70)
+
+        self.assertEqual(["worker#2"], launched)
+        # Never returns early: the GitHub poll stays on the full interval.
+        self.assertEqual(70, sum(call.args[0] for call in sleep.call_args_list))
+
+    def test_wait_without_queue_sleeps_interval_in_one_call(self):
+        tracker = SimpleNamespace(has_finished_process=lambda: True)
+        with (
+            patch.object(swarm, "tracker", tracker),
+            patch.object(swarm.time, "sleep") as sleep,
+        ):
+            swarm.wait_for_next_cycle(3600)
+
+        sleep.assert_called_once_with(3600)
+
+    @staticmethod
+    def _dead_pid() -> int:
+        """A PID that exited and was reaped, so it is no longer a child."""
+        proc = subprocess.Popen([sys.executable, "-c", ""])
+        proc.wait()
+        return proc.pid
+
+    @staticmethod
+    def inherited_record(pid, ai_name="codex", task_ref="issue#1:initial"):
+        """A RUNNING registry record with no Popen handle (restart-inherited)."""
+        return swarm.TrackedProcess(
+            pid=pid,
+            role="worker",
+            ai_name=ai_name,
+            model="",
+            reasoning="",
+            task_ref=task_ref,
+            branch="worker/1",
+            command="codex exec",
+            cwd=".",
+            log_file="",
+            started_at=datetime.now(timezone.utc).isoformat(),
+        )
+
+    def test_has_finished_process_sees_exited_inherited_session(self):
+        tracker = make_tracker([self.inherited_record(self._dead_pid())])
+        self.assertTrue(tracker.has_finished_process())
+
+    def test_has_finished_process_ignores_live_inherited_session(self):
+        tracker = make_tracker([self.inherited_record(os.getpid())])
+        self.assertFalse(tracker.has_finished_process())
+
+    def test_wait_drains_queue_after_inherited_session_finishes(self):
+        """An orchestrator restart must not stall its queue for a whole poll.
+
+        The live session is restored from the registry into `_history`, so it
+        has no Popen handle. `busy_ai_names()` still reports its AI busy, so
+        the queued event waits — and must start at the next local slot check
+        once that inherited PID is gone, not at the next GitHub poll.
+        """
+        launched = []
+        tracker = make_tracker([self.inherited_record(self._dead_pid())])
+        swarm._PENDING_DISPATCH[:] = [
+            self.candidate("maintainer", 2, "codex", launched),
+        ]
+        registry = Path(tempfile.mkdtemp()) / "registry.json"
+        self.addCleanup(shutil.rmtree, registry.parent, ignore_errors=True)
+        with (
+            patch.object(swarm, "tracker", tracker),
+            patch.object(swarm, "PROCESS_REGISTRY_FILE", registry),
+            patch.object(swarm.time, "sleep"),
+        ):
+            # The slot is held while the inherited record still reads RUNNING.
+            self.assertEqual([], swarm.drain_pending_dispatch())
+            self.assertEqual({"codex"}, tracker.busy_ai_names())
+
+            swarm.wait_for_next_cycle(swarm.SLOT_CHECK_INTERVAL_SECONDS * 2)
+
+        self.assertEqual(["maintainer#2"], launched)
+        self.assertEqual([], swarm._PENDING_DISPATCH)
+        self.assertEqual(set(), tracker.busy_ai_names())
+
+
 class ModelAvailabilityTests(unittest.TestCase):
     """Tests for AVAILABLE_MODELS registry and validate_model_availability()."""
 
@@ -3537,6 +3937,548 @@ class AntigravityRegistryConsolidationTests(unittest.TestCase):
         self.assertTrue(swarm._is_known_good_model("claude", "sonnet 5"))
         self.assertTrue(swarm._is_known_good_model("claude", "claude-sonnet-5"))
         self.assertFalse(swarm._is_known_good_model("claude", "claude-opus-6"))
+
+
+class CooldownEarlyResetProbeTests(unittest.TestCase):
+    """Tests for early-reset probing and manual cooldown clearing."""
+
+    def _deferred(
+        self,
+        task_ref,
+        ai_name="codex",
+        model="5.6 terra",
+        minutes_until_reset=180,
+        hours_since_ended=4,
+        defer_scope="provider",
+        log_file="",
+    ):
+        now = datetime.now(timezone.utc)
+        ended_at = (now - timedelta(hours=hours_since_ended)).isoformat()
+        started_at = (now - timedelta(hours=hours_since_ended, minutes=5)).isoformat()
+        retry_after = (now + timedelta(minutes=minutes_until_reset)).isoformat()
+        return swarm.TrackedProcess(
+            pid=1111,
+            role="worker",
+            ai_name=ai_name,
+            model=model,
+            reasoning="high",
+            task_ref=task_ref,
+            branch=f"worker/{ai_name}",
+            command=ai_name,
+            cwd="/repo",
+            log_file=log_file,
+            started_at=started_at,
+            ended_at=ended_at,
+            exit_code=1,
+            status=swarm.ProcessStatus.DEFERRED,
+            failure_reason="limit",
+            retry_after=retry_after,
+            defer_scope=defer_scope,
+        )
+
+    def test_build_probe_argv_builds_minimal_read_only_commands(self):
+        codex_argv = swarm.build_probe_argv("codex", "5.6 terra", "/tmp/probe")
+        self.assertEqual("codex", codex_argv[0])
+        self.assertIn("read-only", codex_argv)
+        self.assertIn("--ephemeral", codex_argv)
+        self.assertIn("--skip-git-repo-check", codex_argv)
+        self.assertIn("model_reasoning_effort=low", codex_argv)
+
+        agy_argv = swarm.build_probe_argv("antigravity", "gemini 4 argon", "/tmp/probe")
+        self.assertEqual("agy", agy_argv[0])
+        self.assertIn("gemini-4-argon-low", agy_argv)
+        self.assertIn("--disable-slash-commands", agy_argv)
+
+        claude_argv = swarm.build_probe_argv("claude", "sonnet 5", "/tmp/probe")
+        self.assertEqual("claude", claude_argv[0])
+        self.assertIn("--no-session-persistence", claude_argv)
+        self.assertIn("--tools", claude_argv)
+        self.assertIn("", claude_argv)
+        self.assertEqual("low", claude_argv[claude_argv.index("--effort") + 1])
+
+        self.assertEqual([], swarm.build_probe_argv("unknown-ai", "x", "/tmp/probe"))
+
+    def test_cooldown_probe_due_respects_interval_cycle_and_scope(self):
+        recent = self._deferred("issue#1:initial", hours_since_ended=1)
+        old = self._deferred("issue#2:initial", hours_since_ended=4)
+        older = self._deferred("issue#4:initial", hours_since_ended=6)
+        event_only = self._deferred(
+            "issue#3:initial", ai_name="claude", model="sonnet 5",
+            hours_since_ended=5, defer_scope="event",
+        )
+
+        recent_tracker = make_tracker([recent, old, event_only])
+        self.assertFalse(
+            recent_tracker.cooldown_probe_due("codex", probe_interval=10800),
+            "1h elapsed since latest codex cooldown must wait for 3h interval",
+        )
+
+        tracker = make_tracker([old, older, event_only])
+        self.assertTrue(
+            tracker.cooldown_probe_due("codex", probe_interval=10800),
+            "4h elapsed since latest codex cooldown should be due at 3h interval",
+        )
+        self.assertFalse(
+            tracker.cooldown_probe_due("claude", probe_interval=10800),
+            "event-scoped deferrals must not trigger provider probes",
+        )
+
+        tracker.mark_cycle_probed("codex")
+        self.assertFalse(
+            tracker.cooldown_probe_due("codex", probe_interval=0),
+            "same bucket must not probe twice in one polling cycle",
+        )
+
+        tracker.reset_cycle_probe_state()
+        tracker._probed_at_map()["codex:provider"] = (
+            datetime.now(timezone.utc) - timedelta(hours=1)
+        ).isoformat()
+        self.assertFalse(
+            tracker.cooldown_probe_due("codex", probe_interval=10800),
+            "1h since last probe must wait for the 3h interval",
+        )
+        self.assertFalse(
+            tracker.cooldown_probe_due("codex", probe_interval=-1),
+            "negative probe_interval disables automatic probing",
+        )
+
+        tracker.arm_forced_probe()
+        self.assertTrue(
+            tracker.cooldown_probe_due("codex", probe_interval=10800),
+            "arm_forced_probe enables one immediate probe despite recent probe",
+        )
+        tracker.mark_cycle_probed("codex")
+        tracker.reset_cycle_probe_state()
+        self.assertFalse(
+            tracker.cooldown_probe_due("codex", probe_interval=10800),
+            "forced probe flag must be consumed after one probe",
+        )
+
+    def test_run_cooldown_probe_interprets_success_limit_timeout_and_errors(self):
+        cases = [
+            (SimpleNamespace(returncode=0, stdout="OK", stderr=""), True, False),
+            (
+                SimpleNamespace(
+                    returncode=0,
+                    stdout="",
+                    stderr="Error: Individual quota reached. Resets in 2h.",
+                ),
+                False,
+                True,
+            ),
+            (
+                SimpleNamespace(
+                    returncode=1,
+                    stdout="",
+                    stderr="ERROR: You've hit your usage limit. try again at 11:30 PM.",
+                ),
+                False,
+                True,
+            ),
+            (SimpleNamespace(returncode=1, stdout="", stderr="network error"), False, False),
+        ]
+        for proc_result, expect_reset, expect_retry in cases:
+            with patch.object(swarm.subprocess, "run", return_value=proc_result):
+                reset_ok, retry_after, _ = swarm.run_cooldown_probe("codex", "5.6 terra")
+            self.assertEqual(expect_reset, reset_ok)
+            self.assertEqual(expect_retry, bool(retry_after))
+
+        with patch.object(
+            swarm.subprocess, "run",
+            side_effect=subprocess.TimeoutExpired(cmd="codex", timeout=60),
+        ):
+            reset_ok, retry_after, summary = swarm.run_cooldown_probe("codex", "5.6 terra")
+        self.assertFalse(reset_ok)
+        self.assertIsNone(retry_after)
+        self.assertIn("timed out", summary)
+
+    def test_cleared_cooldown_is_not_resurrected_from_old_log_on_restart(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            registry = Path(tmp_dir) / "registry.json"
+            old_log = Path(tmp_dir) / "codex_limit.log"
+            old_log.write_text(
+                "ERROR: You've hit your usage limit. Resets in 48h.\n",
+                encoding="utf-8",
+            )
+            rec = self._deferred(
+                "issue#462:initial",
+                ai_name="codex",
+                model="5.6 terra",
+                hours_since_ended=4,
+                log_file=str(old_log),
+            )
+            tracker = make_tracker([rec])
+            with patch.object(swarm, "PROCESS_REGISTRY_FILE", registry):
+                removed = tracker.record_probe_result(
+                    "codex", is_argon=False, reset_confirmed=True,
+                )
+                self.assertEqual(1, removed)
+                restarted = swarm.ProcessTracker()
+
+            allowed, _ = restarted.should_dispatch(
+                "issue#462:initial", "worker", ai_name="codex",
+            )
+            self.assertTrue(allowed)
+
+    def test_failed_probe_updates_shorter_retry_after_and_persists_probed_at(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            registry = Path(tmp_dir) / "registry.json"
+            old_log = Path(tmp_dir) / "codex_old.log"
+            old_log.write_text(
+                "ERROR: You've hit your usage limit. Resets in 72h.\n",
+                encoding="utf-8",
+            )
+            rec = self._deferred(
+                "issue#462:initial",
+                ai_name="codex",
+                model="5.6 terra",
+                minutes_until_reset=4320,
+                hours_since_ended=4,
+                log_file=str(old_log),
+            )
+            shorter_retry = (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat()
+            tracker = make_tracker([rec])
+            with patch.object(swarm, "PROCESS_REGISTRY_FILE", registry):
+                tracker.record_probe_result(
+                    "codex",
+                    is_argon=False,
+                    reset_confirmed=False,
+                    retry_after=shorter_retry,
+                    failure_reason="Resets in 30m",
+                )
+                restarted = swarm.ProcessTracker()
+
+            self.assertEqual(shorter_retry, restarted._history[0].retry_after)
+            self.assertIn("codex:provider", restarted._probed_at_map())
+            self.assertFalse(restarted.cooldown_probe_due("codex", probe_interval=10800))
+
+    def test_reset_process_history_preserves_and_prunes_cooldown_probed_at(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            registry = Path(tmp_dir) / "registry.json"
+            active_rec = self._deferred("issue#1:initial", ai_name="codex")
+            expired_rec = self._deferred(
+                "issue#2:initial", ai_name="claude", model="sonnet 5",
+                minutes_until_reset=-5,
+            )
+            tracker = swarm.tracker
+            original_active = dict(tracker._active)
+            original_history = list(tracker._history)
+            original_probed = dict(tracker._probed_at_map())
+            try:
+                tracker._history = [active_rec, expired_rec]
+                tracker._probed_at_map().clear()
+                tracker._probed_at_map().update({
+                    "codex:provider": datetime.now(timezone.utc).isoformat(),
+                    "claude:provider": datetime.now(timezone.utc).isoformat(),
+                })
+                with patch.object(swarm, "PROCESS_REGISTRY_FILE", registry):
+                    swarm.reset_process_history()
+                    reloaded = swarm.ProcessTracker()
+
+                self.assertIn("codex:provider", reloaded._probed_at_map())
+                self.assertNotIn("claude:provider", reloaded._probed_at_map())
+            finally:
+                tracker._active = original_active
+                tracker._history = original_history
+                tracker._probed_at_map().clear()
+                tracker._probed_at_map().update(original_probed)
+
+    def test_process_issues_probes_once_and_dispatches_oldest_when_reset_confirmed(self):
+        issues = [
+            {
+                "number": 10,
+                "title": "[Task] Tool A",
+                "body": "[Worker: codex | Model: 5.6 terra | Reasoning: 높음]",
+            },
+            {
+                "number": 11,
+                "title": "[Task] Tool B",
+                "body": "[Worker: codex | Model: 5.6 terra | Reasoning: 높음]",
+            },
+        ]
+        tracker = make_tracker([
+            self._deferred("issue#10:initial", ai_name="codex", hours_since_ended=4),
+        ])
+        with (
+            tempfile.TemporaryDirectory() as tmp_dir,
+            patch.object(swarm, "PROCESS_REGISTRY_FILE", Path(tmp_dir) / "r.json"),
+            patch.object(swarm, "tracker", tracker),
+            patch.object(
+                swarm, "run_cooldown_probe",
+                return_value=(True, None, "probe succeeded"),
+            ) as probe_mock,
+            patch.object(swarm, "dispatch_worker") as dispatch_worker,
+        ):
+            swarm.process_issues(dry_run=False, open_issues=issues, open_prs=[])
+
+        probe_mock.assert_called_once_with("codex", "5.6 terra", is_argon=False)
+        # One codex session at a time: only the oldest Issue takes the slot.
+        self.assertEqual(1, dispatch_worker.call_count)
+        self.assertEqual(10, dispatch_worker.call_args.args[0].number)
+
+    def test_process_polling_cycle_probes_once_across_issues_and_prs_when_still_limited(self):
+        issues = [{
+            "number": 10,
+            "title": "[Task] Tool A",
+            "body": "[Worker: codex | Model: 5.6 terra | Reasoning: 높음]",
+        }]
+        prs = [{
+            "number": 20,
+            "title": "[PR] 9 - Tool X",
+            "body": "[Reviewer: codex | Model: 5.6 terra | Reasoning: 중간]",
+            "headRefName": "worker/9-claude-tool",
+            "headRefOid": "deadbeef",
+        }]
+        tracker = make_tracker([
+            self._deferred("issue#10:initial", ai_name="codex", hours_since_ended=4),
+        ])
+        new_retry = (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat()
+        with (
+            tempfile.TemporaryDirectory() as tmp_dir,
+            patch.object(swarm, "PROCESS_REGISTRY_FILE", Path(tmp_dir) / "r.json"),
+            patch.object(swarm, "tracker", tracker),
+            patch.object(swarm, "fetch_open_issues", return_value=issues),
+            patch.object(swarm, "fetch_open_prs", return_value=prs),
+            patch.object(swarm, "fetch_issue", return_value=None),
+            patch.object(swarm, "fetch_pr_comments", return_value=[]),
+            patch.object(swarm, "cleanup_merged_prs"),
+            patch.object(
+                swarm, "run_cooldown_probe",
+                return_value=(False, new_retry, "still limited"),
+            ) as probe_mock,
+            patch.object(swarm, "dispatch_worker") as dispatch_worker,
+            patch.object(swarm, "dispatch_reviewer") as dispatch_reviewer,
+        ):
+            swarm.process_polling_cycle(dry_run=False, initial=False)
+
+        probe_mock.assert_called_once()
+        dispatch_worker.assert_not_called()
+        dispatch_reviewer.assert_not_called()
+        self.assertEqual(new_retry, tracker._history[0].retry_after)
+
+    def test_dry_run_probe_does_not_execute_cli_and_logs_once_per_cycle(self):
+        issues = [
+            {
+                "number": 10,
+                "title": "[Task] Tool A",
+                "body": "[Worker: codex | Model: 5.6 terra | Reasoning: 높음]",
+            },
+            {
+                "number": 11,
+                "title": "[Task] Tool B",
+                "body": "[Worker: codex | Model: 5.6 terra | Reasoning: 높음]",
+            },
+        ]
+        tracker = make_tracker([
+            self._deferred("issue#10:initial", ai_name="codex", hours_since_ended=4),
+        ])
+        with (
+            patch.object(swarm, "tracker", tracker),
+            patch.object(swarm, "run_cooldown_probe") as probe_mock,
+            patch.object(swarm, "dispatch_worker") as dispatch_worker,
+            self.assertLogs(swarm.log, level="INFO") as captured,
+        ):
+            swarm.process_issues(dry_run=True, open_issues=issues, open_prs=[])
+
+        probe_mock.assert_not_called()
+        dispatch_worker.assert_not_called()
+        probe_lines = [
+            line for line in captured.output if "Would probe 'codex'" in line
+        ]
+        self.assertEqual(1, len(probe_lines))
+
+    def test_argon_probe_clears_fallback_and_skips_flash_only_tasks(self):
+        flash_issue = {
+            "number": 31,
+            "title": "[Task] Flash Tool",
+            "body": "[Worker: antigravity | Model: gemini 3.8 flash | Reasoning: high]",
+        }
+        argon_issue = {
+            "number": 32,
+            "title": "[Task] Argon Tool",
+            "body": "[Worker: antigravity | Model: gemini 4 argon | Reasoning: high]",
+        }
+        tracker = make_tracker([
+            self._deferred(
+                "review#9-abc",
+                ai_name="antigravity",
+                model="gemini 4 argon",
+                hours_since_ended=4,
+            ),
+        ])
+        with (
+            tempfile.TemporaryDirectory() as tmp_dir,
+            open(Path(tmp_dir) / "out.log", "w") as out_f,
+            open(Path(tmp_dir) / "err.log", "w") as err_f,
+            patch.object(swarm, "PROCESS_REGISTRY_FILE", Path(tmp_dir) / "r.json"),
+            patch.object(swarm, "tracker", tracker),
+            patch.object(
+                swarm, "run_cooldown_probe",
+                return_value=(True, None, "probe succeeded"),
+            ) as probe_mock,
+            patch.object(swarm, "create_worktree", return_value=Path(tmp_dir)),
+            patch.object(swarm, "write_prompt_file", return_value=Path(tmp_dir) / "p.md"),
+            patch.object(
+                swarm, "create_log_files",
+                return_value=(Path(tmp_dir) / "task.log", out_f, err_f),
+            ),
+            patch.object(swarm.subprocess, "Popen", return_value=SimpleNamespace(pid=99999)),
+            patch.object(swarm, "build_ai_argv", return_value=["agy"]) as build_argv,
+        ):
+            swarm.process_issues(dry_run=False, open_issues=[flash_issue], open_prs=[])
+            probe_mock.assert_not_called()
+            self.assertTrue(tracker.argon_quota_exhausted())
+
+            # The Flash Worker now holds antigravity's single session slot;
+            # finish it so the Argon Issue can be probed and dispatched.
+            for _, tracked in tracker._active.values():
+                tracked.status = swarm.ProcessStatus.COMPLETED
+                tracker._history.append(tracked)
+            tracker._active.clear()
+
+            swarm.process_issues(dry_run=False, open_issues=[argon_issue], open_prs=[])
+            probe_mock.assert_called_once_with(
+                "antigravity", "gemini 4 argon", is_argon=True,
+            )
+            self.assertFalse(tracker.argon_quota_exhausted())
+            self.assertEqual(
+                ("antigravity", "gemini 4 argon", "high"),
+                build_argv.call_args.args[:3],
+            )
+
+    def test_argon_probe_keeps_flash_fallback_when_still_limited(self):
+        argon_issue = {
+            "number": 33,
+            "title": "[Task] Argon Tool",
+            "body": "[Worker: antigravity | Model: gemini 4 argon | Reasoning: high]",
+        }
+        tracker = make_tracker([
+            self._deferred(
+                "review#9-abc",
+                ai_name="antigravity",
+                model="gemini 4 argon",
+                hours_since_ended=4,
+            ),
+        ])
+        later_retry = (datetime.now(timezone.utc) + timedelta(hours=10)).isoformat()
+        with (
+            tempfile.TemporaryDirectory() as tmp_dir,
+            open(Path(tmp_dir) / "out.log", "w") as out_f,
+            open(Path(tmp_dir) / "err.log", "w") as err_f,
+            patch.object(swarm, "PROCESS_REGISTRY_FILE", Path(tmp_dir) / "r.json"),
+            patch.object(swarm, "tracker", tracker),
+            patch.object(
+                swarm, "run_cooldown_probe",
+                return_value=(False, later_retry, "still limited"),
+            ) as probe_mock,
+            patch.object(swarm, "create_worktree", return_value=Path(tmp_dir)),
+            patch.object(swarm, "write_prompt_file", return_value=Path(tmp_dir) / "p.md"),
+            patch.object(
+                swarm, "create_log_files",
+                return_value=(Path(tmp_dir) / "task.log", out_f, err_f),
+            ),
+            patch.object(swarm.subprocess, "Popen", return_value=SimpleNamespace(pid=99999)),
+            patch.object(swarm, "build_ai_argv", return_value=["agy"]) as build_argv,
+        ):
+            swarm.process_issues(dry_run=False, open_issues=[argon_issue], open_prs=[])
+
+        probe_mock.assert_called_once_with(
+            "antigravity", "gemini 4 argon", is_argon=True,
+        )
+        self.assertTrue(tracker.argon_quota_exhausted())
+        self.assertEqual(
+            ("antigravity", "gemini 3.8 flash", "high"),
+            build_argv.call_args.args[:3],
+        )
+
+    def test_cli_clear_cooldown_and_probe_flags(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            registry = Path(tmp_dir) / "registry.json"
+            codex_rec = self._deferred("issue#1:initial", ai_name="codex")
+            argon_rec = self._deferred(
+                "review#2-abc", ai_name="antigravity", model="gemini 4 argon",
+            )
+            flash_rec = self._deferred(
+                "review#3-def", ai_name="antigravity", model="gemini 3.8 flash",
+            )
+            tracker = swarm.tracker
+            original_active = dict(tracker._active)
+            original_history = list(tracker._history)
+            original_probed = dict(tracker._probed_at_map())
+            original_interval = swarm._cooldown_probe_interval_seconds
+            try:
+                tracker._history = [codex_rec, argon_rec]
+                with patch.object(swarm, "PROCESS_REGISTRY_FILE", registry):
+                    # Dry-run clear must leave records intact on disk
+                    with (
+                        patch.object(
+                            swarm.sys, "argv",
+                            ["o.py", "--clear-cooldown", "codex", "--dry-run", "--status"],
+                        ),
+                        patch("builtins.print"),
+                    ):
+                        swarm.main()
+                    self.assertFalse(registry.exists())
+
+                    # Real clear for codex only leaves argon intact
+                    tracker._history = [codex_rec, argon_rec]
+                    with (
+                        patch.object(
+                            swarm.sys, "argv",
+                            ["o.py", "--clear-cooldown", "codex", "--status"],
+                        ),
+                        patch("builtins.print"),
+                    ):
+                        swarm.main()
+                    self.assertEqual([argon_rec], tracker._history)
+                    reloaded = swarm.ProcessTracker()
+                    self.assertEqual(1, len(reloaded._history))
+                    self.assertEqual("antigravity", reloaded._history[0].ai_name)
+
+                    # Clear argon only leaves flash intact
+                    tracker._history = [argon_rec, flash_rec]
+                    with (
+                        patch.object(
+                            swarm.sys, "argv",
+                            ["o.py", "--clear-cooldown", "argon", "--status"],
+                        ),
+                        patch("builtins.print"),
+                    ):
+                        swarm.main()
+                    self.assertEqual([flash_rec], tracker._history)
+
+                    # --probe-cooldown and --probe-interval configure runtime state
+                    with (
+                        patch.object(
+                            swarm.sys, "argv",
+                            [
+                                "o.py", "--once", "--probe-cooldown",
+                                "--probe-interval", "1800",
+                            ],
+                        ),
+                        patch.object(swarm, "reset_process_history"),
+                        patch.object(swarm, "cleanup_old_task_logs"),
+                        patch.object(swarm, "sync_main_branch"),
+                        patch.object(swarm, "process_polling_cycle"),
+                        patch.object(tracker, "poll_all"),
+                        patch.object(swarm, "cleanup_merged_prs"),
+                    ):
+                        swarm.main()
+                    self.assertEqual(1800, swarm._cooldown_probe_interval_seconds)
+                    self.assertIn("antigravity:provider", tracker._forced_probe_set())
+
+                with (
+                    patch.object(swarm.sys, "argv", ["o.py", "--clear-cooldown", "bogus"]),
+                    self.assertRaises(SystemExit),
+                ):
+                    swarm.main()
+            finally:
+                swarm._cooldown_probe_interval_seconds = original_interval
+                tracker._active = original_active
+                tracker._history = original_history
+                tracker._probed_at_map().clear()
+                tracker._probed_at_map().update(original_probed)
+                tracker._forced_probe_set().clear()
 
 
 if __name__ == "__main__":
