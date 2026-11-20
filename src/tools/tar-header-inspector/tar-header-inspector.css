@@ -1,0 +1,50 @@
+.tar-inspector {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  color: var(--color-text);
+}
+
+.tar-inspector__drop-zone {
+  display: grid;
+  justify-items: center;
+  gap: 1rem;
+  padding: 2.5rem 1.25rem;
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  text-align: center;
+}
+
+.tar-inspector__drop-zone p, .tar-inspector__summary { margin: 0; color: var(--color-text-muted); }
+
+.tar-inspector__file-input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+
+.tar-inspector__button {
+  display: inline-flex;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.tar-inspector__button:hover, .tar-inspector__button:focus-visible {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.tar-inspector__file-bar { display: flex; justify-content: space-between; gap: 1rem; margin-top: 1rem; }
+.tar-inspector__error { margin-top: 1rem; padding: 0.75rem 1rem; border: 1px solid var(--color-error-border); border-radius: var(--radius); background: var(--color-error-bg); color: var(--color-error-light); }
+.tar-inspector__results { margin-top: 1rem; }
+.tar-inspector__entries { display: grid; gap: 1rem; padding: 0; list-style: none; }
+.tar-inspector__entry { padding: 1rem; border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-surface); overflow-wrap: anywhere; }
+.tar-inspector__entry h3 { margin: 0 0 0.75rem; font-size: 1rem; }
+.tar-inspector__entry dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.75rem; margin: 0; }
+.tar-inspector__entry dt { color: var(--color-text-muted); font-size: 0.75rem; font-weight: 600; text-transform: uppercase; }
+.tar-inspector__entry dd { margin: 0.2rem 0 0; font-family: 'SF Mono', 'Fira Code', Consolas, monospace; font-size: 0.85rem; }
+.tar-inspector__pax { margin: 0.75rem 0 0; color: var(--color-text-muted); font-family: 'SF Mono', 'Fira Code', Consolas, monospace; font-size: 0.8rem; }
+
+@media (min-width: 768px) { .tar-inspector { padding: 0 2rem 3rem; } }
