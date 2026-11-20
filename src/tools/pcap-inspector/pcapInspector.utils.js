@@ -24,6 +24,8 @@ const PCAPNG_PACKET_BLOCK = 0x00000002;
 const PCAPNG_ENHANCED_PACKET_BLOCK = 0x00000006;
 const PCAPNG_BYTE_ORDER_MAGIC = 0x1a2b3c4d;
 const PCAPNG_BYTE_ORDER_MAGIC_REVERSED = 0x4d3c2b1a;
+const IPV6_EXTENSION_HEADERS = new Set([0, 43, 44, 51, 60]);
+const MAX_IPV6_EXTENSION_HEADERS = 8;
 
 function requireBytes(view, offset, length, label) {
   if (!Number.isSafeInteger(offset) || !Number.isSafeInteger(length) ||
@@ -98,8 +100,38 @@ function decodeEthernetPacket(view, payloadOffset, capturedLength) {
       const version = view.getUint8(payloadOffset + ipOffset) >> 4;
       if (version !== 6) return {};
 
-      const protocol = view.getUint8(payloadOffset + ipOffset + 6);
+      const initialProtocol = view.getUint8(payloadOffset + ipOffset + 6);
       const payloadLength = view.getUint16(payloadOffset + ipOffset + 4, false);
+      let protocol = initialProtocol;
+      let transportOffset = ipOffset + 40;
+
+      if (IPV6_EXTENSION_HEADERS.has(protocol)) {
+        let extensionHeaderCount = 0;
+        while (IPV6_EXTENSION_HEADERS.has(protocol)) {
+          if (extensionHeaderCount >= MAX_IPV6_EXTENSION_HEADERS) {
+            throw new Error('Too many IPv6 extension headers.');
+          }
+          requirePacketBytes(
+            view, payloadOffset, capturedLength, transportOffset, 2, 'IPv6 extension header',
+          );
+          const nextProtocol = view.getUint8(payloadOffset + transportOffset);
+          const extensionHeaderLength = protocol === 44
+            ? 8
+            : (view.getUint8(payloadOffset + transportOffset + 1) + 1) * 8;
+          requirePacketBytes(
+            view,
+            payloadOffset,
+            capturedLength,
+            transportOffset,
+            extensionHeaderLength,
+            'IPv6 extension header',
+          );
+          protocol = nextProtocol;
+          transportOffset += extensionHeaderLength;
+          extensionHeaderCount += 1;
+        }
+      }
+
       const decodedPacket = {
         destMac: formatMacAddress(view, payloadOffset),
         sourceMac: formatMacAddress(view, payloadOffset + 6),
@@ -112,7 +144,6 @@ function decodeEthernetPacket(view, payloadOffset, capturedLength) {
       };
 
       if (protocol === 6 || protocol === 17) {
-        const transportOffset = ipOffset + 40;
         requirePacketBytes(
           view, payloadOffset, capturedLength, transportOffset, 4, 'transport header',
         );

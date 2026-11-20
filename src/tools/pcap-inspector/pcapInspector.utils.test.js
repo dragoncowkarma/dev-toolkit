@@ -37,18 +37,27 @@ function makeEthernetIpv4Packet({ protocol, ports = [], etherType = 0x0800 } = {
   return Array.from(payload);
 }
 
-function makeEthernetIpv6Packet({ protocol, ports = [] } = {}) {
-  const payload = new Uint8Array(14 + 40 + ports.length);
+function makeEthernetIpv6Packet({ protocol, extensionHeaders = [], ports = [] } = {}) {
+  const extensionHeaderLength = extensionHeaders.reduce(
+    (total, header) => total + header.length,
+    0,
+  );
+  const payload = new Uint8Array(14 + 40 + extensionHeaderLength + ports.length);
   payload.set([0, 17, 34, 51, 68, 85, 102, 119, 136, 153, 170, 187], 0);
   const view = new DataView(payload.buffer);
   view.setUint16(12, 0x86dd, false);
   payload.set([0x60, 0, 0, 0], 14);
-  view.setUint16(18, ports.length, false);
+  view.setUint16(18, extensionHeaderLength + ports.length, false);
   payload[20] = protocol;
   payload[21] = 64;
   payload.set([32, 1, 13, 184, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1], 22);
   payload.set([32, 1, 13, 184, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2], 38);
-  payload.set(ports, 54);
+  let payloadOffset = 54;
+  for (const extensionHeader of extensionHeaders) {
+    payload.set(extensionHeader, payloadOffset);
+    payloadOffset += extensionHeader.length;
+  }
+  payload.set(ports, payloadOffset);
   return Array.from(payload);
 }
 
@@ -183,6 +192,44 @@ describe('parsePcap', () => {
     }));
     expect(result.packets[0]).toMatchObject({ protocol: 58, protocolName: 'ICMPv6' });
     expect(result.packets[0]).not.toHaveProperty('sourcePort');
+  });
+
+  it('walks a Hop-by-Hop IPv6 extension header before decoding TCP ports', () => {
+    const result = parsePcap(makePcap({
+      payload: makeEthernetIpv6Packet({
+        protocol: 0,
+        extensionHeaders: [[6, 0, 0, 0, 0, 0, 0, 0]],
+        ports: [1, 187, 31, 144],
+      }),
+    }));
+    expect(result.packets[0]).toMatchObject({
+      protocol: 6, protocolName: 'TCP', sourcePort: 443, destPort: 8080,
+    });
+  });
+
+  it('walks an IPv6 Fragment header before decoding UDP ports', () => {
+    const result = parsePcap(makePcap({
+      payload: makeEthernetIpv6Packet({
+        protocol: 44,
+        extensionHeaders: [[17, 0, 0, 0, 0, 0, 0, 0]],
+        ports: [0, 53, 207, 8],
+      }),
+    }));
+    expect(result.packets[0]).toMatchObject({
+      protocol: 17, protocolName: 'UDP', sourcePort: 53, destPort: 53000,
+    });
+  });
+
+  it('leaves truncated IPv6 extension header chains undecoded without throwing', () => {
+    const result = parsePcap(makePcap({
+      payload: makeEthernetIpv6Packet({
+        protocol: 0,
+        extensionHeaders: [[6, 1, 0, 0, 0, 0, 0, 0]],
+      }),
+    }));
+    expect(result.packets).toHaveLength(1);
+    expect(result.packets[0]).not.toHaveProperty('sourceMac');
+    expect(result.packets[0]).not.toHaveProperty('sourceIp');
   });
 
   it('leaves truncated IPv6 headers undecoded while parsing the file', () => {
