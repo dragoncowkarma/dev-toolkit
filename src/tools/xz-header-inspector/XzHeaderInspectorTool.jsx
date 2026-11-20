@@ -19,7 +19,11 @@ export default function XzHeaderInspectorTool() {
   }
   async function handleFile(event) {
     const file = event.target.files?.[0];
-    if (file) inspect(new Uint8Array(await file.arrayBuffer()));
+    try {
+      if (file) inspect(new Uint8Array(await file.arrayBuffer()));
+    } finally {
+      event.target.value = "";
+    }
   }
   function loadSample(mode) {
     const sample = createSampleXz();

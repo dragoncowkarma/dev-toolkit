@@ -4,5 +4,5 @@ export default {
   description:
     "Inspect XZ/LZMA2 container headers and integrity fields in your browser.",
   icon: "🗜️",
-  category: "File Tools",
+  category: "Inspector",
 };
