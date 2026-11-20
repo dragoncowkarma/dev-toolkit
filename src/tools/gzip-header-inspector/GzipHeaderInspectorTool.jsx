@@ -1,122 +1,120 @@
-import { useRef, useState } from "react";
-import { parseGzipMembers } from "./gzip-header.utils.js";
-import "./gzip-header-inspector.css";
+import { useRef, useState } from 'react';
+import { formatHex32, formatModificationTime, parseGzipHeader } from './gzip-header.utils.js';
+import './gzip-header-inspector.css';
 
-function Member({ member }) {
-  const fields = [
-    ["Compression method", member.compressionMethod],
-    [
-      "Flags",
-      Object.entries(member.flags)
-        .filter(([, enabled]) => enabled)
-        .map(([name]) => name.toUpperCase())
-        .join(", ") || "None",
-    ],
-    ["Modified time", member.modifiedTime],
-    ["Extra flags", member.extraFlags],
-    ["Operating system", member.operatingSystem],
-    ...(member.originalFilename !== undefined
-      ? [["Original filename", member.originalFilename]]
-      : []),
-    ...(member.comment !== undefined ? [["Comment", member.comment]] : []),
-    ...(member.headerCrc16 ? [["Header CRC16", member.headerCrc16]] : []),
-    ["CRC32", member.crc32],
-    ["Uncompressed size (mod 2³²)", String(member.inputSize)],
-  ];
+function Detail({ label, children }) {
   return (
-    <article className="gzip-member">
-      <h3>Member {member.index}</h3>
-      <dl>
-        {fields.map(([term, value]) => (
-          <div key={term}>
-            <dt>{term}</dt>
-            <dd>{value}</dd>
-          </div>
-        ))}
-      </dl>
-      {member.extraFields && (
-        <>
-          <h4>Extra subfields</h4>
-          <dl>
-            {member.extraFields.map((field, index) => (
-              <div key={`${field.id}-${index}`}>
-                <dt>
-                  {field.id} ({field.length} bytes)
-                </dt>
-                <dd>{field.data || "Empty"}</dd>
-              </div>
-            ))}
-          </dl>
-        </>
-      )}
-    </article>
+    <div className="gzip-header-inspector__detail">
+      <dt>{label}</dt>
+      <dd>{children}</dd>
+    </div>
   );
 }
 
-/** Uploads a GZIP file and displays RFC 1952 member metadata without decompression. */
+/**
+ * Renders a client-side RFC 1952 GZIP header and trailer inspector.
+ * @returns {React.JSX.Element} The GZIP header inspector UI.
+ */
 export default function GzipHeaderInspectorTool() {
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState('');
+  const [fileName, setFileName] = useState('');
   const inputRef = useRef(null);
-  const [members, setMembers] = useState([]);
-  const [error, setError] = useState("");
-  const [status, setStatus] = useState(
-    "Choose or drop a GZIP file to inspect its headers.",
-  );
-  async function inspect(file) {
+
+  async function handleFileChange(event) {
+    const file = event.target.files?.[0];
     if (!file) return;
     try {
-      const parsed = parseGzipMembers(new Uint8Array(await file.arrayBuffer()));
-      setMembers(parsed);
-      setError("");
-      setStatus(
-        `${file.name}: found ${parsed.length} GZIP ${parsed.length === 1 ? "member" : "members"}.`,
-      );
+      const parsed = parseGzipHeader(await file.arrayBuffer());
+      setResult(parsed);
+      setFileName(file.name);
+      setError('');
     } catch (caught) {
-      setMembers([]);
-      setError(caught.message);
-      setStatus(`Could not inspect ${file.name}.`);
+      setResult(null);
+      setFileName(file.name);
+      setError(caught instanceof Error ? caught.message : 'Unable to inspect the selected file.');
     }
   }
-  function onKeyDown(event) {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      inputRef.current?.click();
-    }
+
+  function handleClear() {
+    setResult(null);
+    setError('');
+    setFileName('');
+    if (inputRef.current) inputRef.current.value = '';
   }
+
   return (
-    <section className="gzip-inspector" aria-label="GZIP Header Inspector">
-      <input
-        ref={inputRef}
-        className="gzip-file-input"
-        type="file"
-        accept=".gz,application/gzip"
-        onChange={(event) => inspect(event.target.files?.[0])}
-        aria-label="Choose a GZIP file"
-      />
-      <div
-        className="gzip-drop-zone"
-        role="button"
-        tabIndex="0"
-        onKeyDown={onKeyDown}
-        onClick={() => inputRef.current?.click()}
-        onDragOver={(event) => event.preventDefault()}
-        onDrop={(event) => {
-          event.preventDefault();
-          inspect(event.dataTransfer.files?.[0]);
-        }}
-      >
-        Drop a GZIP file here, or press Enter to choose one.
+    <section className="gzip-header-inspector" aria-labelledby="gzip-header-inspector-title">
+      <header>
+        <p className="gzip-header-inspector__eyebrow">RFC 1952</p>
+        <h2 id="gzip-header-inspector-title">GZIP Header Inspector</h2>
+        <p>
+          Read the first member header and final file trailer without uploading or decompressing.
+        </p>
+      </header>
+
+      <div className="gzip-header-inspector__actions">
+        <label className="gzip-header-inspector__upload">
+          Choose GZIP file
+          <input
+            ref={inputRef}
+            type="file"
+            accept=".gz,application/gzip"
+            onChange={handleFileChange}
+          />
+        </label>
+        {(result || error) && <button type="button" onClick={handleClear}>Clear</button>}
       </div>
-      <p className="sr-only" role="status" aria-live="polite">
-        {status}
-      </p>
-      {error && (
-        <div className="gzip-error" role="alert">
-          ⚠ {error}
+
+      {fileName && <p className="gzip-header-inspector__file">Selected: {fileName}</p>}
+      {error && <div className="gzip-header-inspector__error" role="alert">⚠ {error}</div>}
+
+      {result && (
+        <div className="gzip-header-inspector__results">
+          <section aria-labelledby="gzip-fixed-header">
+            <h3 id="gzip-fixed-header">Fixed header</h3>
+            <dl>
+              <Detail label="Compression method">8 (deflate)</Detail>
+              <Detail label="Flags">{result.flags.join(', ') || 'None'}</Detail>
+              <Detail label="Modification time">
+                {formatModificationTime(result.modificationTime)}
+              </Detail>
+              <Detail label="Extra flags">
+                0x{result.extraFlags.toString(16).padStart(2, '0').toUpperCase()}
+              </Detail>
+              <Detail label="Operating system">
+                {result.operatingSystem.value} ({result.operatingSystem.name})
+              </Detail>
+              <Detail label="First member header length">{result.headerLength} bytes</Detail>
+            </dl>
+          </section>
+          <section aria-labelledby="gzip-optional-fields">
+            <h3 id="gzip-optional-fields">Optional fields</h3>
+            <dl>
+              <Detail label="Extra">{result.optional.extra
+                ? `${result.optional.extra.length} bytes; ${result.optional.extra.subfields
+                  .map((subfield) => `${subfield.identifier} (${subfield.length} bytes)`)
+                  .join(', ') || 'no subfields'}`
+                : 'Not present'}</Detail>
+              <Detail label="Original filename">{result.optional.filename ?? 'Not present'}</Detail>
+              <Detail label="Comment">{result.optional.comment ?? 'Not present'}</Detail>
+              <Detail label="Header CRC16">
+                {result.optional.headerCrc16 === null
+                  ? 'Not present'
+                  : `0x${result.optional.headerCrc16
+                    .toString(16).padStart(4, '0').toUpperCase()}`}
+              </Detail>
+            </dl>
+          </section>
+          <section aria-labelledby="gzip-trailer">
+            <h3 id="gzip-trailer">Final file trailer</h3>
+            <dl>
+              <Detail label="CRC32">{formatHex32(result.trailer.crc32)}</Detail>
+              <Detail label="Uncompressed size (mod 2³²)">{result.trailer.inputSize} bytes</Detail>
+            </dl>
+          </section>
         </div>
       )}
-      {members.map((member) => (
-        <Member key={member.index} member={member} />
-      ))}
     </section>
   );
 }

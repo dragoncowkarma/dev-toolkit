@@ -1,307 +1,162 @@
-const FLAG_TEXT = 0x01;
-const FLAG_HCRC = 0x02;
-const FLAG_EXTRA = 0x04;
-const FLAG_NAME = 0x08;
-const FLAG_COMMENT = 0x10;
-const RESERVED_FLAGS = 0xe0;
+const GZIP_MAGIC = [0x1f, 0x8b];
+const FIXED_HEADER_LENGTH = 10;
+const TRAILER_LENGTH = 8;
+
+const FLAG_NAMES = [
+  [0x01, 'FTEXT'],
+  [0x02, 'FHCRC'],
+  [0x04, 'FEXTRA'],
+  [0x08, 'FNAME'],
+  [0x10, 'FCOMMENT'],
+];
 
 const OS_NAMES = {
-  0: "FAT filesystem",
-  1: "Amiga",
-  2: "VMS",
-  3: "Unix",
-  4: "VM/CMS",
-  5: "Atari TOS",
-  6: "HPFS",
-  7: "Macintosh",
-  8: "Z-System",
-  9: "CP/M",
-  10: "TOPS-20",
-  11: "NTFS",
-  12: "QDOS",
-  13: "Acorn RISCOS",
-  255: "Unknown",
+  0: 'FAT filesystem',
+  1: 'Amiga',
+  2: 'VMS',
+  3: 'Unix',
+  4: 'VM/CMS',
+  5: 'Atari TOS',
+  6: 'HPFS filesystem',
+  7: 'Macintosh',
+  8: 'Z-System',
+  9: 'CP/M',
+  10: 'TOPS-20',
+  11: 'NTFS filesystem',
+  12: 'QDOS',
+  13: 'Acorn RISCOS',
+  255: 'Unknown',
 };
 
-const LENGTH_EXTRA = [
-  0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5,
-  5, 5, 0,
-];
-const DISTANCE_EXTRA = [
-  0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11,
-  11, 12, 12, 13, 13,
-];
-
-function fail(member, message) {
-  throw new Error(`Member ${member}: ${message}`);
+function requireBytes(bytes, offset, length, label, limit = bytes.length) {
+  if (!Number.isSafeInteger(offset) || !Number.isSafeInteger(length) || offset < 0 || length < 0
+    || offset + length > limit) {
+    throw new Error(`Truncated GZIP file: ${label} is incomplete.`);
+  }
 }
 
-function hex(value, width = 2) {
-  return `0x${value.toString(16).toUpperCase().padStart(width, "0")}`;
-}
-
-function requireBytes(bytes, offset, count, member, field) {
-  if (offset + count > bytes.length) fail(member, `truncated ${field}.`);
-}
-
-function readU16(bytes, offset) {
-  return bytes[offset] | (bytes[offset + 1] << 8);
-}
-
-function readU32(bytes, offset) {
-  return (
-    (bytes[offset] |
-      (bytes[offset + 1] << 8) |
-      (bytes[offset + 2] << 16) |
-      (bytes[offset + 3] << 24)) >>>
-    0
-  );
-}
-
-function readNullTerminated(bytes, offset, member, field) {
-  const end = bytes.indexOf(0, offset);
-  if (end === -1) fail(member, `truncated ${field}: missing null terminator.`);
+function readNullTerminated(bytes, offset, label, limit) {
+  let end = offset;
+  while (end < limit && bytes[end] !== 0) {
+    end += 1;
+  }
+  if (end === limit) {
+    throw new Error(`Malformed GZIP header: ${label} is not null-terminated.`);
+  }
   return {
-    value: new TextDecoder("latin1").decode(bytes.subarray(offset, end)),
-    next: end + 1,
+    value: new TextDecoder('latin1').decode(bytes.subarray(offset, end)),
+    nextOffset: end + 1,
   };
 }
 
-function reverseBits(value, width) {
-  let reversed = 0;
-  for (let index = 0; index < width; index += 1) {
-    reversed = (reversed << 1) | (value & 1);
-    value >>>= 1;
+function parseExtraSubfields(bytes, offset, length) {
+  const end = offset + length;
+  const subfields = [];
+  let cursor = offset;
+
+  while (cursor < end) {
+    requireBytes(bytes, cursor, 4, 'extra subfield header', end);
+    const identifier = String.fromCharCode(bytes[cursor], bytes[cursor + 1]);
+    const dataLength = bytes[cursor + 2] | (bytes[cursor + 3] << 8);
+    cursor += 4;
+    requireBytes(bytes, cursor, dataLength, 'extra subfield data', end);
+    subfields.push({ identifier, length: dataLength });
+    cursor += dataLength;
   }
-  return reversed;
+
+  return subfields;
 }
 
-function buildHuffman(lengths, member, label) {
-  const counts = Array(16).fill(0);
-  for (const length of lengths) {
-    if (length < 0 || length > 15)
-      fail(member, `invalid ${label} Huffman code length.`);
-    if (length) counts[length] += 1;
-  }
-  const nextCode = Array(16).fill(0);
-  let code = 0;
-  for (let length = 1; length <= 15; length += 1) {
-    code = (code + counts[length - 1]) << 1;
-    nextCode[length] = code;
-  }
-  const table = new Map();
-  lengths.forEach((length, symbol) => {
-    if (length)
-      table.set(`${length}:${reverseBits(nextCode[length]++, length)}`, symbol);
-  });
-  return table;
-}
-
-function createBitReader(bytes, offset, member) {
-  let bitOffset = offset * 8;
-  function readBits(count, field) {
-    if (bitOffset + count > bytes.length * 8)
-      fail(member, `truncated compressed data while reading ${field}.`);
-    let value = 0;
-    for (let index = 0; index < count; index += 1) {
-      const position = bitOffset++;
-      value |= ((bytes[position >> 3] >> (position & 7)) & 1) << index;
-    }
-    return value;
-  }
-  return {
-    readBits,
-    align() {
-      bitOffset = Math.ceil(bitOffset / 8) * 8;
-    },
-    get byteOffset() {
-      return Math.ceil(bitOffset / 8);
-    },
-  };
-}
-
-function decodeSymbol(reader, table, member, label) {
-  let code = 0;
-  for (let length = 1; length <= 15; length += 1) {
-    code |= reader.readBits(1, label) << (length - 1);
-    const symbol = table.get(`${length}:${code}`);
-    if (symbol !== undefined) return symbol;
-  }
-  fail(member, `invalid ${label} Huffman code.`);
-}
-
-function fixedTables(member) {
-  const literalLengths = Array(288).fill(0);
-  literalLengths.fill(8, 0, 144);
-  literalLengths.fill(9, 144, 256);
-  literalLengths.fill(7, 256, 280);
-  literalLengths.fill(8, 280);
-  return {
-    literal: buildHuffman(literalLengths, member, "fixed literal"),
-    distance: buildHuffman(Array(32).fill(5), member, "fixed distance"),
-  };
-}
-
-function dynamicTables(reader, member) {
-  const hlit = reader.readBits(5, "HLIT") + 257;
-  const hdist = reader.readBits(5, "HDIST") + 1;
-  const hclen = reader.readBits(4, "HCLEN") + 4;
-  const order = [
-    16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15,
-  ];
-  const codeLengths = Array(19).fill(0);
-  for (let index = 0; index < hclen; index += 1)
-    codeLengths[order[index]] = reader.readBits(3, "code-length alphabet");
-  const codeTable = buildHuffman(codeLengths, member, "code-length");
-  const lengths = [];
-  while (lengths.length < hlit + hdist) {
-    const symbol = decodeSymbol(reader, codeTable, member, "code-length");
-    if (symbol < 16) lengths.push(symbol);
-    else {
-      const previous = lengths[lengths.length - 1];
-      const extra = symbol === 16 ? 2 : symbol === 17 ? 3 : 7;
-      const base = symbol === 16 ? 3 : symbol === 17 ? 3 : 11;
-      if (symbol === 16 && previous === undefined)
-        fail(member, "invalid code-length repeat.");
-      const count = base + reader.readBits(extra, "code-length repeat");
-      if (lengths.length + count > hlit + hdist)
-        fail(member, "invalid code-length repeat exceeds table.");
-      lengths.push(...Array(count).fill(symbol === 16 ? previous : 0));
-    }
-  }
-  return {
-    literal: buildHuffman(lengths.slice(0, hlit), member, "literal"),
-    distance: buildHuffman(lengths.slice(hlit), member, "distance"),
-  };
-}
-
-function skipCompressedData(bytes, offset, member) {
-  const reader = createBitReader(bytes, offset, member);
-  let finalBlock = 0;
-  do {
-    finalBlock = reader.readBits(1, "BFINAL");
-    const type = reader.readBits(2, "BTYPE");
-    if (type === 0) {
-      reader.align();
-      const length = reader.readBits(16, "stored block length");
-      const complement = reader.readBits(16, "stored block complement");
-      if ((length ^ 0xffff) !== complement)
-        fail(member, "invalid stored block length.");
-      reader.readBits(length * 8, "stored block data");
-      continue;
-    }
-    if (type === 3) fail(member, "invalid DEFLATE block type.");
-    const tables =
-      type === 1 ? fixedTables(member) : dynamicTables(reader, member);
-    for (;;) {
-      const symbol = decodeSymbol(
-        reader,
-        tables.literal,
-        member,
-        "literal/length",
-      );
-      if (symbol < 256) continue;
-      if (symbol === 256) break;
-      if (symbol < 257 || symbol > 285) fail(member, "invalid length symbol.");
-      const lengthIndex = symbol - 257;
-      reader.readBits(LENGTH_EXTRA[lengthIndex], "length extra bits");
-      const distance = decodeSymbol(
-        reader,
-        tables.distance,
-        member,
-        "distance",
-      );
-      if (distance > 29) fail(member, "invalid distance symbol.");
-      reader.readBits(DISTANCE_EXTRA[distance], "distance extra bits");
-    }
-  } while (!finalBlock);
-  return reader.byteOffset;
-}
-
-/** Parses every RFC 1952 member without inflating its compressed payload. */
-export function parseGzipMembers(input) {
+/**
+ * Parses the first RFC 1952 GZIP member header and the file's final trailer.
+ * @param {ArrayBuffer|Uint8Array} input GZIP file bytes.
+ * @returns {object} Parsed header and trailer values.
+ * @throws {Error} When the input is not a complete, well-formed GZIP header.
+ */
+export function parseGzipHeader(input) {
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
-  if (bytes.length < 2 || bytes[0] !== 0x1f || bytes[1] !== 0x8b)
-    throw new Error("Not a GZIP file: expected magic bytes 1F 8B.");
-  const members = [];
-  let offset = 0;
-  while (offset < bytes.length) {
-    const member = members.length + 1;
-    requireBytes(bytes, offset, 10, member, "fixed header");
-    if (bytes[offset] !== 0x1f || bytes[offset + 1] !== 0x8b)
-      fail(member, "expected GZIP magic bytes 1F 8B.");
-    if (bytes[offset + 2] !== 8)
-      fail(
-        member,
-        `unsupported compression method ${hex(bytes[offset + 2])}; expected 0x08 (deflate).`,
-      );
-    const flags = bytes[offset + 3];
-    if (flags & RESERVED_FLAGS)
-      fail(member, `reserved flag bits are set (${hex(flags)}).`);
-    const mtime = readU32(bytes, offset + 4);
-    const result = {
-      index: member,
-      compressionMethod: "Deflate (0x08)",
-      flags: {
-        text: !!(flags & FLAG_TEXT),
-        headerCrc: !!(flags & FLAG_HCRC),
-        extra: !!(flags & FLAG_EXTRA),
-        name: !!(flags & FLAG_NAME),
-        comment: !!(flags & FLAG_COMMENT),
-      },
-      modifiedTime: mtime
-        ? new Date(mtime * 1000).toISOString()
-        : "Not specified",
-      extraFlags: hex(bytes[offset + 8]),
-      operatingSystem: `${OS_NAMES[bytes[offset + 9]] ?? "Reserved"} (${hex(bytes[offset + 9])})`,
-    };
-    offset += 10;
-    if (flags & FLAG_EXTRA) {
-      requireBytes(bytes, offset, 2, member, "FEXTRA length");
-      const length = readU16(bytes, offset);
-      offset += 2;
-      requireBytes(bytes, offset, length, member, "FEXTRA data");
-      const end = offset + length;
-      const subfields = [];
-      while (offset < end) {
-        if (end - offset < 4) fail(member, "truncated FEXTRA subfield header.");
-        const id = String.fromCharCode(bytes[offset], bytes[offset + 1]);
-        const size = readU16(bytes, offset + 2);
-        offset += 4;
-        if (offset + size > end)
-          fail(member, `truncated FEXTRA subfield ${id}.`);
-        subfields.push({
-          id,
-          length: size,
-          data: Array.from(bytes.subarray(offset, offset + size), (value) =>
-            value.toString(16).padStart(2, "0"),
-          ).join(" "),
-        });
-        offset += size;
-      }
-      result.extraFields = subfields;
-    }
-    if (flags & FLAG_NAME) {
-      const field = readNullTerminated(bytes, offset, member, "FNAME");
-      result.originalFilename = field.value;
-      offset = field.next;
-    }
-    if (flags & FLAG_COMMENT) {
-      const field = readNullTerminated(bytes, offset, member, "FCOMMENT");
-      result.comment = field.value;
-      offset = field.next;
-    }
-    if (flags & FLAG_HCRC) {
-      requireBytes(bytes, offset, 2, member, "FHCRC");
-      result.headerCrc16 = hex(readU16(bytes, offset), 4);
-      offset += 2;
-    }
-    const trailerOffset = skipCompressedData(bytes, offset, member);
-    requireBytes(bytes, trailerOffset, 8, member, "trailer");
-    result.crc32 = hex(readU32(bytes, trailerOffset), 8);
-    result.inputSize = readU32(bytes, trailerOffset + 4);
-    members.push(result);
-    offset = trailerOffset + 8;
+  requireBytes(bytes, 0, FIXED_HEADER_LENGTH + TRAILER_LENGTH, 'fixed header and trailer');
+  if (bytes[0] !== GZIP_MAGIC[0] || bytes[1] !== GZIP_MAGIC[1]) {
+    throw new Error('Not a GZIP file: expected magic bytes 1F 8B.');
   }
-  return members;
+
+  const compressionMethod = bytes[2];
+  if (compressionMethod !== 8) {
+    throw new Error(
+      `Unsupported GZIP compression method: ${compressionMethod}. Expected 8 (deflate).`
+    );
+  }
+
+  const flags = bytes[3];
+  const reservedFlags = flags & 0xe0;
+  if (reservedFlags !== 0) {
+    throw new Error(
+      `Malformed GZIP header: reserved flag bits are set (0x${reservedFlags.toString(16)}).`
+    );
+  }
+
+  const trailerOffset = bytes.length - TRAILER_LENGTH;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let cursor = FIXED_HEADER_LENGTH;
+  const optional = { extra: null, filename: null, comment: null, headerCrc16: null };
+
+  if (flags & 0x04) {
+    requireBytes(bytes, cursor, 2, 'extra field length', trailerOffset);
+    const length = view.getUint16(cursor, true);
+    cursor += 2;
+    requireBytes(bytes, cursor, length, 'extra field', trailerOffset);
+    optional.extra = {
+      length,
+      subfields: parseExtraSubfields(bytes, cursor, length),
+    };
+    cursor += length;
+  }
+  if (flags & 0x08) {
+    const field = readNullTerminated(bytes, cursor, 'original filename', trailerOffset);
+    optional.filename = field.value;
+    cursor = field.nextOffset;
+  }
+  if (flags & 0x10) {
+    const field = readNullTerminated(bytes, cursor, 'comment', trailerOffset);
+    optional.comment = field.value;
+    cursor = field.nextOffset;
+  }
+  if (flags & 0x02) {
+    requireBytes(bytes, cursor, 2, 'header CRC16', trailerOffset);
+    optional.headerCrc16 = view.getUint16(cursor, true);
+    cursor += 2;
+  }
+
+  return {
+    compressionMethod,
+    flags: FLAG_NAMES.filter(([bit]) => flags & bit).map(([, name]) => name),
+    modificationTime: view.getUint32(4, true),
+    extraFlags: bytes[8],
+    operatingSystem: { value: bytes[9], name: OS_NAMES[bytes[9]] ?? 'Reserved' },
+    optional,
+    headerLength: cursor,
+    trailer: {
+      crc32: view.getUint32(trailerOffset, true),
+      inputSize: view.getUint32(trailerOffset + 4, true),
+    },
+  };
+}
+
+/**
+ * Formats a Unix timestamp as an ISO date, or identifies the RFC 1952 zero value.
+ * @param {number} timestamp Unix timestamp in seconds.
+ * @returns {string} Human-readable UTC date.
+ */
+export function formatModificationTime(timestamp) {
+  if (timestamp === 0) return 'Not specified';
+  return new Date(timestamp * 1000).toISOString();
+}
+
+/**
+ * Formats an unsigned integer as an eight-character hexadecimal value.
+ * @param {number} value Value to format.
+ * @returns {string} Uppercase hexadecimal string.
+ */
+export function formatHex32(value) {
+  return `0x${value.toString(16).padStart(8, '0').toUpperCase()}`;
 }

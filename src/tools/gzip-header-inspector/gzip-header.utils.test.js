@@ -1,107 +1,57 @@
-import { describe, expect, it } from "vitest";
-import { parseGzipMembers } from "./gzip-header.utils.js";
+import { describe, expect, it } from 'vitest';
+import { formatModificationTime, parseGzipHeader } from './gzip-header.utils.js';
 
-function member({
-  flags = 0,
-  extra = [],
-  name = "",
-  comment = "",
-  hcrc = false,
-  payload = [3, 0],
-  crc = 0,
-  size = 0,
-} = {}) {
-  const header = [0x1f, 0x8b, 8, flags, 0, 0, 0, 0, 0, 3];
-  if (flags & 4) {
-    const data = extra.flatMap(({ id, data }) => [
-      id.charCodeAt(0),
-      id.charCodeAt(1),
-      data.length,
-      0,
-      ...data,
-    ]);
-    header.push(data.length, 0, ...data);
-  }
-  if (flags & 8) header.push(...new TextEncoder().encode(name), 0);
-  if (flags & 16) header.push(...new TextEncoder().encode(comment), 0);
-  if (flags & 2 || hcrc) header.push(0x34, 0x12);
-  return new Uint8Array([
-    ...header,
-    ...payload,
-    crc & 255,
-    (crc >>> 8) & 255,
-    (crc >>> 16) & 255,
-    (crc >>> 24) & 255,
-    size & 255,
-    (size >>> 8) & 255,
-    (size >>> 16) & 255,
-    (size >>> 24) & 255,
-  ]);
+function gzipBytes(header = [], trailer = [0, 0, 0, 0, 0, 0, 0, 0]) {
+  return Uint8Array.from([0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 3, ...header, ...trailer]);
 }
-describe("parseGzipMembers", () => {
-  it("parses a valid minimal member header and trailer", () => {
-    const [parsed] = parseGzipMembers(member({ crc: 0x12345678, size: 12 }));
-    expect(parsed.compressionMethod).toBe("Deflate (0x08)");
-    expect(parsed.crc32).toBe("0x12345678");
-    expect(parsed.inputSize).toBe(12);
+
+describe('parseGzipHeader', () => {
+  it('parses a valid minimal header and its final trailer', () => {
+    const bytes = gzipBytes([], [0x78, 0x56, 0x34, 0x12, 0xef, 0xcd, 0xab, 0x90]);
+    const parsed = parseGzipHeader(bytes);
+
+    expect(parsed.compressionMethod).toBe(8);
+    expect(parsed.operatingSystem).toEqual({ value: 3, name: 'Unix' });
+    expect(parsed.flags).toEqual([]);
+    expect(parsed.trailer).toEqual({ crc32: 0x12345678, inputSize: 0x90abcdef });
   });
-  it("parses FEXTRA subfields, FNAME, FCOMMENT and FHCRC", () => {
-    const [parsed] = parseGzipMembers(
-      member({
-        flags: 0x1e,
-        extra: [{ id: "AB", data: [9, 8] }],
-        name: "file.txt",
-        comment: "hello",
-      }),
-    );
-    expect(parsed.extraFields).toEqual([
-      { id: "AB", length: 2, data: "09 08" },
+
+  it('parses FEXTRA, FNAME, and FCOMMENT fields', () => {
+    const bytes = Uint8Array.from([
+      0x1f, 0x8b, 8, 0x1c, 0, 0, 0, 0, 2, 11,
+      6, 0, 0x41, 0x42, 2, 0, 0x10, 0x20,
+      0x66, 0x69, 0x6c, 0x65, 0, 0x68, 0x69, 0,
+      0, 0, 0, 0, 0, 0, 0, 0,
     ]);
-    expect(parsed.originalFilename).toBe("file.txt");
-    expect(parsed.comment).toBe("hello");
-    expect(parsed.headerCrc16).toBe("0x1234");
+    const parsed = parseGzipHeader(bytes);
+
+    expect(parsed.flags).toEqual(['FEXTRA', 'FNAME', 'FCOMMENT']);
+    expect(parsed.optional.extra).toEqual({
+      length: 6,
+      subfields: [{ identifier: 'AB', length: 2 }],
+    });
+    expect(parsed.optional.filename).toBe('file');
+    expect(parsed.optional.comment).toBe('hi');
+    expect(parsed.operatingSystem.name).toBe('NTFS filesystem');
   });
-  it("parses concatenated members", () => {
-    const first = member({ size: 1 });
-    const second = member({ size: 2 });
-    const joined = new Uint8Array(first.length + second.length);
-    joined.set(first);
-    joined.set(second, first.length);
-    expect(parseGzipMembers(joined).map((item) => item.inputSize)).toEqual([
-      1, 2,
-    ]);
+
+  it('rejects an unsupported compression method', () => {
+    const bytes = gzipBytes();
+    bytes[2] = 7;
+    expect(() => parseGzipHeader(bytes)).toThrow('Unsupported GZIP compression method');
   });
-  it("rejects non-GZIP input and truncated fixed headers", () => {
-    expect(() => parseGzipMembers(new Uint8Array([1, 2]))).toThrow(
-      /Not a GZIP/,
-    );
-    expect(() => parseGzipMembers(new Uint8Array([0x1f, 0x8b, 8]))).toThrow(
-      /truncated fixed header/,
-    );
+
+  it('rejects truncated and malformed input', () => {
+    expect(() => parseGzipHeader(Uint8Array.from([0x1f, 0x8b]))).toThrow('Truncated GZIP');
+    const malformed = gzipBytes([0x66, 0x69, 0x6c, 0x65]);
+    malformed[3] = 0x08;
+    expect(() => parseGzipHeader(malformed)).toThrow('Malformed GZIP');
   });
-  it("rejects truncated optional fields and trailers", () => {
-    expect(() =>
-      parseGzipMembers(
-        new Uint8Array([0x1f, 0x8b, 8, 4, 0, 0, 0, 0, 0, 3, 4, 0, 1]),
-      ),
-    ).toThrow(/FEXTRA data/);
-    expect(() =>
-      parseGzipMembers(
-        new Uint8Array([0x1f, 0x8b, 8, 8, 0, 0, 0, 0, 0, 3, 65]),
-      ),
-    ).toThrow(/FNAME/);
-    expect(() =>
-      parseGzipMembers(
-        new Uint8Array([0x1f, 0x8b, 8, 16, 0, 0, 0, 0, 0, 3, 65]),
-      ),
-    ).toThrow(/FCOMMENT/);
-    expect(() =>
-      parseGzipMembers(
-        new Uint8Array([0x1f, 0x8b, 8, 2, 0, 0, 0, 0, 0, 3, 3]),
-      ),
-    ).toThrow(/FHCRC/);
-    expect(() =>
-      parseGzipMembers(member({ payload: [3, 0] }).slice(0, -2)),
-    ).toThrow(/trailer/);
+});
+
+describe('formatModificationTime', () => {
+  it('formats specified and unspecified timestamps', () => {
+    expect(formatModificationTime(0)).toBe('Not specified');
+    expect(formatModificationTime(1)).toBe('1970-01-01T00:00:01.000Z');
   });
 });
