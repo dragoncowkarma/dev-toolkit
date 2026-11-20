@@ -32,7 +32,19 @@ const CLASS_ACCESS_FLAGS = [
   [0x8000, "module"],
 ];
 
-const MEMBER_ACCESS_FLAGS = [
+const FIELD_ACCESS_FLAGS = [
+  [0x0001, "public"],
+  [0x0002, "private"],
+  [0x0004, "protected"],
+  [0x0008, "static"],
+  [0x0010, "final"],
+  [0x0040, "volatile"],
+  [0x0080, "transient"],
+  [0x1000, "synthetic"],
+  [0x4000, "enum"],
+];
+
+const METHOD_ACCESS_FLAGS = [
   [0x0001, "public"],
   [0x0002, "private"],
   [0x0004, "protected"],
@@ -282,7 +294,7 @@ function parseAttributes(reader, pool, context) {
   return attributes;
 }
 
-function parseMembers(reader, pool, context) {
+function parseMembers(reader, pool, context, accessFlags) {
   const count = reader.u2(`${context} count`);
   const members = [];
   for (let index = 0; index < count; index += 1) {
@@ -296,7 +308,7 @@ function parseMembers(reader, pool, context) {
     members.push({
       name,
       descriptor,
-      flags: flagsFrom(access, MEMBER_ACCESS_FLAGS),
+      flags: flagsFrom(access, accessFlags),
     });
   }
   return members;
@@ -333,8 +345,8 @@ export function parseClassFile(buffer) {
   const interfaces = Array.from({ length: interfaceCount }, () =>
     resolveClassName(pool, reader.u2("interface index")),
   );
-  const fields = parseMembers(reader, pool, "field");
-  const methods = parseMembers(reader, pool, "method");
+  const fields = parseMembers(reader, pool, "field", FIELD_ACCESS_FLAGS);
+  const methods = parseMembers(reader, pool, "method", METHOD_ACCESS_FLAGS);
   const attributes = parseAttributes(reader, pool, "class");
   const constantPool = pool
     .map(

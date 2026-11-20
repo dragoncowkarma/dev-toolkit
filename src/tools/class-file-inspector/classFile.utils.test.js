@@ -69,4 +69,26 @@ describe("parseClassFile", () => {
     expect(values).toContain("Example");
     expect(values).toContain("java/lang/Object.toString:()Ljava/lang/String;");
   });
+
+  it("uses JVM-specific access flags for fields and methods", () => {
+    const buffer = bytes(
+      [0xca, 0xfe, 0xba, 0xbe, 0, 0, 0, 65, 0, 9],
+      utf8("Example"),
+      [7, 0, 1],
+      utf8("java/lang/Object"),
+      [7, 0, 3],
+      utf8("value"),
+      utf8("I"),
+      utf8("method"),
+      utf8("()V"),
+      [0, 0x21, 0, 2, 0, 4, 0, 0],
+      [0, 1, 0x40, 0xc0, 0, 5, 0, 6, 0, 0],
+      [0, 1, 0, 0xc0, 0, 7, 0, 8, 0, 0],
+      [0, 0],
+    );
+
+    const result = parseClassFile(buffer);
+    expect(result.fields[0].flags).toEqual(["volatile", "transient", "enum"]);
+    expect(result.methods[0].flags).toEqual(["bridge", "varargs"]);
+  });
 });
