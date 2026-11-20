@@ -1,0 +1,104 @@
+.cusip-validator-tool {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+}
+
+.cusip-validator-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1.25rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.cusip-validator-intro,
+.cusip-validator-help {
+  margin: 0;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+.cusip-validator-label {
+  color: var(--color-text);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.cusip-validator-input-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.cusip-validator-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.75rem;
+  color: var(--color-text);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  font: inherit;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.cusip-validator-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.cusip-validator-input[aria-invalid='true'] {
+  border-color: var(--color-error-border);
+}
+
+.cusip-validator-copy {
+  padding: 0.75rem 1rem;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cusip-validator-copy:hover:not(:disabled) {
+  color: var(--color-primary-light);
+  border-color: var(--color-primary);
+}
+
+.cusip-validator-copy:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cusip-validator-error {
+  margin: 0;
+  padding: 0.75rem;
+  color: var(--color-error-light);
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+}
+
+@media (min-width: 560px) {
+  .cusip-validator-tool {
+    padding: 0 2rem 3rem;
+  }
+
+  .cusip-validator-card {
+    padding: 1.5rem;
+  }
+
+  .cusip-validator-input-row {
+    flex-direction: row;
+  }
+
+  .cusip-validator-copy {
+    flex: 0 0 auto;
+  }
+}
