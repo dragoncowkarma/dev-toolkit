@@ -1,0 +1,94 @@
+.class-file-inspector {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+}
+.class-file-inspector__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+.class-file-inspector button,
+.class-file-inspector__upload {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  padding: 0.55rem 0.9rem;
+  font: inherit;
+}
+.class-file-inspector__upload input {
+  display: none;
+}
+.class-file-inspector__privacy,
+.class-file-inspector__filename {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+.class-file-inspector__error {
+  margin-top: 1rem;
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+  padding: 0.75rem 1rem;
+}
+.class-file-inspector__results {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+.class-file-inspector__results section {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  padding: 1rem;
+  overflow: auto;
+}
+.class-file-inspector h2,
+.class-file-inspector h3 {
+  margin: 0 0 0.75rem;
+}
+.class-file-inspector h3 {
+  margin-top: 1rem;
+  font-size: 1rem;
+}
+.class-file-inspector dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.5rem 1rem;
+  margin: 0;
+}
+.class-file-inspector dt {
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+.class-file-inspector dd {
+  margin: 0;
+  word-break: break-word;
+}
+.class-file-inspector ul {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+.class-file-inspector__pool {
+  max-height: 28rem;
+  overflow: auto;
+  font-family: "SF Mono", "Fira Code", Consolas, monospace;
+  font-size: 0.85rem;
+}
+.class-file-inspector__pool div {
+  display: grid;
+  grid-template-columns: minmax(10rem, 14rem) 1fr;
+  gap: 1rem;
+  border-top: 1px solid var(--color-border);
+  padding: 0.5rem 0;
+  word-break: break-word;
+}
+@media (min-width: 768px) {
+  .class-file-inspector {
+    padding: 0 2rem 3rem;
+  }
+}
