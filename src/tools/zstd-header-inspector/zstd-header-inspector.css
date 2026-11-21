@@ -1,78 +1,51 @@
-.zstd-inspector {
-  max-width: 760px;
+.zstd-header-inspector {
+  max-width: 900px;
   margin: 0 auto;
   padding: 0 1.25rem 2rem;
-}
-
-.zstd-inspector__input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-}
-
-.zstd-inspector__dropzone {
-  padding: 2.5rem 1.5rem;
-  border: 2px dashed var(--color-border);
-  border-radius: var(--radius);
-  background: var(--color-surface);
   color: var(--color-text);
-  text-align: center;
-  cursor: pointer;
 }
 
-.zstd-inspector__dropzone:focus,
-.zstd-inspector__dropzone:hover {
-  outline: none;
-  border-color: var(--color-primary);
+.zstd-header-inspector__intro { color: var(--color-text-muted); }
+
+.zstd-header-inspector__actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin: 1rem 0;
 }
 
-.zstd-inspector__hint {
-  color: var(--color-text-muted);
-  font-size: 0.875rem;
-}
-
-.zstd-inspector__error {
-  margin-top: 1rem;
-  padding: 0.75rem 1rem;
-  border: 1px solid var(--color-error-border);
-  border-radius: var(--radius);
-  background: var(--color-error-bg);
-  color: var(--color-error-light);
-}
-
-.zstd-inspector__frame {
-  margin-top: 1rem;
-  padding: 1rem;
+.zstd-header-inspector__actions button,
+.zstd-header-inspector__upload {
+  background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  padding: 0.55rem 0.9rem;
+}
+
+.zstd-header-inspector__upload input { display: none; }
+
+.zstd-header-inspector__filename { color: var(--color-text-muted); }
+
+.zstd-header-inspector__result {
   background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1rem;
 }
 
-.zstd-inspector__frame h2 {
-  margin-top: 0;
-  font-size: 1.05rem;
-}
-
-.zstd-inspector__frame dl {
-  margin: 0;
-}
-
-.zstd-inspector__item {
+.zstd-header-inspector__fields {
   display: grid;
-  grid-template-columns: minmax(9rem, 1fr) 2fr;
-  gap: 1rem;
-  padding: 0.45rem 0;
-  border-top: 1px solid var(--color-border);
+  grid-template-columns: minmax(12rem, auto) 1fr;
+  gap: 0.5rem 1rem;
 }
 
-.zstd-inspector__item dt {
-  color: var(--color-text-muted);
-  font-weight: 600;
-}
+.zstd-header-inspector__fields dt { color: var(--color-text-muted); }
+.zstd-header-inspector__fields dd { margin: 0; }
 
-.zstd-inspector__item dd {
-  margin: 0;
-  overflow-wrap: anywhere;
+.zstd-header-inspector__warning {
+  color: var(--color-error-light);
+  margin-bottom: 0;
 }
