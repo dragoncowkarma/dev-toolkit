@@ -6,7 +6,7 @@ import './cpio.css';
  * Renders a client-side inspector for CPIO archive entry headers.
  * @returns {React.JSX.Element} The CPIO header inspector.
  */
-export default function CpioHeaderInspector() {
+export default function CpioHeaderInspectorTool() {
   const [archive, setArchive] = useState(null);
   const [error, setError] = useState('');
 

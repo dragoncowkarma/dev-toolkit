@@ -2,7 +2,7 @@
   max-width: 1000px;
   margin: 0 auto;
   padding: 0 1.25rem 2rem;
-  color: var(--text-primary);
+  color: var(--color-text);
 }
 
 .cpio-inspector__upload {
@@ -10,17 +10,18 @@
   flex-direction: column;
   gap: 0.5rem;
   padding: 1rem;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color-border);
   border-radius: 0.5rem;
-  background: var(--surface-color);
+  background: var(--color-surface);
 }
 
 .cpio-inspector__error {
   margin-top: 1rem;
   padding: 0.75rem;
+  border: 1px solid var(--color-error-border);
   border-radius: 0.5rem;
-  color: var(--error-text, #b42318);
-  background: var(--error-background, #fef3f2);
+  color: var(--color-error-light);
+  background: var(--color-error-bg);
 }
 
 .cpio-inspector__results { margin-top: 1.5rem; }
@@ -28,9 +29,9 @@
 
 .cpio-inspector__entry {
   padding: 1rem;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color-border);
   border-radius: 0.5rem;
-  background: var(--surface-color);
+  background: var(--color-surface);
 }
 
 .cpio-inspector__entry h2 { margin-top: 0; overflow-wrap: anywhere; }
