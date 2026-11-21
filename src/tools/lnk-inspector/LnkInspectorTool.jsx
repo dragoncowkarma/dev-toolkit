@@ -2,6 +2,15 @@ import { useRef, useState } from 'react';
 import { parseLnk } from './lnk.utils.js';
 import './lnk.css';
 
+function displayValue(value) {
+  if (Array.isArray(value)) {
+    const list = value.join(', ');
+    return list === '' ? 'None' : list;
+  }
+
+  return value === '' || value === null || value === undefined ? 'None' : String(value);
+}
+
 function Details({ title, values }) {
   return (
     <section className="lnk-section">
@@ -10,7 +19,7 @@ function Details({ title, values }) {
         {Object.entries(values).map(([key, value]) => (
           <div key={key}>
             <dt>{key}</dt>
-            <dd>{Array.isArray(value) ? value.join(', ') || 'None' : value || 'None'}</dd>
+            <dd>{displayValue(value)}</dd>
           </div>
         ))}
       </dl>
@@ -19,7 +28,7 @@ function Details({ title, values }) {
 }
 
 /** Renders a local-only Windows shortcut inspector. */
-export default function LnkInspector() {
+export default function LnkInspectorTool() {
   const inputRef = useRef(null);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
@@ -84,7 +93,11 @@ export default function LnkInspector() {
         <span>Parsed entirely in your browser. Nothing is uploaded.</span>
       </div>
       {fileName && <p className="lnk-file-name">Inspecting: {fileName}</p>}
-      {error && <div role="alert" className="lnk-alert">⚠ {error}</div>}
+      {error && (
+        <div role="alert" className="lnk-alert">
+          ⚠ {error}
+        </div>
+      )}
       {result && (
         <div className="lnk-results">
           <Details title="ShellLinkHeader" values={result.header} />
@@ -95,12 +108,17 @@ export default function LnkInspector() {
             />
           )}
           {result.linkInfo && <Details title="LinkInfo" values={linkInfoValues} />}
-          {result.linkInfo?.volume && <Details title="VolumeID" values={result.linkInfo.volume} />}
+          {result.linkInfo?.volume && (
+            <Details title="VolumeID" values={result.linkInfo.volume} />
+          )}
           {result.linkInfo?.network && (
             <Details title="CommonNetworkRelativeLink" values={result.linkInfo.network} />
           )}
           {Object.keys(result.stringData).length > 0 && (
-            <Details title={`StringData (${result.stringEncoding})`} values={result.stringData} />
+            <Details
+              title={`StringData (${result.stringEncoding})`}
+              values={result.stringData}
+            />
           )}
         </div>
       )}
