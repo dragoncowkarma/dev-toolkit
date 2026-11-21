@@ -22,7 +22,20 @@
   border-color: var(--color-primary);
 }
 .font-header-inspector__button input {
-  display: none;
+  height: 1px;
+  opacity: 0;
+  overflow: hidden;
+  position: absolute;
+  width: 1px;
+}
+.font-header-inspector__button:focus-within {
+  border-color: var(--color-primary);
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+.font-header-inspector__file {
+  color: var(--color-text-muted);
+  margin: 0 0 1rem;
 }
 .font-header-inspector__label {
   color: var(--color-text-muted);

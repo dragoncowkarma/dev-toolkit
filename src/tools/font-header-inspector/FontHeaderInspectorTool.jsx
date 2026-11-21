@@ -1,21 +1,26 @@
 import { useRef, useState } from "react";
-import { decodeBase64, parseSfnt } from "./font-header.utils.js";
+import { decodeBase64, inspectFontHeader } from "./font-header.utils.js";
 import "./font-header-inspector.css";
 
 function dateValue(value) {
   return value.iso ?? `${value.seconds} seconds since 1904-01-01`;
 }
 
-/** Renders a client-side SFNT header inspector for TTF and OTF files. */
+function formatValue(value) {
+  return typeof value === "number" ? value.toLocaleString() : value;
+}
+
+/** Renders a client-side font container inspector. */
 export default function FontHeaderInspectorTool() {
   const [base64, setBase64] = useState("");
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
+  const [fileName, setFileName] = useState("");
   const fileInputRef = useRef(null);
 
   function inspect(bytes) {
     try {
-      setResult(parseSfnt(bytes));
+      setResult(inspectFontHeader(bytes));
       setError("");
     } catch (inspectionError) {
       setResult(null);
@@ -32,21 +37,33 @@ export default function FontHeaderInspectorTool() {
     }
   }
 
-  async function handleFileChange(event) {
-    const file = event.target.files?.[0];
-    if (!file) return;
+  async function inspectFile(file) {
     try {
       inspect(await file.arrayBuffer());
+      setFileName(file.name);
     } catch {
       setResult(null);
+      setFileName(file.name);
       setError("File upload: failed to read the selected font file.");
     }
+  }
+
+  function handleFileChange(event) {
+    const file = event.target.files?.[0];
+    if (file) inspectFile(file);
+  }
+
+  function handleDrop(event) {
+    event.preventDefault();
+    const file = event.dataTransfer.files?.[0];
+    if (file) inspectFile(file);
   }
 
   function clear() {
     setBase64("");
     setResult(null);
     setError("");
+    setFileName("");
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
@@ -54,14 +71,16 @@ export default function FontHeaderInspectorTool() {
     <section
       className="font-header-inspector"
       aria-label="TrueType and OpenType font inspector"
+      onDragOver={(event) => event.preventDefault()}
+      onDrop={handleDrop}
     >
       <div className="font-header-inspector__actions">
         <label className="font-header-inspector__button">
-          Upload .ttf or .otf
+          Upload or drop a font
           <input
             ref={fileInputRef}
             type="file"
-            accept=".ttf,.otf,font/ttf,font/otf"
+            accept=".ttf,.otf,.woff,.woff2,font/ttf,font/otf,font/woff,font/woff2"
             onChange={handleFileChange}
             aria-label="Upload a TrueType or OpenType font"
           />
@@ -81,6 +100,7 @@ export default function FontHeaderInspectorTool() {
           Clear
         </button>
       </div>
+      {fileName && <p className="font-header-inspector__file">Inspecting: {fileName}</p>}
       <label htmlFor="font-base64" className="font-header-inspector__label">
         Base64 font data
       </label>
@@ -96,7 +116,7 @@ export default function FontHeaderInspectorTool() {
           {error}
         </div>
       )}
-      {result && (
+      {result?.sfntVersion && (
         <>
           <section aria-labelledby="font-offset-table-heading">
             <h2 id="font-offset-table-heading">SFNT offset table</h2>
@@ -189,6 +209,44 @@ export default function FontHeaderInspectorTool() {
                       <td>{table.offset}</td>
                       <td>{table.length}</td>
                       <td>{table.inBounds ? "Yes" : "No"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </>
+      )}
+      {result?.header && (
+        <>
+          <section aria-labelledby="font-container-heading">
+            <h2 id="font-container-heading">{result.format} header</h2>
+            <dl className="font-header-inspector__details">
+              {Object.entries(result.header).map(([label, value]) => (
+                <div key={label}>
+                  <dt>{label}</dt>
+                  <dd>{formatValue(value)}</dd>
+                </div>
+              ))}
+            </dl>
+          </section>
+          <section aria-labelledby="font-container-tables-heading">
+            <h2 id="font-container-tables-heading">Table directory</h2>
+            <div className="font-header-inspector__table-wrap" tabIndex="0">
+              <table aria-labelledby="font-container-tables-heading">
+                <thead>
+                  <tr>
+                    {Object.keys(result.tables[0] ?? {}).map((key) => <th key={key}>{key}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {result.tables.map((table, index) => (
+                    <tr key={`${table.tag}-${index}`}>
+                      {Object.values(table).map((value, valueIndex) => (
+                        <td key={`${table.tag}-${valueIndex}`}>
+                          {value === null ? "—" : formatValue(value)}
+                        </td>
+                      ))}
                     </tr>
                   ))}
                 </tbody>

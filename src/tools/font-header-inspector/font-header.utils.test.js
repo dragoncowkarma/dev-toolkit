@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseSfnt } from "./font-header.utils.js";
+import { decodeBase64, inspectFontHeader, parseSfnt } from "./font-header.utils.js";
 
 function writeTag(bytes, offset, tag) {
   [...tag].forEach((character, index) => {
@@ -113,5 +113,42 @@ describe("parseSfnt", () => {
     new DataView(bytes.buffer).setUint32(24, 99, false);
 
     expect(parseSfnt(bytes).tables[0].inBounds).toBe(false);
+  });
+
+  it("skips truncated key-table details while retaining the valid directory entry", () => {
+    const result = parseSfnt(makeFont({
+      tables: [
+        { tag: "head", offset: 64, data: new Uint8Array(53) },
+        { tag: "maxp", offset: 128, data: new Uint8Array(5) },
+      ],
+    }));
+
+    expect(result.tables.map((table) => table.inBounds)).toEqual([true, true]);
+    expect(result.head).toBeNull();
+    expect(result.maxp).toBeNull();
+  });
+});
+
+describe("decodeBase64", () => {
+  it("decodes padded Base64 and ignores whitespace", () => {
+    expect(decodeBase64(" AAE=\n")).toEqual(new Uint8Array([0, 1]));
+  });
+
+  it.each(["", "AAE", "%%%="]) ("rejects invalid input: %s", (value) => {
+    expect(() => decodeBase64(value)).toThrow(/valid, padded Base64/);
+  });
+});
+
+describe("inspectFontHeader", () => {
+  it("keeps WOFF and WOFF2 container inspection available", () => {
+    const woff = new Uint8Array(44);
+    woff.set([119, 79, 70, 70]);
+    new DataView(woff.buffer).setUint32(8, 44, false);
+    expect(inspectFontHeader(woff).format).toBe("WOFF");
+
+    const woff2 = new Uint8Array(48);
+    woff2.set([119, 79, 70, 50]);
+    new DataView(woff2.buffer).setUint32(8, 48, false);
+    expect(inspectFontHeader(woff2).format).toBe("WOFF2");
   });
 });
