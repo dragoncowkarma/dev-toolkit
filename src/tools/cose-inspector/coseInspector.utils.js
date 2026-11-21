@@ -49,6 +49,13 @@ const ALGORITHM_NAMES = new Map([
   [24, 'ChaCha20/Poly1305'],
 ]);
 
+const KEY_TYPE_NAMES = new Map([
+  [1, 'OKP'],
+  [2, 'EC2'],
+  [3, 'RSA'],
+  [4, 'Symmetric'],
+]);
+
 function hexToBytes(hex) {
   return Uint8Array.from(hex.match(/../g) ?? [], (pair) => Number.parseInt(pair, 16));
 }
@@ -94,7 +101,7 @@ function headerEntries(mapNode, source) {
   return mapNode.entries.map(({ key, value }) => {
     const label = key.value;
     const algorithm = label === 1 && typeof value.value === 'number'
-      ? ALGORITHM_NAMES.get(value.value)
+      ? resolveCoseAlgorithm(value.value)
       : null;
     return {
       label,
@@ -132,6 +139,49 @@ function getMessageContainer(root) {
     };
   }
   throw new Error('Unrecognized COSE structure. Expected a tagged four-item COSE array.');
+}
+
+/**
+ * Resolves a registered COSE algorithm identifier to a readable name.
+ *
+ * @param {number} algorithmId COSE algorithm identifier.
+ * @returns {string} Registered name or a stable fallback label.
+ */
+export function resolveCoseAlgorithm(algorithmId) {
+  return ALGORITHM_NAMES.get(algorithmId) ?? `Algorithm ${algorithmId}`;
+}
+
+/**
+ * Parses a CBOR-encoded COSE_Key map without performing cryptographic operations.
+ *
+ * @param {Uint8Array} bytes Encoded COSE_Key CBOR item.
+ * @returns {{keyType: string, algorithm: string|null, parameters: Array<object>}}
+ * Parsed public-key display data.
+ * @throws {Error} When the bytes are not a complete COSE_Key map.
+ */
+export function parseCoseKey(bytes) {
+  const decoded = decodeCbor(bytes);
+  if ('error' in decoded) throw new Error(`Malformed COSE key: ${decoded.error}`);
+  if (decoded.root.majorType !== 5) throw new Error('COSE key must be a CBOR map.');
+  const values = new Map(decoded.root.entries.map(({ key, value }) => [key.value, value]));
+  const keyTypeId = values.get(1)?.value;
+  const algorithmId = values.get(3)?.value;
+  const parameterNames = new Map([
+    [-1, 'Curve / modulus'], [-2, 'X coordinate / exponent'],
+    [-3, 'Y coordinate / private exponent'], [-4, 'Private key'],
+  ]);
+  const parameters = decoded.root.entries.map(({ key, value }) => ({
+    label: key.value,
+    name: key.value === 1 ? 'Key type' : key.value === 3 ? 'Algorithm'
+      : parameterNames.get(key.value) ?? `Parameter ${String(key.value)}`,
+    value: nodeValue(value),
+  }));
+  return {
+    keyType: typeof keyTypeId === 'number'
+      ? KEY_TYPE_NAMES.get(keyTypeId) ?? `Key type ${keyTypeId}` : 'Unknown',
+    algorithm: typeof algorithmId === 'number' ? resolveCoseAlgorithm(algorithmId) : null,
+    parameters,
+  };
 }
 
 /**
