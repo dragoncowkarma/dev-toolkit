@@ -33,6 +33,20 @@ function buildMetaEvent(type, data = []) {
   return [0x00, 0xff, type, data.length, ...data];
 }
 
+function encodeVlq(value) {
+  const bytes = [value & 0x7f];
+  let remaining = value >>> 7;
+  while (remaining > 0) {
+    bytes.unshift((remaining & 0x7f) | 0x80);
+    remaining >>>= 7;
+  }
+  return bytes;
+}
+
+function buildMetaEventWithLength(type, data) {
+  return [0x00, 0xff, type, ...encodeVlq(data.length), ...data];
+}
+
 function buildMTrkBytes(events) {
   const payload = events.flat();
   return [...bytesFromAscii('MTrk'), ...uint32(payload.length), ...payload];
@@ -243,6 +257,70 @@ describe('parseMidiFile', () => {
     const trackChunk = result.chunks.find((chunk) => chunk.type === 'track');
 
     expect(trackChunk.trackInfo.malformed).toMatch(/Malformed variable-length quantity/);
+  });
+
+  it('bounds an oversized Track Name event instead of decoding it in full', () => {
+    const header = buildMThdBytes();
+    const oversizedName = new Array(500).fill('A'.charCodeAt(0));
+    const track = buildMTrkBytes([
+      buildMetaEventWithLength(0x03, oversizedName),
+      buildMetaEvent(0x2f),
+    ]);
+    const buffer = toArrayBuffer([...header, ...track]);
+
+    const result = parseMidiFile(buffer);
+    const trackChunk = result.chunks.find((chunk) => chunk.type === 'track');
+
+    expect(trackChunk.trackInfo.trackName).toHaveLength(256);
+    expect(trackChunk.trackInfo.metaTextCapped).toBe(true);
+    expect(trackChunk.trackInfo.endOfTrack).toBe(true);
+    expect(trackChunk.trackInfo.malformed).toBeNull();
+  });
+
+  it('bounds an oversized Instrument Name event instead of decoding it in full', () => {
+    const header = buildMThdBytes();
+    const oversizedName = new Array(300).fill('B'.charCodeAt(0));
+    const track = buildMTrkBytes([
+      buildMetaEventWithLength(0x04, oversizedName),
+      buildMetaEvent(0x2f),
+    ]);
+    const buffer = toArrayBuffer([...header, ...track]);
+
+    const result = parseMidiFile(buffer);
+    const trackChunk = result.chunks.find((chunk) => chunk.type === 'track');
+
+    expect(trackChunk.trackInfo.instrumentName).toHaveLength(256);
+    expect(trackChunk.trackInfo.metaTextCapped).toBe(true);
+  });
+
+  it('does not cap a Track Name event at or under the text byte cap', () => {
+    const header = buildMThdBytes();
+    const name = new Array(256).fill('C'.charCodeAt(0));
+    const track = buildMTrkBytes([buildMetaEventWithLength(0x03, name), buildMetaEvent(0x2f)]);
+    const buffer = toArrayBuffer([...header, ...track]);
+
+    const result = parseMidiFile(buffer);
+    const trackChunk = result.chunks.find((chunk) => chunk.type === 'track');
+
+    expect(trackChunk.trackInfo.trackName).toHaveLength(256);
+    expect(trackChunk.trackInfo.metaTextCapped).toBe(false);
+  });
+
+  it('stops scanning once the per-track scan byte budget is exceeded', () => {
+    const header = buildMThdBytes();
+    const hugeSysexPayload = new Array(2 * 1024 * 1024 + 1).fill(0x00);
+    const track = buildMTrkBytes([
+      [0x00, 0xf0, ...encodeVlq(hugeSysexPayload.length), ...hugeSysexPayload],
+      buildMetaEvent(0x2f),
+    ]);
+    const buffer = toArrayBuffer([...header, ...track]);
+
+    const result = parseMidiFile(buffer);
+    const trackChunk = result.chunks.find((chunk) => chunk.type === 'track');
+
+    expect(trackChunk.trackInfo.scanBudgetExceeded).toBe(true);
+    expect(trackChunk.trackInfo.truncated).toBe(true);
+    expect(trackChunk.trackInfo.endOfTrack).toBe(false);
   });
 });
 

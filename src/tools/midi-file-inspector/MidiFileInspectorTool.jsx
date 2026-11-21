@@ -130,6 +130,7 @@ export default function MidiFileInspectorTool() {
  */
 function MidiResult({ result }) {
   const { header, chunks, warnings, errors } = result;
+  const trackWarnings = collectTrackWarnings(chunks);
 
   return (
     <div className="midi-result">
@@ -171,10 +172,13 @@ function MidiResult({ result }) {
         </div>
       )}
 
-      {warnings.length > 0 && (
+      {(warnings.length > 0 || trackWarnings.length > 0) && (
         <div className="midi-warning" role="alert">
           {warnings.map((message) => (
             <p key={message}>⚠ {message}</p>
+          ))}
+          {trackWarnings.map(({ key, message }) => (
+            <p key={key}>⚠ {message}</p>
           ))}
         </div>
       )}
@@ -213,6 +217,60 @@ function MidiResult({ result }) {
 }
 
 /**
+ * Builds alert-worthy warning messages for every MTrk chunk whose event scan was cut short:
+ * truncated event data, malformed VLQs/status bytes, the event-count cap, or a
+ * name/instrument text or scan-byte cap being hit.
+ *
+ * @param {object[]} chunks - The parsed chunk list from `parseMidiFile`.
+ * @returns {{ key: string, message: string }[]} One entry per affected track chunk.
+ */
+function collectTrackWarnings(chunks) {
+  const result = [];
+  chunks.forEach((chunk) => {
+    if (chunk.type !== 'track' || !chunk.trackInfo) return;
+    const info = chunk.trackInfo;
+    const key = `track-warning-${chunk.offset}`;
+
+    if (info.malformed) {
+      result.push({
+        key: `${key}-malformed`,
+        message: `Track at offset ${chunk.offset}: malformed event data (${info.malformed})`,
+      });
+    }
+    if (info.eventCapReached) {
+      result.push({
+        key: `${key}-cap`,
+        message:
+          `Track at offset ${chunk.offset}: event scan capped before end of track ` +
+          '(incomplete).',
+      });
+    } else if (info.truncated) {
+      result.push({
+        key: `${key}-truncated`,
+        message: `Track at offset ${chunk.offset}: event data truncated.`,
+      });
+    }
+    if (info.scanBudgetExceeded) {
+      result.push({
+        key: `${key}-budget`,
+        message:
+          `Track at offset ${chunk.offset}: scan byte budget exceeded, remaining events ` +
+          'were not scanned.',
+      });
+    }
+    if (info.metaTextCapped) {
+      result.push({
+        key: `${key}-text-capped`,
+        message:
+          `Track at offset ${chunk.offset}: a Name/Instrument Name event exceeded the ` +
+          'decoding cap; it was truncated.',
+      });
+    }
+  });
+  return result;
+}
+
+/**
  * Summarizes the metadata extracted from one MTrk chunk's bounded event scan.
  *
  * @param {object} props
@@ -235,6 +293,8 @@ function TrackDetails({ info }) {
   } else if (info.truncated) {
     parts.push('Event data truncated');
   }
+  if (info.scanBudgetExceeded) parts.push('Scan byte budget exceeded');
+  if (info.metaTextCapped) parts.push('Name/Instrument Name truncated (cap exceeded)');
   if (info.malformed) parts.push(`Malformed: ${info.malformed}`);
 
   return parts.length > 0 ? parts.join(' · ') : 'No metadata found';

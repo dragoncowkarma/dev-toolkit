@@ -4,6 +4,14 @@ const MIN_HEADER_LENGTH = 6;
 const MAX_CHUNKS = 20000;
 const MAX_TRACK_EVENTS = 5000;
 const MAX_VLQ_BYTES = 4;
+// FF 03/FF 04 (Track/Instrument Name) declare their payload length as a VLQ, which can
+// legally request up to 0x0fffffff bytes; readAscii decodes synchronously, so an uncapped
+// read of a multi-megabyte name can freeze the main thread for a single event.
+const MAX_META_TEXT_BYTES = 256;
+// Overall budget on declared meta/SysEx payload bytes processed per track, independent of
+// MAX_TRACK_EVENTS, since that cap only limits event *count* and a single event's declared
+// length is unbounded by it.
+const MAX_SCAN_BYTES = 2 * 1024 * 1024;
 
 const MIDI_FORMAT_LABELS = {
   0: 'Single track',
@@ -112,6 +120,10 @@ export function decodeDivision(raw) {
 
 /**
  * Applies a decoded MTrk meta event to a track info accumulator.
+ * Text events (Track/Instrument Name) are decoded only up to `MAX_META_TEXT_BYTES`; any
+ * remaining declared bytes are left unread and `info.metaTextCapped` is set so callers can
+ * surface a warning.
+ *
  * @param {object} info - The track info object being filled in.
  * @param {DataView} view - The buffer view to read event data from.
  * @param {number} metaType - The meta event type byte.
@@ -119,10 +131,17 @@ export function decodeDivision(raw) {
  * @param {number} length - The byte length of the meta event's data.
  */
 function applyMetaEvent(info, view, metaType, offset, length) {
-  if (metaType === 0x03) {
-    info.trackName = readAscii(view, offset, length);
-  } else if (metaType === 0x04) {
-    info.instrumentName = readAscii(view, offset, length);
+  if (metaType === 0x03 || metaType === 0x04) {
+    const cappedLength = Math.min(length, MAX_META_TEXT_BYTES);
+    const text = readAscii(view, offset, cappedLength);
+    if (length > MAX_META_TEXT_BYTES) {
+      info.metaTextCapped = true;
+    }
+    if (metaType === 0x03) {
+      info.trackName = text;
+    } else {
+      info.instrumentName = text;
+    }
   } else if (metaType === 0x51 && length >= 3) {
     const microsecondsPerQuarter =
       (view.getUint8(offset) << 16) |
@@ -166,11 +185,14 @@ function scanTrackEvents(view, start, end) {
     eventsScanned: 0,
     truncated: false,
     eventCapReached: false,
+    metaTextCapped: false,
+    scanBudgetExceeded: false,
     malformed: null,
   };
 
   let pos = start;
   let runningStatus = null;
+  let scannedBytes = 0;
 
   try {
     while (pos < end && info.eventsScanned < MAX_TRACK_EVENTS) {
@@ -208,6 +230,12 @@ function scanTrackEvents(view, start, end) {
           info.truncated = true;
           break;
         }
+        scannedBytes += metaLength.value;
+        if (scannedBytes > MAX_SCAN_BYTES) {
+          info.scanBudgetExceeded = true;
+          info.truncated = true;
+          break;
+        }
         applyMetaEvent(info, view, metaType, pos, metaLength.value);
         pos += metaLength.value;
         if (metaType === 0x2f) {
@@ -218,6 +246,12 @@ function scanTrackEvents(view, start, end) {
         const sysexLength = readVariableLengthQuantity(view, pos, end);
         pos = sysexLength.nextOffset;
         if (pos + sysexLength.value > end) {
+          info.truncated = true;
+          break;
+        }
+        scannedBytes += sysexLength.value;
+        if (scannedBytes > MAX_SCAN_BYTES) {
+          info.scanBudgetExceeded = true;
           info.truncated = true;
           break;
         }
