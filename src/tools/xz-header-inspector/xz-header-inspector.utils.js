@@ -8,6 +8,15 @@ const CHECK_NAMES = {
   10: 'SHA-256',
 };
 
+function checkSizeForId(checkId) {
+  if (checkId === 0) return 0;
+  if (checkId <= 3) return 4;
+  if (checkId <= 6) return 8;
+  if (checkId <= 9) return 16;
+  if (checkId <= 12) return 32;
+  return 64;
+}
+
 function fail(message) {
   throw new Error(`Invalid XZ stream: ${message}`);
 }
@@ -60,6 +69,23 @@ function readCrc32(bytes, offset, label) {
   return readUint32LE(bytes, offset, label);
 }
 
+function crc32(bytes) {
+  let value = 0xffffffff;
+  for (const byte of bytes) {
+    value ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) {
+      value = (value >>> 1) ^ (value & 1 ? 0xedb88320 : 0);
+    }
+  }
+  return (value ^ 0xffffffff) >>> 0;
+}
+
+function validateCrc32(bytes, start, end, offset, label) {
+  const expected = readCrc32(bytes, offset, `${label} CRC32`);
+  const actual = crc32(bytes.slice(start, end));
+  if (actual !== expected) fail(`${label} CRC32 does not match.`);
+}
+
 function parseStreamHeader(bytes) {
   requireBytes(bytes, 0, 12, 'Stream Header');
   for (let index = 0; index < XZ_MAGIC.length; index += 1) {
@@ -70,10 +96,12 @@ function parseStreamHeader(bytes) {
   const flags0 = readByte(bytes, 6, 'Stream Flags');
   const checkId = readByte(bytes, 7, 'Stream Flags');
   if (flags0 !== 0 || checkId > 15) fail('invalid Stream Flags.');
+  validateCrc32(bytes, 6, 8, 8, 'Stream Header');
 
   return {
     magic: 'FD 37 7A 58 5A 00',
     checkId,
+    checkSize: checkSizeForId(checkId),
     checkName: CHECK_NAMES[checkId] ?? `Unknown (${checkId})`,
     crc32: readCrc32(bytes, 8, 'Stream Header CRC32'),
     endOffset: 12,
@@ -97,10 +125,12 @@ function parseFooter(bytes) {
   if (!Number.isSafeInteger(indexSize) || indexSize > offset) {
     fail('Backward Size points outside the stream.');
   }
+  validateCrc32(bytes, offset + 4, offset + 10, offset, 'Stream Footer');
   return {
     crc32: readCrc32(bytes, offset, 'Stream Footer CRC32'),
     backwardSize,
     checkId,
+    checkSize: checkSizeForId(checkId),
     checkName: CHECK_NAMES[checkId] ?? `Unknown (${checkId})`,
     magic: '59 5A',
     indexStart: offset - indexSize,
@@ -141,6 +171,7 @@ function parseIndex(bytes, start, end) {
     cursor += 1;
   }
   if (cursor !== crcOffset) fail('Index records extend into its CRC32.');
+  validateCrc32(bytes, start, crcOffset, crcOffset, 'Index');
   return {
     recordCount: count.value,
     records,
@@ -157,10 +188,10 @@ function parseBlockHeader(bytes, offset, blockEnd) {
   if (offset + headerSize > blockEnd) fail(`truncated Block Header at offset ${offset}.`);
   const headerEnd = offset + headerSize;
   const flags = readByte(bytes, offset + 1, 'Block Flags');
-  if ((flags & 0xf0) !== 0) fail(`reserved Block Flags are set at offset ${offset + 1}.`);
+  if ((flags & 0x3c) !== 0) fail(`reserved Block Flags are set at offset ${offset + 1}.`);
   const filterCount = (flags & 0x03) + 1;
-  const hasCompressedSize = (flags & 0x04) !== 0;
-  const hasUncompressedSize = (flags & 0x08) !== 0;
+  const hasCompressedSize = (flags & 0x40) !== 0;
+  const hasUncompressedSize = (flags & 0x80) !== 0;
   let cursor = offset + 2;
   let compressedSize = null;
   let uncompressedSize = null;
@@ -197,6 +228,7 @@ function parseBlockHeader(bytes, offset, blockEnd) {
     cursor += 1;
   }
   if (cursor !== headerEnd - 4) fail(`Block Header fields overlap CRC32 at offset ${offset}.`);
+  validateCrc32(bytes, offset, headerEnd - 4, headerEnd - 4, 'Block Header');
   return {
     headerSize,
     flags,
@@ -235,10 +267,11 @@ export function parseXzHeaders(input) {
       fail(`Block ${blockIndex + 1} extends into the Index or past end of input.`);
     }
     const header = parseBlockHeader(bytes, cursor, blockEnd);
-    if (header.headerSize > unpaddedSize) {
-      fail(`Block ${blockIndex + 1} is smaller than its header.`);
+    const checkSize = streamHeader.checkSize;
+    if (unpaddedSize < header.headerSize + checkSize) {
+      fail(`Block ${blockIndex + 1} is smaller than its header and Check.`);
     }
-    const payloadSize = BigInt(unpaddedSize - header.headerSize);
+    const payloadSize = BigInt(unpaddedSize - header.headerSize - checkSize);
     if (header.compressedSize !== null && header.compressedSize !== payloadSize) {
       fail(`Block ${blockIndex + 1} compressed size does not match its Index record.`);
     }
@@ -249,15 +282,20 @@ export function parseXzHeaders(input) {
       unpaddedSize: record.unpaddedSize,
       indexUncompressedSize: record.uncompressedSize,
     });
-    cursor = blockEnd;
     const padding = (4 - (unpaddedSize % 4)) % 4;
-    requireBytes(bytes, cursor, padding, `Block ${blockIndex + 1} padding`);
+    const payloadEnd = cursor + header.headerSize + Number(payloadSize);
+    requireBytes(
+      bytes,
+      payloadEnd,
+      padding + checkSize,
+      `Block ${blockIndex + 1} padding and Check`,
+    );
     for (let paddingIndex = 0; paddingIndex < padding; paddingIndex += 1) {
-      if (readByte(bytes, cursor + paddingIndex, `Block ${blockIndex + 1} padding`) !== 0) {
+      if (readByte(bytes, payloadEnd + paddingIndex, `Block ${blockIndex + 1} padding`) !== 0) {
         fail(`Block ${blockIndex + 1} padding must contain zero bytes.`);
       }
     }
-    cursor += padding;
+    cursor = blockEnd + padding;
   }
   if (cursor !== streamFooter.indexStart) fail('Block area does not end at the Index.');
   return { streamHeader, blocks, index, streamFooter };
