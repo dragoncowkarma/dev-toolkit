@@ -226,4 +226,33 @@ describe('parseOleCfbHeader', () => {
       'DIFAT entry at index 0 (sector 10) exceeds file bounds (max sector: 0).',
     );
   });
+
+  it('rejects reserved sector markers in header DIFAT entries', () => {
+    const reservedCases = [
+      { name: 'ENDOFCHAIN', value: SPECIAL_SECTOR.ENDOFCHAIN },
+      { name: 'FATSECT', value: SPECIAL_SECTOR.FATSECT },
+      { name: 'DIFSECT', value: SPECIAL_SECTOR.DIFSECT },
+      { name: 'RESERVED', value: SPECIAL_SECTOR.RESERVED },
+    ];
+
+    for (const { name, value } of reservedCases) {
+      const buffer = createMinimalCfbBuffer({
+        size: 1024,
+        difatEntries: [value],
+      });
+      expect(() => parseOleCfbHeader(buffer)).toThrow(
+        new RegExp(`Invalid DIFAT entry at index 0: reserved sector marker.*${name}`),
+      );
+    }
+  });
+
+  it('rejects version 4 header with non-zero padding beyond 512 bytes', () => {
+    const buffer = createMinimalCfbBuffer({ majorVersion: 4 });
+    const u8 = new Uint8Array(buffer);
+    u8[512] = 0x01;
+
+    expect(() => parseOleCfbHeader(buffer)).toThrow(
+      /Invalid CFB version 4 header: sector padding from byte 512 to 4095 must be zero/,
+    );
+  });
 });

@@ -182,11 +182,21 @@ export function parseOleCfbHeader(input) {
   // Reserved (offset 34, 6 bytes)
   const reservedBytes = u8.slice(34, 40);
 
-  // For version 4, minimum file size is sectorSize (4096 bytes)
-  if (majorVersion === 4 && byteLength < sectorSize) {
-    throw new Error(
-      'Truncated file: CFB version 4 requires at least 4096 bytes for the header sector.',
-    );
+  // For version 4, header sector is 4096 bytes and padding bytes 512..4095 must be zero
+  if (majorVersion === 4) {
+    if (byteLength < sectorSize) {
+      throw new Error(
+        'Truncated file: CFB version 4 requires at least 4096 bytes for the header sector.',
+      );
+    }
+    for (let i = 512; i < sectorSize; i++) {
+      if (u8[i] !== 0) {
+        throw new Error(
+          `Invalid CFB version 4 header: sector padding from byte 512 to 4095 ` +
+            `must be zero (non-zero byte found at offset ${i}).`,
+        );
+      }
+    }
   }
 
   // Number of directory sectors (offset 40, 4 bytes uint32le)
@@ -296,10 +306,13 @@ export function parseOleCfbHeader(input) {
     const entrySector = view.getUint32(76 + i * 4, true);
     difatEntries.push(entrySector);
     if (entrySector !== SPECIAL_SECTOR.FREESECT) {
-      if (
-        entrySector <= SPECIAL_SECTOR.MAX_REGULAR &&
-        entrySector >= maxAvailableSectors
-      ) {
+      if (entrySector > SPECIAL_SECTOR.MAX_REGULAR) {
+        throw new Error(
+          `Invalid DIFAT entry at index ${i}: reserved sector marker ` +
+            `${formatSectorLocation(entrySector)} cannot be a FAT sector location.`,
+        );
+      }
+      if (entrySector >= maxAvailableSectors) {
         throw new Error(
           `DIFAT entry at index ${i} (sector ${entrySector}) exceeds file bounds ` +
             `(max sector: ${maxSectorLabel}).`,
