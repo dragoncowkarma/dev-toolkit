@@ -136,6 +136,7 @@ describe('parseJp2Container — raw J2K/J2C codestream detection', () => {
     expect(result.errors).toEqual([]);
     expect(result.warnings[0]).toMatch(/SOC marker 0xFF4F/i);
     expect(result.warnings[0]).toMatch(/unavailable/i);
+    expect(result.errors.some((e) => /jp2c/i.test(e))).toBe(false);
   });
 });
 
@@ -199,6 +200,16 @@ describe('parseJp2Container — malformed, truncated, and oversized inputs', () 
 
     expect(result.isValid).toBe(false);
     expect(result.errors.some((e) => /no Bits Per Component \(bpcc\)/i.test(e))).toBe(true);
+  });
+
+  it('reports isValid: false and a missing-codestream error when jp2c is absent', () => {
+    const noCodestream = buildSampleJp2Buffer({ includeCodestream: false });
+    const result = parseJp2Container(noCodestream);
+
+    expect(result.isValid).toBe(false);
+    expect(result.codestreamCount).toBe(0);
+    expect(result.errors.some((e) => /Missing required Contiguous Codestream \(jp2c\)/i.test(e)))
+      .toBe(true);
   });
 });
 

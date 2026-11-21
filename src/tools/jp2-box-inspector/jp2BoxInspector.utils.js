@@ -872,6 +872,12 @@ export function parseJp2Container(input) {
   if (!header) {
     errors.push('Missing required JP2 Header superbox (jp2h).');
   }
+  if (codestreamCount === 0) {
+    errors.push(
+      'Missing required Contiguous Codestream (jp2c) box: a JP2 container must ' +
+        'carry at least one jp2c box holding the compressed image data.'
+    );
+  }
 
   return {
     isValid: errors.length === 0,
@@ -1007,6 +1013,10 @@ export function buildSampleJp2Buffer(options = {}) {
   const jp2hBox = makeBox('jp2h', concatBytes(jp2hChildren), {
     extended: Boolean(options.extendedJp2h),
   });
+
+  if (options.includeCodestream === false) {
+    return concatBytes([sigBox, ftypBox, jp2hBox]);
+  }
 
   const jp2cPayload = new Uint8Array([0xff, 0x4f, 0xff, 0x51, 0x00, 0x02, 0xff, 0xd9]);
   const jp2cBox = makeBox('jp2c', jp2cPayload, {
