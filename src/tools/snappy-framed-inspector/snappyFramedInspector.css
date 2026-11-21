@@ -1,0 +1,116 @@
+.snappy-inspector {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  color: var(--color-text);
+}
+
+.snappy-inspector__intro {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.snappy-inspector__intro p,
+.snappy-inspector__filename,
+.snappy-inspector__results > p {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.snappy-inspector__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.snappy-inspector__button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.5rem;
+  padding: 0.5rem 1rem;
+  overflow: hidden;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  transition: border-color var(--transition), color var(--transition);
+}
+
+.snappy-inspector__button:hover,
+.snappy-inspector__button:focus-visible {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.snappy-inspector__file-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.snappy-inspector__filename,
+.snappy-inspector__error,
+.snappy-inspector__results {
+  margin-top: 1rem;
+}
+
+.snappy-inspector__error {
+  padding: 0.75rem 1rem;
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  color: var(--color-error-light);
+}
+
+.snappy-inspector__table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.snappy-inspector table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 660px;
+}
+
+.snappy-inspector th,
+.snappy-inspector td {
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+}
+
+.snappy-inspector th {
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+}
+
+.snappy-inspector tr:last-child td {
+  border-bottom: none;
+}
+
+@media (min-width: 768px) {
+  .snappy-inspector {
+    padding: 0 2rem 3rem;
+  }
+
+  .snappy-inspector__intro {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+}
