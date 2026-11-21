@@ -1,0 +1,11 @@
+.avif-inspector { max-width: 900px; margin: 0 auto; padding: 0 1.25rem 2rem; color: var(--color-text); }
+.avif-inspector__toolbar { display: flex; gap: .75rem; flex-wrap: wrap; }
+.avif-inspector__button { display: inline-flex; cursor: pointer; padding: .55rem 1rem; border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-surface); color: var(--color-text); font: inherit; }
+.avif-inspector__button:hover { border-color: var(--color-primary); }
+.avif-inspector__button input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.avif-inspector__privacy { color: var(--color-text-muted); font-size: .9rem; }
+.avif-inspector__results, .avif-inspector__error { margin-top: 1rem; padding: 1rem; border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-surface); }
+.avif-inspector__error { color: var(--color-error-light); border-color: var(--color-error-border); background: var(--color-error-bg); }
+.avif-inspector__summary p, .avif-inspector__list { margin: .5rem 0; }
+.avif-inspector__list { padding-left: 1.25rem; overflow-wrap: anywhere; }
+@media (min-width: 768px) { .avif-inspector { padding: 0 2rem 3rem; } }
