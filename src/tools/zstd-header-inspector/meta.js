@@ -1,7 +1,7 @@
 export default {
   id: 'zstd-header-inspector',
-  name: 'Zstandard Frame Header Inspector',
-  description: 'Inspect Zstandard frame headers locally without decompressing content.',
-  icon: 'Z',
+  name: 'Zstandard Header Inspector',
+  description: 'Inspect Zstandard frame headers locally without uploading files.',
+  icon: '⌁',
   category: 'Inspector',
 };
