@@ -1,0 +1,102 @@
+.rar-inspector {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+}
+
+.rar-inspector__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.rar-inspector__dropzone {
+  width: 100%;
+  min-height: 180px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background: var(--color-surface);
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+}
+
+.rar-inspector__dropzone:hover,
+.rar-inspector__dropzone:focus-visible {
+  border-color: var(--color-primary);
+  outline: none;
+}
+
+.rar-inspector__dropzone > span:first-child {
+  font-size: 2rem;
+}
+
+.rar-inspector__dropzone small,
+.rar-inspector__block > p {
+  color: var(--color-text-muted);
+}
+
+.rar-inspector__result {
+  margin-top: 1rem;
+}
+
+.rar-inspector__format {
+  color: var(--color-primary-light);
+  font-weight: 600;
+}
+
+.rar-inspector__block {
+  margin-top: 0.75rem;
+  padding: 1rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.rar-inspector__block h3,
+.rar-inspector__block p {
+  margin: 0 0 0.5rem;
+}
+
+.rar-inspector__block dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.rar-inspector__block dl div {
+  padding: 0.5rem;
+  background: var(--color-bg);
+  border-radius: calc(var(--radius) / 2);
+}
+
+.rar-inspector__block dt {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
+.rar-inspector__block dd {
+  margin: 0.2rem 0 0;
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+}
+
+.rar-inspector__error {
+  padding: 0.75rem 1rem;
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  color: var(--color-error-light);
+}
+
+@media (min-width: 768px) {
+  .rar-inspector {
+    padding: 0 2rem 3rem;
+  }
+}
