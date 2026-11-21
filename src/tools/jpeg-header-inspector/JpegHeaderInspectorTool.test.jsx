@@ -152,6 +152,29 @@ describe('JpegHeaderInspectorTool UI', () => {
     expect(screen.queryByLabelText('JPEG Summary')).not.toBeInTheDocument();
   });
 
+  it('displays a visible role="alert" when uploading SOS with zero component count', async () => {
+    render(<JpegHeaderInspectorTool />);
+
+    // Exact byte sequence from review: FF D8 FF DA 00 06 00 00 00 00 FF D9
+    const zeroComponentSos = new Uint8Array([
+      0xFF, 0xD8,
+      0xFF, 0xDA, 0x00, 0x06,
+      0x00, 0x00, 0x00, 0x00,
+      0xFF, 0xD9,
+    ]);
+    const file = new File([zeroComponentSos], 'zero-comp-sos.jpg', { type: 'image/jpeg' });
+    const fileInput = screen.getByLabelText('Select JPEG File');
+
+    await act(async () => selectFile(fileInput, file));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toBeInTheDocument();
+    expect(alert).toHaveTextContent(
+      /Invalid SOS segment: scan component count must be at least 1/i,
+    );
+    expect(screen.queryByLabelText('JPEG Summary')).not.toBeInTheDocument();
+  });
+
   it('displays a visible role="alert" when marker length is invalid (< 2)', async () => {
     render(<JpegHeaderInspectorTool />);
 

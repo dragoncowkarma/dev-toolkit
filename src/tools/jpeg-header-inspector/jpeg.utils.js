@@ -153,6 +153,12 @@ function parseSof(view, payloadOffset, payloadLength, markerName) {
   const width = view.getUint16(payloadOffset + 3, false);
   const componentCount = view.getUint8(payloadOffset + 5);
 
+  if (componentCount < 1) {
+    throw new Error(
+      `Invalid ${markerName} segment: frame component count must be at least 1 (got 0).`,
+    );
+  }
+
   if (payloadLength < 6 + componentCount * 3) {
     throw new Error(
       `Truncated ${markerName} segment: incomplete component descriptors.`,
@@ -185,13 +191,42 @@ function parseSof(view, payloadOffset, payloadLength, markerName) {
  * @param {number} payloadOffset
  * @param {number} payloadLength
  * @param {string} markerName
+ * @param {number|null} [frameComponentCount]
  * @returns {{ componentCount: number }}
  */
-function parseSos(view, payloadOffset, payloadLength, markerName) {
+function parseSos(
+  view,
+  payloadOffset,
+  payloadLength,
+  markerName,
+  frameComponentCount = null,
+) {
   if (payloadLength < 1) {
     throw new Error(`Truncated ${markerName} segment: missing scan header.`);
   }
   const componentCount = view.getUint8(payloadOffset);
+  if (componentCount < 1) {
+    throw new Error(
+      `Invalid ${markerName} segment: ` +
+      `scan component count must be at least 1 (got ${componentCount}).`,
+    );
+  }
+  if (componentCount > 4) {
+    throw new Error(
+      `Invalid ${markerName} segment: ` +
+      `scan component count must be between 1 and 4 (got ${componentCount}).`,
+    );
+  }
+  if (
+    typeof frameComponentCount === 'number' &&
+    componentCount > frameComponentCount
+  ) {
+    throw new Error(
+      `Invalid ${markerName} segment: ` +
+      `scan component count (${componentCount}) cannot exceed ` +
+      `frame component count (${frameComponentCount}).`,
+    );
+  }
   const minRequiredLength = 1 + componentCount * 2 + 3;
   if (payloadLength < minRequiredLength) {
     throw new Error(
@@ -257,6 +292,7 @@ export function parseJpeg(input) {
   });
 
   let offset = 2;
+  let activeFrameComponentCount = null;
 
   while (offset < byteLength) {
     if (view.getUint8(offset) !== 0xFF) {
@@ -356,8 +392,15 @@ export function parseJpeg(input) {
       }
     } else if (isSofMarker(marker)) {
       details = parseSof(view, payloadOffset, payloadLength, segmentName);
+      activeFrameComponentCount = details.componentCount;
     } else if (marker === 0xFFDA) {
-      details = parseSos(view, payloadOffset, payloadLength, segmentName);
+      details = parseSos(
+        view,
+        payloadOffset,
+        payloadLength,
+        segmentName,
+        activeFrameComponentCount,
+      );
     } else if (marker === 0xFFFE) {
       // COM comment segment
       try {
