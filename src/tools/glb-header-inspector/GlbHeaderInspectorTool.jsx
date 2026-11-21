@@ -6,7 +6,7 @@ import './glb-header-inspector.css';
  * Renders a client-side GLB container header and chunk inspector.
  * @returns {React.JSX.Element}
  */
-export default function GlbHeaderInspector() {
+export default function GlbHeaderInspectorTool() {
   const [fileName, setFileName] = useState('');
   const [inspection, setInspection] = useState(null);
   const [readError, setReadError] = useState('');
