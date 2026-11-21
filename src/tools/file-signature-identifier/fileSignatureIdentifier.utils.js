@@ -57,6 +57,11 @@ const signatures = [
     description: 'Zstandard compressed data.',
   },
   {
+    name: 'RPM Package (.rpm)',
+    bytes: [0xed, 0xab, 0xee, 0xdb],
+    description: 'RPM package. Use the RPM Header Inspector for package metadata details.',
+  },
+  {
     name: 'ELF executable',
     bytes: [0x7f, 0x45, 0x4c, 0x46],
     description: 'Executable and Linkable Format binary.',
