@@ -50,6 +50,12 @@ describe('parseHeifHeader', () => {
     expect(parseHeifHeader(truncated).error).toMatch(/Invalid ftyp box size/);
   });
 
+  it('rejects a meta hdlr box without a complete handler structure', () => {
+    const ftyp = box('ftyp', join(text('heic'), new Uint8Array(4)));
+    const meta = box('meta', join(new Uint8Array(4), box('hdlr', new Uint8Array(4))));
+    expect(parseHeifHeader(join(ftyp, meta)).error).toMatch(/Truncated hdlr/);
+  });
+
   it('supports 64-bit extended box sizes', () => {
     const result = parseHeifHeader(box('ftyp', join(text('heic'), new Uint8Array(4)), true));
     expect(result).toMatchObject({ ok: true, majorBrand: 'heic' });

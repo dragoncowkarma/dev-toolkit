@@ -91,6 +91,13 @@ function parsePrimaryItem(view, box, summary) {
   summary.primaryItemId = length === 2 ? view.getUint16(dataOffset) : view.getUint32(dataOffset);
 }
 
+function parseHandler(view, box) {
+  const { dataOffset } = readFullBox(view, box);
+  if (box.end - dataOffset < 8) {
+    throw new Error('Truncated hdlr handler structure.');
+  }
+}
+
 function parseImageProperty(view, box, summary) {
   if (box.type === 'ispe') {
     const { dataOffset } = readFullBox(view, box);
@@ -113,6 +120,7 @@ function parseMeta(view, box, summary) {
   const { dataOffset } = readFullBox(view, box);
   box.children = readBoxes(view, dataOffset, box.end);
   for (const child of box.children) {
+    if (child.type === 'hdlr') parseHandler(view, child);
     if (child.type === 'pitm') parsePrimaryItem(view, child, summary);
     if (child.type === 'iinf') parseItemInfo(view, child, summary);
     if (child.type === 'iloc') readFullBox(view, child);
