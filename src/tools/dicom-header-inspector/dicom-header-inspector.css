@@ -1,0 +1,66 @@
+.dicom-inspector {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+}
+
+.dicom-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+
+.dicom-button {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  padding: .6rem .9rem;
+}
+
+.dicom-button:hover { border-color: var(--color-primary); color: var(--color-primary-light); }
+.dicom-file-button { overflow: hidden; position: relative; }
+.dicom-file-button input { cursor: pointer; inset: 0; opacity: 0; position: absolute; }
+.dicom-hint, .dicom-file-name { color: var(--color-text-muted); font-size: .9rem; }
+
+.dicom-error {
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  color: var(--color-error-light);
+  margin-top: 1rem;
+  padding: .75rem 1rem;
+}
+
+.dicom-results { display: grid; gap: 1.25rem; margin-top: 1rem; }
+
+.dicom-elements {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1rem;
+}
+
+.dicom-elements h2 { font-size: 1rem; margin: 0 0 .75rem; }
+.dicom-table-wrap { overflow-x: auto; }
+.dicom-elements table { border-collapse: collapse; min-width: 620px; width: 100%; }
+
+.dicom-elements th, .dicom-elements td {
+  border-bottom: 1px solid var(--color-border);
+  padding: .55rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.dicom-elements th {
+  color: var(--color-text-muted);
+  font-size: .78rem;
+  text-transform: uppercase;
+}
+
+.dicom-elements td:first-child, .dicom-elements td:nth-child(3) {
+  font-family: monospace;
+  white-space: nowrap;
+}
+
+@media (min-width: 768px) {
+  .dicom-inspector { padding: 0 2rem 3rem; }
+}
