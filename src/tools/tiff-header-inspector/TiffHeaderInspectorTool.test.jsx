@@ -8,7 +8,10 @@ describe('TiffHeaderInspectorTool', () => {
   it('shows a visible alert when reading the selected file fails', async () => {
     render(<TiffHeaderInspectorTool />);
     const input = screen.getByLabelText('Select a TIFF file to inspect');
-    const file = { name: 'broken.tif', arrayBuffer: () => Promise.reject(new Error('Read failed.')) };
+    const file = {
+      name: 'broken.tif',
+      arrayBuffer: () => Promise.reject(new Error('Read failed.')),
+    };
     Object.defineProperty(input, 'files', { value: [file], configurable: true });
     fireEvent.change(input);
     expect(await screen.findByRole('alert')).toHaveTextContent('Read failed.');

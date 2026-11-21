@@ -3,5 +3,5 @@ export default {
   name: 'TIFF Header Inspector',
   description: 'Inspect TIFF byte order, IFD chains, and image metadata locally.',
   icon: '🖼️',
-  category: 'Image',
+  category: 'Inspector',
 };
