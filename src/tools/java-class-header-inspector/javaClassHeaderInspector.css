@@ -1,0 +1,98 @@
+.java-class-header-inspector {
+  max-width: 850px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+}
+
+.java-class-header-inspector__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.java-class-header-inspector button,
+.java-class-header-inspector__button {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  padding: 0.55rem 1rem;
+}
+
+.java-class-header-inspector button:hover,
+.java-class-header-inspector__button:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.java-class-header-inspector__button:focus-within {
+  outline: 2px solid var(--color-primary-light);
+  outline-offset: 3px;
+}
+
+.java-class-header-inspector__button input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.java-class-header-inspector__hint {
+  margin: 1rem 0;
+  color: var(--color-text-muted);
+}
+
+.java-class-header-inspector__error {
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+  padding: 0.75rem 1rem;
+}
+
+.java-class-header-inspector__result {
+  margin-top: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  padding: 1.25rem;
+}
+
+.java-class-header-inspector__result h2 {
+  margin-bottom: 1rem;
+  font-size: 1.1rem;
+}
+
+.java-class-header-inspector__details {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.java-class-header-inspector__row {
+  display: grid;
+  grid-template-columns: minmax(9rem, 1fr) 2fr;
+  gap: 1rem;
+  border-top: 1px solid var(--color-border);
+  padding-top: 0.5rem;
+}
+
+.java-class-header-inspector__row dt {
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
+.java-class-header-inspector__row dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (min-width: 768px) {
+  .java-class-header-inspector {
+    padding: 0 2rem 3rem;
+  }
+}
