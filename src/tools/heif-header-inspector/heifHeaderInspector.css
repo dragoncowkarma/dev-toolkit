@@ -1,0 +1,29 @@
+.heif-header-inspector {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  color: var(--color-text);
+}
+
+.heif-header-inspector__upload {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  font-weight: 600;
+}
+
+.heif-header-inspector__upload:focus-within { outline: 2px solid var(--color-primary-light); }
+.heif-header-inspector__filename { color: var(--color-text-muted); }
+.heif-header-inspector__error { padding: 0.75rem 1rem; border: 1px solid var(--color-error-border); border-radius: var(--radius); background: var(--color-error-bg); color: var(--color-error-light); }
+.heif-header-inspector__results { margin-top: 1rem; padding: 1rem; border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-surface); }
+.heif-header-inspector__results dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.5rem 1rem; }
+.heif-header-inspector__results dt { color: var(--color-text-muted); font-weight: 600; }
+.heif-header-inspector__results dd { margin: 0; }
+.heif-header-inspector__tree { padding-left: 1.25rem; font-family: 'SF Mono', 'Fira Code', Consolas, monospace; }
+.heif-header-inspector__tree small { color: var(--color-text-muted); }
+
+@media (min-width: 768px) { .heif-header-inspector { padding: 0 2rem 3rem; } }
