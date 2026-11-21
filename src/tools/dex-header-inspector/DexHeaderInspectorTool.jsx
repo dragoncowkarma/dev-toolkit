@@ -6,7 +6,7 @@ import './dex-header-inspector.css';
  * Renders a passive, client-side inspector for Android DEX file headers.
  * @returns {React.JSX.Element}
  */
-export default function DexHeaderInspector() {
+export default function DexHeaderInspectorTool() {
   const [input, setInput] = useState('');
   const [header, setHeader] = useState(null);
   const [error, setError] = useState('');
