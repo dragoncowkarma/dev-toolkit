@@ -142,6 +142,46 @@ describe('jpeg.utils parser', () => {
     );
   });
 
+  it('throws on truncated APP0 JFIF thumbnail payload', () => {
+    // Exact byte sequence from review:
+    // FF D8 FF E0 00 10 4A 46 49 46 00 01 02 01 00 48 00 48 01 01 FF D9
+    const truncatedThumbnailJfif = new Uint8Array([
+      0xFF, 0xD8, // SOI
+      0xFF, 0xE0, 0x00, 0x10, // APP0 length 16 (payload 14)
+      0x4A, 0x46, 0x49, 0x46, 0x00, // "JFIF\0"
+      0x01, 0x02, // version 1.02
+      0x01, // units = DPI
+      0x00, 0x48, // X density 72
+      0x00, 0x48, // Y density 72
+      0x01, 0x01, // 1x1 thumbnail requires 3 RGB payload bytes, but segment ends here
+      0xFF, 0xD9, // EOI
+    ]).buffer;
+
+    expect(() => parseJpeg(truncatedThumbnailJfif)).toThrow(
+      /Truncated APP0\/JFIF segment: expected at least 17 payload bytes for thumbnail data/i,
+    );
+  });
+
+  it('correctly parses JFIF segment with valid non-zero thumbnail payload', () => {
+    const validThumbnailJfif = new Uint8Array([
+      0xFF, 0xD8, // SOI
+      0xFF, 0xE0, 0x00, 0x13, // APP0 length 19 (payload 17)
+      0x4A, 0x46, 0x49, 0x46, 0x00, // "JFIF\0"
+      0x01, 0x02, // version 1.02
+      0x01, // units = DPI
+      0x00, 0x48, // X density 72
+      0x00, 0x48, // Y density 72
+      0x01, 0x01, // 1x1 thumbnail
+      0xFF, 0x00, 0x00, // 3 RGB thumbnail bytes (R, G, B)
+      0xFF, 0xD9, // EOI
+    ]).buffer;
+
+    const result = parseJpeg(validThumbnailJfif);
+    const jfif = result.segments.find((s) => s.name === 'APP0/JFIF');
+    expect(jfif.details.thumbnailWidth).toBe(1);
+    expect(jfif.details.thumbnailHeight).toBe(1);
+  });
+
   it('throws on truncated SOF segment', () => {
     const shortSof = new Uint8Array([
       0xFF, 0xD8,

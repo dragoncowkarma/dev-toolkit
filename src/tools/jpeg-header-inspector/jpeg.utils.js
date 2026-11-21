@@ -104,6 +104,13 @@ function parseApp0(view, payloadOffset, payloadLength) {
     const yDensity = view.getUint16(payloadOffset + 10, false);
     const thumbX = view.getUint8(payloadOffset + 12);
     const thumbY = view.getUint8(payloadOffset + 13);
+    const requiredThumbnailBytes = 3 * thumbX * thumbY;
+    if (payloadLength < 14 + requiredThumbnailBytes) {
+      throw new Error(
+        `Truncated APP0/JFIF segment: expected at least ${14 + requiredThumbnailBytes} ` +
+        `payload bytes for thumbnail data, got ${payloadLength}.`,
+      );
+    }
     const unitLabels = {
       0: 'None (aspect ratio)',
       1: 'Pixels per inch (DPI)',

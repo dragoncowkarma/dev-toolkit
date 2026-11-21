@@ -132,6 +132,40 @@ describe('JpegHeaderInspectorTool UI', () => {
     expect(alert).toHaveTextContent(/Truncated segment/i);
   });
 
+  it(
+    'displays a visible role="alert" when uploading JPEG with truncated JFIF thumbnail payload',
+    async () => {
+      render(<JpegHeaderInspectorTool />);
+
+      // Exact byte sequence from review:
+      // FF D8 FF E0 00 10 4A 46 49 46 00 01 02 01 00 48 00 48 01 01 FF D9
+      const truncatedThumbnailJfif = new Uint8Array([
+        0xFF, 0xD8,
+        0xFF, 0xE0, 0x00, 0x10,
+        0x4A, 0x46, 0x49, 0x46, 0x00,
+        0x01, 0x02,
+        0x01,
+        0x00, 0x48,
+        0x00, 0x48,
+        0x01, 0x01,
+        0xFF, 0xD9,
+      ]);
+      const file = new File(
+        [truncatedThumbnailJfif],
+        'truncated-thumbnail.jpg',
+        { type: 'image/jpeg' },
+      );
+      const fileInput = screen.getByLabelText('Select JPEG File');
+
+      await act(async () => selectFile(fileInput, file));
+
+      const alert = await screen.findByRole('alert');
+      expect(alert).toBeInTheDocument();
+      expect(alert).toHaveTextContent(/Truncated APP0\/JFIF segment/i);
+      expect(screen.queryByLabelText('JPEG Summary')).not.toBeInTheDocument();
+    },
+  );
+
   it('displays a visible role="alert" when uploading undersized SOS payload', async () => {
     render(<JpegHeaderInspectorTool />);
 
