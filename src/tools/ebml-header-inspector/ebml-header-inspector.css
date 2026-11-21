@@ -1,0 +1,101 @@
+.ebml-tool {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  color: var(--color-text);
+}
+.ebml-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+.ebml-button {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  padding: 0.55rem 0.9rem;
+}
+.ebml-button:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+.ebml-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.ebml-button input {
+  display: none;
+}
+.ebml-tool label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.4rem;
+}
+.ebml-tool textarea {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-sizing: border-box;
+  color: var(--color-text);
+  font:
+    0.9rem/1.5 "SF Mono",
+    Consolas,
+    monospace;
+  min-height: 150px;
+  padding: 0.75rem;
+  resize: vertical;
+  width: 100%;
+}
+.ebml-tool textarea:focus {
+  border-color: var(--color-primary);
+  outline: none;
+}
+.ebml-error {
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  color: var(--color-error-light);
+  margin-top: 1rem;
+  padding: 0.75rem;
+}
+.ebml-results {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  margin-top: 1rem;
+  padding: 1rem;
+}
+.ebml-results h3 {
+  margin: 0.5rem 0;
+}
+.ebml-results dl {
+  display: grid;
+  grid-template-columns: minmax(130px, auto) 1fr;
+  gap: 0.35rem 0.75rem;
+  margin: 0 0 1rem;
+}
+.ebml-results dt {
+  color: var(--color-text-muted);
+}
+.ebml-results dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.ebml-track-list {
+  display: grid;
+  gap: 0.5rem;
+}
+.ebml-track {
+  border-left: 3px solid var(--color-primary);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding-left: 0.75rem;
+}
+.ebml-track span {
+  color: var(--color-text-muted);
+}
