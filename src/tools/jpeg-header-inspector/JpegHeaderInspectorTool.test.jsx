@@ -132,6 +132,26 @@ describe('JpegHeaderInspectorTool UI', () => {
     expect(alert).toHaveTextContent(/Truncated segment/i);
   });
 
+  it('displays a visible role="alert" when uploading undersized SOS payload', async () => {
+    render(<JpegHeaderInspectorTool />);
+
+    // Exact byte sequence from review: FF D8 FF DA 00 02 FF D9
+    const undersizedSos = new Uint8Array([
+      0xFF, 0xD8,
+      0xFF, 0xDA, 0x00, 0x02,
+      0xFF, 0xD9,
+    ]);
+    const file = new File([undersizedSos], 'corrupt-sos.jpg', { type: 'image/jpeg' });
+    const fileInput = screen.getByLabelText('Select JPEG File');
+
+    await act(async () => selectFile(fileInput, file));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toBeInTheDocument();
+    expect(alert).toHaveTextContent(/Truncated SOS segment/i);
+    expect(screen.queryByLabelText('JPEG Summary')).not.toBeInTheDocument();
+  });
+
   it('displays a visible role="alert" when marker length is invalid (< 2)', async () => {
     render(<JpegHeaderInspectorTool />);
 

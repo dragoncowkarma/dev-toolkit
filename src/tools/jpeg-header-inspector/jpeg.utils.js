@@ -180,6 +180,30 @@ function parseSof(view, payloadOffset, payloadLength, markerName) {
 }
 
 /**
+ * Parses SOS segment payload.
+ * @param {DataView} view
+ * @param {number} payloadOffset
+ * @param {number} payloadLength
+ * @param {string} markerName
+ * @returns {{ componentCount: number }}
+ */
+function parseSos(view, payloadOffset, payloadLength, markerName) {
+  if (payloadLength < 1) {
+    throw new Error(`Truncated ${markerName} segment: missing scan header.`);
+  }
+  const componentCount = view.getUint8(payloadOffset);
+  const minRequiredLength = 1 + componentCount * 2 + 3;
+  if (payloadLength < minRequiredLength) {
+    throw new Error(
+      `Truncated ${markerName} segment: incomplete scan header.`,
+    );
+  }
+  return {
+    componentCount,
+  };
+}
+
+/**
  * Parses a JPEG ArrayBuffer or Uint8Array client-side.
  *
  * @param {ArrayBuffer|Uint8Array} input
@@ -333,11 +357,7 @@ export function parseJpeg(input) {
     } else if (isSofMarker(marker)) {
       details = parseSof(view, payloadOffset, payloadLength, segmentName);
     } else if (marker === 0xFFDA) {
-      // SOS segment
-      if (payloadLength >= 1) {
-        const count = view.getUint8(payloadOffset);
-        details = { componentCount: count };
-      }
+      details = parseSos(view, payloadOffset, payloadLength, segmentName);
     } else if (marker === 0xFFFE) {
       // COM comment segment
       try {
