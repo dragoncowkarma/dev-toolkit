@@ -43,9 +43,16 @@
 }
 
 .zstd-header-inspector__fields dt { color: var(--color-text-muted); }
-.zstd-header-inspector__fields dd { margin: 0; }
+.zstd-header-inspector__fields dd {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+}
 
 .zstd-header-inspector__warning {
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
   color: var(--color-error-light);
   margin-bottom: 0;
+  padding: 0.75rem;
 }
