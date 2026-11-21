@@ -1,0 +1,98 @@
+.tiff-inspector {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+}
+
+.tiff-inspector__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.tiff-inspector__button {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  padding: 0.55rem 1rem;
+}
+
+.tiff-inspector__button:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.tiff-inspector__file-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.tiff-inspector__privacy,
+.tiff-inspector__ifd > p {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+  margin-top: 0.75rem;
+}
+
+.tiff-inspector__error {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+}
+
+.tiff-inspector__results {
+  display: grid;
+  gap: 1.25rem;
+  margin-top: 1.25rem;
+}
+
+.tiff-inspector__summary,
+.tiff-inspector__ifd {
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.tiff-inspector__ifd h3 {
+  font-size: 1rem;
+}
+
+.tiff-inspector__table-wrap {
+  overflow-x: auto;
+  margin-top: 0.75rem;
+}
+
+.tiff-inspector table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.tiff-inspector th,
+.tiff-inspector td {
+  padding: 0.6rem;
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: top;
+}
+
+.tiff-inspector td:last-child {
+  font-family: monospace;
+  word-break: break-word;
+}
+
+@media (min-width: 768px) {
+  .tiff-inspector {
+    padding: 0 2rem 3rem;
+  }
+}
