@@ -7,7 +7,7 @@ import './rar-header-inspector.css';
  *
  * @returns {React.JSX.Element} RAR header inspector UI.
  */
-export default function RarHeaderInspector() {
+export default function RarHeaderInspectorTool() {
   const [result, setResult] = useState(null);
   const [fileName, setFileName] = useState('');
   const inputRef = useRef(null);

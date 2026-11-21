@@ -100,12 +100,21 @@ function parseRar5Block(bytes, offset) {
   const typeName = RAR5_TYPES[typeVint.value] ?? `Unknown RAR5 block (${typeVint.value})`;
   if (typeVint.value === 1 && cursor < headerEnd) {
     const archiveFlags = readVint(bytes, cursor);
+    if (cursor + archiveFlags.length > headerEnd) {
+      throw new RangeError('RAR5 fields exceed the declared header size.');
+    }
     fields.push(field('Archive flags', hex(archiveFlags.value, 1)));
   } else if ((typeVint.value === 2 || typeVint.value === 3) && cursor < headerEnd) {
     const fileFlags = readVint(bytes, cursor);
+    if (cursor + fileFlags.length > headerEnd) {
+      throw new RangeError('RAR5 fields exceed the declared header size.');
+    }
     fields.push(field('File flags', hex(fileFlags.value, 1)));
   } else if (typeVint.value === 4 && cursor < headerEnd) {
     const endFlags = readVint(bytes, cursor);
+    if (cursor + endFlags.length > headerEnd) {
+      throw new RangeError('RAR5 fields exceed the declared header size.');
+    }
     fields.push(field('End archive flags', hex(endFlags.value, 1)));
   }
 
@@ -132,10 +141,10 @@ function parseRar4Block(bytes, offset) {
     field('HEAD_SIZE', headSize),
   ];
   let nextOffset = offset + headSize;
-  if (headType === 0x74 && hasBytes(bytes, offset + 7, 4)) {
+  if (headType === 0x74 && headSize >= 11) {
     const packedSize = readU32(bytes, offset + 7);
     fields.push(field('PACK_SIZE', packedSize));
-    if (hasBytes(bytes, offset + 11, 4)) {
+    if (headSize >= 15) {
       fields.push(field('UNP_SIZE', readU32(bytes, offset + 11)));
     }
     if (packedSize > bytes.length - nextOffset) {

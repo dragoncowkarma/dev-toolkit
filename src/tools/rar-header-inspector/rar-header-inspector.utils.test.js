@@ -51,6 +51,24 @@ describe('inspectRarArchive', () => {
     expect(result.errors).toEqual([]);
   });
 
+  it('does not read RAR4 file fields beyond the declared header size', () => {
+    const archive = new Uint8Array([
+      ...RAR4, 0, 0, 0x74, 0, 0, 7, 0, 2, 0, 0, 0, 9, 0, 0, 0,
+    ]);
+    const result = inspectRarArchive(archive);
+    expect(result.blocks[0].fields).not.toContainEqual({ name: 'PACK_SIZE', value: '2' });
+    expect(result.blocks[0].fields).not.toContainEqual({ name: 'UNP_SIZE', value: '9' });
+  });
+
+  it('rejects RAR5 type fields that cross the declared header boundary', () => {
+    const archive = new Uint8Array([
+      ...RAR5, 0, 0, 0, 0, 3, 1, 0, 0x80, 0,
+    ]);
+    const result = inspectRarArchive(archive);
+    expect(result.blocks).toEqual([]);
+    expect(result.errors[0]).toMatch(/fields exceed the declared header size/);
+  });
+
   it('returns errors for malformed or truncated input without throwing', () => {
     expect(inspectRarArchive(new Uint8Array(RAR5)).errors).toEqual([]);
     const truncated = inspectRarArchive(new Uint8Array([...RAR5, 0, 0]));
