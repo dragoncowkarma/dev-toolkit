@@ -11,6 +11,7 @@ const TYPE_INFO = {
   10: { name: 'SRATIONAL', size: 8, read: 'signedRational' },
   11: { name: 'FLOAT', size: 4, read: 'getFloat32' },
   12: { name: 'DOUBLE', size: 8, read: 'getFloat64' },
+  13: { name: 'IFD', size: 4, read: 'getUint32' },
 };
 
 const TAG_NAMES = {
@@ -19,6 +20,7 @@ const TAG_NAMES = {
   258: 'BitsPerSample',
   259: 'Compression',
   262: 'PhotometricInterpretation',
+  274: 'Orientation',
   273: 'StripOffsets',
   277: 'SamplesPerPixel',
   278: 'RowsPerStrip',
@@ -29,6 +31,22 @@ const TAG_NAMES = {
   296: 'ResolutionUnit',
   305: 'Software',
   306: 'DateTime',
+};
+
+const VALUE_LABELS = {
+  Compression: {
+    1: 'Uncompressed', 2: 'CCITT 1D', 3: 'CCITT Group 3', 4: 'CCITT Group 4', 5: 'LZW',
+    6: 'JPEG', 7: 'JPEG', 8: 'Deflate', 32946: 'Deflate', 32773: 'PackBits',
+  },
+  PhotometricInterpretation: {
+    0: 'White is zero', 1: 'Black is zero', 2: 'RGB', 3: 'Palette color',
+    4: 'Transparency mask', 5: 'CMYK', 6: 'YCbCr', 8: 'CIELab',
+  },
+  Orientation: {
+    1: 'Top-left', 2: 'Top-right', 3: 'Bottom-right', 4: 'Bottom-left', 5: 'Left-top',
+    6: 'Right-top', 7: 'Right-bottom', 8: 'Left-bottom',
+  },
+  ResolutionUnit: { 1: 'None', 2: 'Inch', 3: 'Centimeter' },
 };
 
 const MAX_DISPLAY_VALUES = 32;
@@ -106,13 +124,16 @@ function parseEntry(view, entryOffset, littleEndian, byteLength) {
   }
   const isInlineValue = totalBytes <= 4;
   const valueOffset = isInlineValue ? entryOffset + 8 : rawValueOffset;
+  const value = decodeEntryValue(view, valueOffset, type, count, littleEndian, byteLength);
+  const firstValue = value.split(', ')[0];
+  const valueLabel = VALUE_LABELS[TAG_NAMES[tagId]]?.[firstValue];
   return {
     tagId,
     tagName: TAG_NAMES[tagId] ?? `Tag ${tagId}`,
     typeId,
     typeName: type.name,
     count,
-    value: decodeEntryValue(view, valueOffset, type, count, littleEndian, byteLength),
+    value: valueLabel ? `${value} (${valueLabel})` : value,
     valueOffset: isInlineValue ? null : rawValueOffset,
   };
 }

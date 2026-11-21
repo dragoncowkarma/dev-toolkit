@@ -69,6 +69,29 @@ describe('parseTiffHeader', () => {
     expect(result.ifds[1].entries[0]).toMatchObject({ tagName: 'RowsPerStrip', value: '20' });
   });
 
+  it('labels standard metadata values and supports IFD field values', () => {
+    const buffer = new ArrayBuffer(38);
+    const view = new DataView(buffer);
+    view.setUint8(0, 0x49);
+    view.setUint8(1, 0x49);
+    view.setUint16(2, 42, true);
+    view.setUint32(4, 8, true);
+    view.setUint16(8, 2, true);
+    view.setUint16(10, 259, true);
+    view.setUint16(12, 3, true);
+    view.setUint32(14, 1, true);
+    view.setUint16(18, 5, true);
+    view.setUint16(22, 274, true);
+    view.setUint16(24, 13, true);
+    view.setUint32(26, 1, true);
+    view.setUint32(30, 123, true);
+    view.setUint32(34, 0, true);
+
+    const entries = parseTiffHeader(buffer).ifds[0].entries;
+    expect(entries[0]).toMatchObject({ value: '5 (LZW)' });
+    expect(entries[1]).toMatchObject({ tagName: 'Orientation', typeName: 'IFD', value: '123' });
+  });
+
   it('rejects an invalid byte-order marker', () => {
     const buffer = createTiff();
     new DataView(buffer).setUint8(0, 0x58);
