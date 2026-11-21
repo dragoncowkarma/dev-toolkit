@@ -1,0 +1,92 @@
+.seven-zip-inspector {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+}
+
+.seven-zip-inspector__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.seven-zip-inspector button,
+.seven-zip-inspector__upload {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  padding: 0.6rem 1rem;
+}
+
+.seven-zip-inspector__upload {
+  position: relative;
+  overflow: hidden;
+}
+
+.seven-zip-inspector__upload input {
+  position: absolute;
+  inset: 0;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.seven-zip-inspector__filename {
+  color: var(--color-text-muted);
+}
+
+.seven-zip-inspector__error,
+.seven-zip-inspector__warnings {
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+  padding: 0.75rem 1rem;
+}
+
+.seven-zip-inspector__results {
+  margin-top: 1rem;
+}
+
+.seven-zip-inspector__results dl {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) minmax(0, 2fr);
+  gap: 0;
+  margin: 0;
+}
+
+.seven-zip-inspector__results dt,
+.seven-zip-inspector__results dd {
+  border-bottom: 1px solid var(--color-border);
+  margin: 0;
+  padding: 0.75rem;
+}
+
+.seven-zip-inspector__results dt {
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
+.seven-zip-inspector__warnings {
+  margin-top: 1rem;
+}
+
+.seven-zip-inspector__warnings h2 {
+  font-size: 1rem;
+  margin: 0;
+}
+
+.seven-zip-inspector__warnings ul {
+  margin-bottom: 0;
+  padding-left: 1.25rem;
+}
+
+@media (min-width: 768px) {
+  .seven-zip-inspector {
+    padding: 0 2rem 3rem;
+  }
+}
