@@ -1,7 +1,7 @@
 export default {
   id: 'xz-header-inspector',
-  name: 'XZ Header Inspector',
-  description: 'Inspect XZ container headers and block metadata without decompressing data.',
+  name: 'XZ Stream Header Inspector',
+  description: 'Inspect XZ stream, block, index, and footer metadata locally.',
   icon: '⌘',
   category: 'Inspector',
 };

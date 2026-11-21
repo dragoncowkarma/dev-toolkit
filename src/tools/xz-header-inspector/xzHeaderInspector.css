@@ -1,0 +1,121 @@
+.xz-header-inspector {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.xz-header-inspector__dropzone,
+.xz-header-inspector__base64,
+.xz-header-inspector__results article {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1rem;
+}
+
+.xz-header-inspector__dropzone {
+  display: grid;
+  justify-items: center;
+  gap: 0.75rem;
+  border-style: dashed;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.xz-header-inspector__dropzone.is-dragging {
+  border-color: var(--color-primary-light);
+  background: var(--color-surface-hover);
+}
+
+.xz-header-inspector__button,
+.xz-header-inspector button {
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius);
+  background: var(--color-primary);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  padding: 0.55rem 0.9rem;
+}
+
+.xz-header-inspector__button input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+}
+
+.xz-header-inspector__base64 {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.xz-header-inspector__base64 label,
+.xz-header-inspector h3 {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.xz-header-inspector textarea {
+  min-height: 100px;
+  resize: vertical;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font: 0.875rem 'SF Mono', 'Fira Code', Consolas, monospace;
+  padding: 0.75rem;
+}
+
+.xz-header-inspector__base64 button {
+  justify-self: start;
+}
+
+.xz-header-inspector__error {
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+  padding: 0.75rem 1rem;
+}
+
+.xz-header-inspector__results {
+  display: grid;
+  gap: 1rem;
+}
+
+.xz-header-inspector__results article {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.xz-header-inspector__details {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.xz-header-inspector__details div {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.8fr) minmax(0, 2fr);
+  gap: 0.75rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.xz-header-inspector__details dt {
+  color: var(--color-text-muted);
+}
+
+.xz-header-inspector__details dd {
+  overflow-wrap: anywhere;
+}
+
+@media (min-width: 768px) {
+  .xz-header-inspector {
+    padding: 0 2rem 3rem;
+  }
+}

@@ -7,6 +7,9 @@ const CHECK_NAMES = {
   4: 'CRC64',
   10: 'SHA-256',
 };
+const FILTER_NAMES = {
+  0x21: 'LZMA2',
+};
 
 function checkSizeForId(checkId) {
   if (checkId === 0) return 0;
@@ -308,4 +311,68 @@ export function parseXzHeaders(input) {
  */
 export function formatXzValue(value) {
   return typeof value === 'bigint' ? value.toString() : value.toString();
+}
+
+function formatCrc32(value) {
+  return `0x${value.toString(16).padStart(8, '0').toUpperCase()}`;
+}
+
+/**
+ * Parses one complete XZ stream and returns values formatted for display.
+ * @param {Uint8Array} input - Raw bytes from an XZ file.
+ * @returns {object} Parsed XZ stream details.
+ */
+export function parseXzStream(input) {
+  if (!(input instanceof Uint8Array)) fail('input must be raw binary data.');
+  const parsed = parseXzHeaders(input);
+  return {
+    streamHeader: {
+      magicBytes: parsed.streamHeader.magic,
+      flags: `00 ${parsed.streamHeader.checkId.toString(16).padStart(2, '0').toUpperCase()}`,
+      checkId: parsed.streamHeader.checkId,
+      integrityCheck: parsed.streamHeader.checkName,
+      crc32: formatCrc32(parsed.streamHeader.crc32),
+    },
+    blocks: parsed.blocks.map((block) => ({
+      headerSize: block.headerSize,
+      flags: `0x${block.flags.toString(16).padStart(2, '0').toUpperCase()}`,
+      compressedSize:
+        block.compressedSize === null ? undefined : formatXzValue(block.compressedSize),
+      uncompressedSize:
+        block.uncompressedSize === null ? undefined : formatXzValue(block.uncompressedSize),
+      filters: block.filters.map((filter) => ({
+        id: `0x${filter.id.toString(16).toUpperCase()}`,
+        name: FILTER_NAMES[filter.id] ?? 'Unknown',
+      })),
+      crc32: formatCrc32(block.crc32),
+    })),
+    index: {
+      recordCount: formatXzValue(parsed.index.recordCount),
+      crc32: formatCrc32(parsed.index.crc32),
+    },
+    streamFooter: {
+      crc32: formatCrc32(parsed.streamFooter.crc32),
+      backwardSize: parsed.streamFooter.backwardSize,
+      flags: `00 ${parsed.streamFooter.checkId.toString(16).padStart(2, '0').toUpperCase()}`,
+      magicBytes: parsed.streamFooter.magic,
+    },
+  };
+}
+
+/**
+ * Decodes Base64 text into raw binary bytes for XZ inspection.
+ * @param {string} value - Base64 input, optionally containing whitespace.
+ * @returns {Uint8Array} Decoded binary data.
+ */
+export function decodeXzBase64(value) {
+  if (typeof value !== 'string') fail('Base64 input must be text.');
+  const cleaned = value.replace(/\s/g, '');
+  if (!cleaned || cleaned.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(cleaned)) {
+    fail('Invalid Base64 input.');
+  }
+  try {
+    return Uint8Array.from(atob(cleaned), (character) => character.charCodeAt(0));
+  } catch {
+    fail('Invalid Base64 input.');
+  }
 }
