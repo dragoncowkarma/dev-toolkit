@@ -15,7 +15,7 @@ function fixed16(value) {
 }
 
 function parseDate(view) {
-  const fields = [20, 22, 24, 26, 28, 30].map((offset) => view.getUint16(offset));
+  const fields = [24, 26, 28, 30, 32, 34].map((offset) => view.getUint16(offset));
   const [year, month, day, hour, minute, second] = fields;
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')} `
     + `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:`
@@ -23,7 +23,10 @@ function parseDate(view) {
 }
 
 function profileId(bytes) {
-  return Array.from(bytes.slice(84, 100), (value) => value.toString(16).padStart(2, '0')).join('');
+  return Array.from(
+    bytes.slice(84, 100),
+    (value) => value.toString(16).padStart(2, '0')
+  ).join('');
 }
 
 /**
@@ -76,7 +79,10 @@ export function parseIccProfile(input, source = 'ICC profile') {
   });
   if (count > entries) {
     tags.push({
-      signature: '—', label: `${count - entries} tag entries truncated`, offset: '—', size: '—',
+      signature: '—',
+      label: `${count - entries} tag entries truncated`,
+      offset: '—',
+      size: '—',
       outOfBounds: true,
     });
   }
@@ -155,7 +161,11 @@ export async function extractIccBytesAsync(bytes, source = 'input') {
       if (end + 4 > bytes.length) break;
       if (type === 'iCCP') {
         const nameEnd = bytes.slice(offset + 8, end).indexOf(0);
-        const compressed = bytes.slice(offset + 10 + nameEnd, end);
+        const compressedOffset = offset + 10 + nameEnd;
+        if (nameEnd < 0 || compressedOffset > end) {
+          throw new Error(`${source}: PNG iCCP chunk is missing its null separator.`);
+        }
+        const compressed = bytes.slice(compressedOffset, end);
         if (typeof DecompressionStream === 'undefined') {
           throw new Error(`${source}: PNG ICC compression is unsupported by this browser.`);
         }

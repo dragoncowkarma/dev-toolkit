@@ -6,10 +6,15 @@ import {
 } from './iccProfile.utils.js';
 import './iccProfile.css';
 
-export default function IccProfileInspector() {
+/**
+ * Renders a client-side ICC color profile header inspector.
+ * @returns {React.JSX.Element} The ICC profile inspector UI.
+ */
+export default function IccProfileInspectorTool() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
   const [base64, setBase64] = useState('');
+  const [isDragging, setIsDragging] = useState(false);
   const inputRef = useRef(null);
 
   async function inspect(bytes, source) {
@@ -21,12 +26,17 @@ export default function IccProfileInspector() {
       setError(err.message);
     }
   }
-  async function selectFile(event) {
-    const file = event.target.files?.[0];
-    if (file) {
-      await inspect(new Uint8Array(await file.arrayBuffer()), file.name);
-    }
+
+  async function inspectFile(file) {
+    if (file) await inspect(new Uint8Array(await file.arrayBuffer()), file.name);
   }
+
+  function handleDrop(event) {
+    event.preventDefault();
+    setIsDragging(false);
+    inspectFile(event.dataTransfer.files?.[0]);
+  }
+
   async function submitBase64(event) {
     event.preventDefault();
     try {
@@ -36,18 +46,38 @@ export default function IccProfileInspector() {
       setError(err.message);
     }
   }
+
   return (
     <section className="icc-inspector" aria-label="ICC Color Profile Inspector">
       <div className="icc-controls">
-        <label className="icc-upload">
-          Choose ICC or image file
-          <input
-            ref={inputRef}
-            type="file"
-            accept=".icc,.icm,image/jpeg,image/png,image/tiff"
-            onChange={selectFile}
-          />
-        </label>
+        <input
+          ref={inputRef}
+          className="icc-file-input"
+          type="file"
+          accept=".icc,.icm,image/jpeg,image/png,image/tiff"
+          aria-label="Choose ICC or image file"
+          onChange={(event) => inspectFile(event.target.files?.[0])}
+        />
+        <div
+          className={`icc-upload ${isDragging ? 'is-dragging' : ''}`}
+          role="button"
+          tabIndex={0}
+          aria-label="Drop an ICC or image file here or choose a file"
+          onClick={() => inputRef.current?.click()}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') inputRef.current?.click();
+          }}
+          onDragEnter={(event) => {
+            event.preventDefault();
+            setIsDragging(true);
+          }}
+          onDragOver={(event) => event.preventDefault()}
+          onDragLeave={() => setIsDragging(false)}
+          onDrop={handleDrop}
+        >
+          <strong>Drop ICC or image file here</strong>
+          <span>or choose a local file to inspect</span>
+        </div>
         <form onSubmit={submitBase64}>
           <label htmlFor="icc-base64">Base64 profile data</label>
           <textarea
