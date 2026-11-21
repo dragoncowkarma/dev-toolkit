@@ -165,6 +165,7 @@ function scanTrackEvents(view, start, end) {
     endOfTrack: false,
     eventsScanned: 0,
     truncated: false,
+    eventCapReached: false,
     malformed: null,
   };
 
@@ -175,13 +176,18 @@ function scanTrackEvents(view, start, end) {
     while (pos < end && info.eventsScanned < MAX_TRACK_EVENTS) {
       const delta = readVariableLengthQuantity(view, pos, end);
       pos = delta.nextOffset;
-      if (pos >= end) break;
+      if (pos >= end) {
+        info.truncated = true;
+        break;
+      }
 
       let statusByte = view.getUint8(pos);
       if (statusByte & 0x80) {
         pos += 1;
         if (statusByte < 0xf0) {
           runningStatus = statusByte;
+        } else {
+          runningStatus = null;
         }
       } else {
         if (runningStatus === null) {
@@ -230,6 +236,11 @@ function scanTrackEvents(view, start, end) {
     }
   } catch (err) {
     info.malformed = err.message;
+  }
+
+  if (!info.endOfTrack && !info.malformed && info.eventsScanned >= MAX_TRACK_EVENTS) {
+    info.eventCapReached = true;
+    info.truncated = true;
   }
 
   return info;

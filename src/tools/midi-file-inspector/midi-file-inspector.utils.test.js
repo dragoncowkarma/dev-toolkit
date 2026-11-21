@@ -176,6 +176,64 @@ describe('parseMidiFile', () => {
     );
   });
 
+  it('flags the event cap as an incomplete scan when a track exceeds MAX_TRACK_EVENTS', () => {
+    const header = buildMThdBytes();
+    const noteOnEvents = Array.from({ length: 5001 }, () => [0x00, 0x90, 0x3c, 0x40]);
+    const track = buildMTrkBytes([...noteOnEvents, buildMetaEvent(0x2f)]);
+    const buffer = toArrayBuffer([...header, ...track]);
+
+    const result = parseMidiFile(buffer);
+    const trackChunk = result.chunks.find((chunk) => chunk.type === 'track');
+
+    expect(trackChunk.trackInfo.eventsScanned).toBe(5000);
+    expect(trackChunk.trackInfo.endOfTrack).toBe(false);
+    expect(trackChunk.trackInfo.eventCapReached).toBe(true);
+    expect(trackChunk.trackInfo.truncated).toBe(true);
+  });
+
+  it('flags a track whose event data ends mid-scan without reaching End of Track', () => {
+    const header = buildMThdBytes();
+    const track = buildMTrkBytes([[0x00]]);
+    const buffer = toArrayBuffer([...header, ...track]);
+
+    const result = parseMidiFile(buffer);
+    const trackChunk = result.chunks.find((chunk) => chunk.type === 'track');
+
+    expect(trackChunk.trackInfo.endOfTrack).toBe(false);
+    expect(trackChunk.trackInfo.truncated).toBe(true);
+    expect(trackChunk.trackInfo.malformed).toBeNull();
+  });
+
+  it('clears running status after a Meta event so a later data byte is reported malformed', () => {
+    const header = buildMThdBytes();
+    const track = buildMTrkBytes([
+      [0x00, 0x90, 0x3c, 0x40], // Note On
+      [0x00, 0xff, 0x01, 0x00], // Meta event (text, zero length) cancels running status
+      [0x00, 0x3e, 0x40], // bare data bytes relying on stale running status
+    ]);
+    const buffer = toArrayBuffer([...header, ...track]);
+
+    const result = parseMidiFile(buffer);
+    const trackChunk = result.chunks.find((chunk) => chunk.type === 'track');
+
+    expect(trackChunk.trackInfo.malformed).toMatch(/Running status byte used before/);
+  });
+
+  it('clears running status after a SysEx event so a later data byte is reported malformed', () => {
+    const header = buildMThdBytes();
+    const track = buildMTrkBytes([
+      [0x00, 0x90, 0x3c, 0x40], // Note On
+      [0x00, 0xf0, 0x00], // SysEx event (zero length) cancels running status
+      [0x00, 0x3e, 0x40], // bare data bytes relying on stale running status
+    ]);
+    const buffer = toArrayBuffer([...header, ...track]);
+
+    const result = parseMidiFile(buffer);
+    const trackChunk = result.chunks.find((chunk) => chunk.type === 'track');
+
+    expect(trackChunk.trackInfo.malformed).toMatch(/Running status byte used before/);
+  });
+
   it('records a malformed VLQ inside a track without throwing', () => {
     const header = buildMThdBytes();
     const track = buildMTrkBytes([[0xff, 0xff, 0xff, 0xff, 0x7f, 0xff, 0x2f, 0x00]]);

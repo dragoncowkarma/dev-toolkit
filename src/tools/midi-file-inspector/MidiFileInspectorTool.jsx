@@ -230,7 +230,11 @@ function TrackDetails({ info }) {
     parts.push(`Time sig: ${info.timeSignature.numerator}/${info.timeSignature.denominator}`);
   }
   if (info.endOfTrack) parts.push('End of track found');
-  if (info.truncated) parts.push('Event data truncated');
+  if (info.eventCapReached) {
+    parts.push('Event scan capped before end of track (incomplete)');
+  } else if (info.truncated) {
+    parts.push('Event data truncated');
+  }
   if (info.malformed) parts.push(`Malformed: ${info.malformed}`);
 
   return parts.length > 0 ? parts.join(' · ') : 'No metadata found';
