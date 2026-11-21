@@ -222,9 +222,17 @@ export function parseOleCfbHeader(input) {
       `Invalid directory sector count (${numDirectorySectors}) for version 3: must be 0.`,
     );
   }
+  if (majorVersion === 4 && numDirectorySectors === 0) {
+    throw new Error(
+      'Invalid directory sector count (0) for version 4: must be at least 1.',
+    );
+  }
 
   // Number of FAT sectors (offset 44, 4 bytes uint32le)
   const numFatSectors = view.getUint32(44, true);
+  if (numFatSectors === 0) {
+    throw new Error('Invalid FAT sector count (0): CFB requires at least 1 FAT sector.');
+  }
 
   // First directory sector location (offset 48, 4 bytes uint32le)
   const firstDirectorySectorLocation = view.getUint32(48, true);
@@ -253,6 +261,14 @@ export function parseOleCfbHeader(input) {
   const numDifatSectors = view.getUint32(72, true);
 
   // Bounds checking against available file capacity
+  const minRequiredBytes = sectorSize * 3;
+  if (byteLength < minRequiredBytes) {
+    throw new Error(
+      `Truncated file: CFB version ${majorVersion} requires at least ${minRequiredBytes} bytes ` +
+        `for header, FAT, and directory sectors (received ${byteLength} bytes).`,
+    );
+  }
+
   const maxAvailableSectors = Math.max(0, Math.floor(byteLength / sectorSize) - 1);
 
   if (numFatSectors > maxAvailableSectors) {
@@ -285,46 +301,19 @@ export function parseOleCfbHeader(input) {
 
   const maxSectorLabel = maxAvailableSectors > 0 ? maxAvailableSectors - 1 : 'none';
 
-  if (majorVersion === 4) {
-    if (numDirectorySectors === 0) {
-      if (firstDirectorySectorLocation !== SPECIAL_SECTOR.ENDOFCHAIN) {
-        const formattedLoc = formatSectorLocation(firstDirectorySectorLocation);
-        throw new Error(
-          `Invalid first directory sector location (${formattedLoc}): ` +
-            'must be ENDOFCHAIN (0xFFFFFFFE) when directory sector count is 0.',
-        );
-      }
-    } else {
-      if (firstDirectorySectorLocation > SPECIAL_SECTOR.MAX_REGULAR) {
-        const formattedLoc = formatSectorLocation(firstDirectorySectorLocation);
-        throw new Error(
-          `Invalid first directory sector location (${formattedLoc}): ` +
-            `must be a regular sector when directory sector count is ${numDirectorySectors}.`,
-        );
-      }
-      if (firstDirectorySectorLocation >= maxAvailableSectors) {
-        throw new Error(
-          `Declared first directory sector location (${firstDirectorySectorLocation}) ` +
-            `exceeds file bounds (max sector: ${maxSectorLabel}).`,
-        );
-      }
-    }
-  } else {
-    // Version 3: numDirectorySectors is verified to be 0 per MS-CFB
-    if (firstDirectorySectorLocation <= SPECIAL_SECTOR.MAX_REGULAR) {
-      if (firstDirectorySectorLocation >= maxAvailableSectors) {
-        throw new Error(
-          `Declared first directory sector location (${firstDirectorySectorLocation}) ` +
-            `exceeds file bounds (max sector: ${maxSectorLabel}).`,
-        );
-      }
-    } else if (firstDirectorySectorLocation !== SPECIAL_SECTOR.ENDOFCHAIN) {
-      const formattedLoc = formatSectorLocation(firstDirectorySectorLocation);
-      throw new Error(
-        'Invalid first directory sector location: reserved marker ' +
-          `${formattedLoc} cannot be a directory sector location.`,
-      );
-    }
+  if (firstDirectorySectorLocation > SPECIAL_SECTOR.MAX_REGULAR) {
+    const formattedLoc = formatSectorLocation(firstDirectorySectorLocation);
+    throw new Error(
+      `Invalid first directory sector location: reserved marker ${formattedLoc} ` +
+        'cannot be a directory sector location ' +
+        '(must be a regular sector containing the root directory entry).',
+    );
+  }
+  if (firstDirectorySectorLocation >= maxAvailableSectors) {
+    throw new Error(
+      `Declared first directory sector location (${firstDirectorySectorLocation}) ` +
+        `exceeds file bounds (max sector: ${maxSectorLabel}).`,
+    );
   }
 
   if (numMiniFatSectors === 0) {
@@ -434,12 +423,14 @@ export function parseOleCfbHeader(input) {
  * Creates a valid minimal CFB header buffer for testing or demonstrations.
  *
  * @param {object} [options={}] - Custom overrides for header fields.
- * @returns {ArrayBuffer} 512-byte (or custom size) CFB buffer.
+ * @returns {ArrayBuffer} Valid minimal CFB buffer with FAT and directory sectors.
  */
 export function createMinimalCfbBuffer(options = {}) {
   const major = options.majorVersion ?? 3;
   const defaultShift = major === 4 ? 12 : 9;
-  const defaultSize = major === 4 ? 4096 : 512;
+  const sectorShift = options.sectorShift ?? defaultShift;
+  const sectorSize = 1 << sectorShift;
+  const defaultSize = sectorSize * 3;
   const size = options.size ?? defaultSize;
   const buffer = new ArrayBuffer(size);
   const view = new DataView(buffer);
@@ -462,19 +453,20 @@ export function createMinimalCfbBuffer(options = {}) {
   // Byte order (offset 28): default 0xFFFE
   view.setUint16(28, options.byteOrder ?? 0xfffe, true);
   // Sector shift (offset 30)
-  view.setUint16(30, options.sectorShift ?? defaultShift, true);
+  view.setUint16(30, sectorShift, true);
   // Mini sector shift (offset 32): default 6
   view.setUint16(32, options.miniSectorShift ?? 6, true);
   // Reserved (offset 34..39): 6 bytes zero
   if (options.reservedBytes) {
     u8.set(options.reservedBytes, 34);
   }
-  // Number of directory sectors (offset 40)
-  view.setUint32(40, options.numDirectorySectors ?? 0, true);
-  // Number of FAT sectors (offset 44)
-  view.setUint32(44, options.numFatSectors ?? 0, true);
-  // First directory sector location (offset 48): default 0xFFFFFFFE (ENDOFCHAIN)
-  view.setUint32(48, options.firstDirectorySectorLocation ?? SPECIAL_SECTOR.ENDOFCHAIN, true);
+  // Number of directory sectors (offset 40): 0 for v3, 1 for v4
+  const defaultNumDirSectors = major === 4 ? 1 : 0;
+  view.setUint32(40, options.numDirectorySectors ?? defaultNumDirSectors, true);
+  // Number of FAT sectors (offset 44): default 1
+  view.setUint32(44, options.numFatSectors ?? 1, true);
+  // First directory sector location (offset 48): default 1
+  view.setUint32(48, options.firstDirectorySectorLocation ?? 1, true);
   // Transaction signature (offset 52)
   view.setUint32(52, options.transactionSignatureNumber ?? 0, true);
   // Mini stream cutoff size (offset 56): default 4096
@@ -488,13 +480,29 @@ export function createMinimalCfbBuffer(options = {}) {
   // Number of DIFAT sectors (offset 72)
   view.setUint32(72, options.numDifatSectors ?? 0, true);
 
-  // DIFAT entries (offset 76..512, 109 entries): default 0xFFFFFFFF (FREESECT)
+  // DIFAT entries (offset 76..512, 109 entries):
+  // Entry 0 defaults to sector 0 (FAT sector), entries 1..108 default to FREESECT
   for (let i = 0; i < 109; i++) {
-    const entry =
-      options.difatEntries && options.difatEntries[i] !== undefined
-        ? options.difatEntries[i]
-        : SPECIAL_SECTOR.FREESECT;
+    let entry = SPECIAL_SECTOR.FREESECT;
+    if (options.difatEntries && options.difatEntries[i] !== undefined) {
+      entry = options.difatEntries[i];
+    } else if (!options.difatEntries && i === 0 && (options.numFatSectors ?? 1) > 0) {
+      entry = 0;
+    }
     view.setUint32(76 + i * 4, entry, true);
+  }
+
+  // Populate minimal FAT sector in sector 0 if buffer has enough capacity
+  if (size >= sectorSize * 2) {
+    const fatOffset = sectorSize;
+    // FAT entry 0 for sector 0 (FAT sector itself): FATSECT
+    view.setUint32(fatOffset, SPECIAL_SECTOR.FATSECT, true);
+    // FAT entry 1 for sector 1 (Directory sector): ENDOFCHAIN
+    view.setUint32(fatOffset + 4, SPECIAL_SECTOR.ENDOFCHAIN, true);
+    const fatEntriesInSector = sectorSize / 4;
+    for (let i = 2; i < fatEntriesInSector; i++) {
+      view.setUint32(fatOffset + i * 4, SPECIAL_SECTOR.FREESECT, true);
+    }
   }
 
   return buffer;

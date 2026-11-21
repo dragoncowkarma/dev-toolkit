@@ -61,7 +61,7 @@ describe('parseOleCfbHeader', () => {
     const buffer = createMinimalCfbBuffer();
     const result = parseOleCfbHeader(buffer);
 
-    expect(result.fileSize).toBe(512);
+    expect(result.fileSize).toBe(1536);
     expect(result.magicHex).toBe('D0 CF 11 E0 A1 B1 1A E1');
     expect(result.clsid).toBe('{00000000-0000-0000-0000-000000000000}');
     expect(result.majorVersion).toBe(3);
@@ -72,14 +72,14 @@ describe('parseOleCfbHeader', () => {
     expect(result.miniSectorShift).toBe(6);
     expect(result.miniSectorSize).toBe(64);
     expect(result.numDirectorySectors).toBe(0);
-    expect(result.numFatSectors).toBe(0);
-    expect(result.firstDirectorySectorLocation).toBe(SPECIAL_SECTOR.ENDOFCHAIN);
+    expect(result.numFatSectors).toBe(1);
+    expect(result.firstDirectorySectorLocation).toBe(1);
     expect(result.firstMiniFatSectorLocation).toBe(SPECIAL_SECTOR.ENDOFCHAIN);
     expect(result.firstDifatSectorLocation).toBe(SPECIAL_SECTOR.ENDOFCHAIN);
     expect(result.miniStreamCutoffSize).toBe(4096);
     expect(result.difatEntries.length).toBe(109);
-    expect(result.activeDifatEntries.length).toBe(0);
-    expect(result.maxAvailableSectors).toBe(0);
+    expect(result.activeDifatEntries).toEqual([{ index: 0, sector: 0 }]);
+    expect(result.maxAvailableSectors).toBe(2);
   });
 
   it('parses a valid CFB version 4 header', () => {
@@ -89,7 +89,11 @@ describe('parseOleCfbHeader', () => {
     expect(result.majorVersion).toBe(4);
     expect(result.sectorShift).toBe(12);
     expect(result.sectorSize).toBe(4096);
-    expect(result.fileSize).toBe(4096);
+    expect(result.fileSize).toBe(12288);
+    expect(result.numDirectorySectors).toBe(1);
+    expect(result.numFatSectors).toBe(1);
+    expect(result.firstDirectorySectorLocation).toBe(1);
+    expect(result.maxAvailableSectors).toBe(2);
   });
 
   it('parses active DIFAT entries when allocated within bounds', () => {
@@ -175,58 +179,55 @@ describe('parseOleCfbHeader', () => {
   });
 
   it('rejects out-of-bounds FAT sector count', () => {
-    // 512-byte file has 0 data sectors
-    const buffer = createMinimalCfbBuffer({ numFatSectors: 2 });
+    const buffer = createMinimalCfbBuffer({ numFatSectors: 5 });
     expect(() => parseOleCfbHeader(buffer)).toThrow(
-      'Declared FAT sector count (2) exceeds total available sectors (0).',
+      'Declared FAT sector count (5) exceeds total available sectors (2).',
     );
   });
 
   it('rejects out-of-bounds mini FAT sector count', () => {
-    const buffer = createMinimalCfbBuffer({ numMiniFatSectors: 1 });
+    const buffer = createMinimalCfbBuffer({ numMiniFatSectors: 5 });
     expect(() => parseOleCfbHeader(buffer)).toThrow(
-      'Declared mini FAT sector count (1) exceeds total available sectors (0).',
+      'Declared mini FAT sector count (5) exceeds total available sectors (2).',
     );
   });
 
   it('rejects out-of-bounds DIFAT sector count', () => {
-    const buffer = createMinimalCfbBuffer({ numDifatSectors: 1 });
+    const buffer = createMinimalCfbBuffer({ numDifatSectors: 5 });
     expect(() => parseOleCfbHeader(buffer)).toThrow(
-      'Declared DIFAT sector count (1) exceeds total available sectors (0).',
+      'Declared DIFAT sector count (5) exceeds total available sectors (2).',
     );
   });
 
   it('rejects out-of-bounds first directory sector location', () => {
-    const buffer = createMinimalCfbBuffer({ firstDirectorySectorLocation: 0 });
+    const buffer = createMinimalCfbBuffer({ firstDirectorySectorLocation: 5 });
     expect(() => parseOleCfbHeader(buffer)).toThrow(
-      'Declared first directory sector location (0) exceeds file bounds (max sector: none).',
+      'Declared first directory sector location (5) exceeds file bounds (max sector: 1).',
     );
   });
 
   it('rejects out-of-bounds first mini FAT sector location', () => {
     const buffer = createMinimalCfbBuffer({
-      size: 1024,
       numMiniFatSectors: 1,
       firstMiniFatSectorLocation: 5,
     });
     expect(() => parseOleCfbHeader(buffer)).toThrow(
-      'Declared first mini FAT sector location (5) exceeds file bounds (max sector: 0).',
+      'Declared first mini FAT sector location (5) exceeds file bounds (max sector: 1).',
     );
   });
 
   it('rejects out-of-bounds first DIFAT sector location', () => {
     const buffer = createMinimalCfbBuffer({
-      size: 1024,
       numDifatSectors: 1,
       firstDifatSectorLocation: 8,
     });
     expect(() => parseOleCfbHeader(buffer)).toThrow(
-      'Declared first DIFAT sector location (8) exceeds file bounds (max sector: 0).',
+      'Declared first DIFAT sector location (8) exceeds file bounds (max sector: 1).',
     );
   });
 
   it('rejects nonzero Mini FAT sector count with ENDOFCHAIN starting sector', () => {
-    const buffer = createMinimalCfbBuffer({ size: 1024, numMiniFatSectors: 1 });
+    const buffer = createMinimalCfbBuffer({ numMiniFatSectors: 1 });
     expect(() => parseOleCfbHeader(buffer)).toThrow(
       'Invalid first mini FAT sector location (0xFFFFFFFE (ENDOFCHAIN)): ' +
         'must be a regular sector when mini FAT sector count is 1.',
@@ -235,7 +236,6 @@ describe('parseOleCfbHeader', () => {
 
   it('rejects nonzero Mini FAT sector count with reserved starting sector marker', () => {
     const buffer = createMinimalCfbBuffer({
-      size: 1024,
       numMiniFatSectors: 1,
       firstMiniFatSectorLocation: SPECIAL_SECTOR.FATSECT,
     });
@@ -254,7 +254,7 @@ describe('parseOleCfbHeader', () => {
   });
 
   it('rejects nonzero DIFAT sector count with ENDOFCHAIN starting sector', () => {
-    const buffer = createMinimalCfbBuffer({ size: 1024, numDifatSectors: 1 });
+    const buffer = createMinimalCfbBuffer({ numDifatSectors: 1 });
     expect(() => parseOleCfbHeader(buffer)).toThrow(
       'Invalid first DIFAT sector location (0xFFFFFFFE (ENDOFCHAIN)): ' +
         'must be a regular sector when DIFAT sector count is 1.',
@@ -263,7 +263,6 @@ describe('parseOleCfbHeader', () => {
 
   it('rejects nonzero DIFAT sector count with reserved starting sector marker', () => {
     const buffer = createMinimalCfbBuffer({
-      size: 1024,
       numDifatSectors: 1,
       firstDifatSectorLocation: SPECIAL_SECTOR.FREESECT,
     });
@@ -324,34 +323,22 @@ describe('parseOleCfbHeader', () => {
     );
   });
 
-  it('validates directory sector location for version 4 according to directory count', () => {
+  it('rejects version 4 with zero directory sectors', () => {
     const badEmptyV4 = createMinimalCfbBuffer({
       majorVersion: 4,
       numDirectorySectors: 0,
-      firstDirectorySectorLocation: 0,
     });
     expect(() => parseOleCfbHeader(badEmptyV4)).toThrow(
-      /must be ENDOFCHAIN \(0xFFFFFFFE\) when directory sector count is 0/,
-    );
-
-    const badCountV4 = createMinimalCfbBuffer({
-      majorVersion: 4,
-      size: 8192,
-      numDirectorySectors: 1,
-      firstDirectorySectorLocation: SPECIAL_SECTOR.ENDOFCHAIN,
-    });
-    expect(() => parseOleCfbHeader(badCountV4)).toThrow(
-      /must be a regular sector when directory sector count is 1/,
+      'Invalid directory sector count (0) for version 4: must be at least 1.',
     );
   });
 
   it('rejects out-of-bounds sector referenced in DIFAT array', () => {
     const buffer = createMinimalCfbBuffer({
-      size: 1024,
-      difatEntries: [10], // file has 1 sector (index 0)
+      difatEntries: [10], // file has 2 sectors (indices 0 and 1)
     });
     expect(() => parseOleCfbHeader(buffer)).toThrow(
-      'DIFAT entry at index 0 (sector 10) exceeds file bounds (max sector: 0).',
+      'DIFAT entry at index 0 (sector 10) exceeds file bounds (max sector: 1).',
     );
   });
 
@@ -365,7 +352,6 @@ describe('parseOleCfbHeader', () => {
 
     for (const { name, value } of reservedCases) {
       const buffer = createMinimalCfbBuffer({
-        size: 1024,
         difatEntries: [value],
       });
       expect(() => parseOleCfbHeader(buffer)).toThrow(
@@ -382,5 +368,68 @@ describe('parseOleCfbHeader', () => {
     expect(() => parseOleCfbHeader(buffer)).toThrow(
       /Invalid CFB version 4 header: sector padding from byte 512 to 4095 must be zero/,
     );
+  });
+
+  describe('Regression tests: header-only and missing directory cases', () => {
+    it('rejects header-only CFB version 3 file (512 bytes) lacking sectors', () => {
+      const headerOnlyBuffer = createMinimalCfbBuffer({ size: 512 });
+      expect(() => parseOleCfbHeader(headerOnlyBuffer)).toThrow(
+        'Truncated file: CFB version 3 requires at least 1536 bytes ' +
+          'for header, FAT, and directory sectors (received 512 bytes).',
+      );
+    });
+
+    it('rejects header-only CFB version 4 file (4096 bytes) lacking sectors', () => {
+      const headerOnlyBuffer = createMinimalCfbBuffer({ majorVersion: 4, size: 4096 });
+      expect(() => parseOleCfbHeader(headerOnlyBuffer)).toThrow(
+        'Truncated file: CFB version 4 requires at least 12288 bytes ' +
+          'for header, FAT, and directory sectors (received 4096 bytes).',
+      );
+    });
+
+    it('rejects CFB version 3 file with only 1 data sector (1024 bytes)', () => {
+      const shortBuffer = createMinimalCfbBuffer({ size: 1024 });
+      expect(() => parseOleCfbHeader(shortBuffer)).toThrow(
+        'Truncated file: CFB version 3 requires at least 1536 bytes ' +
+          'for header, FAT, and directory sectors (received 1024 bytes).',
+      );
+    });
+
+    it('rejects CFB version 3 buffer with zero FAT sectors', () => {
+      const buffer = createMinimalCfbBuffer({ numFatSectors: 0 });
+      expect(() => parseOleCfbHeader(buffer)).toThrow(
+        'Invalid FAT sector count (0): CFB requires at least 1 FAT sector.',
+      );
+    });
+
+    it('rejects CFB version 4 buffer with zero FAT sectors', () => {
+      const buffer = createMinimalCfbBuffer({ majorVersion: 4, numFatSectors: 0 });
+      expect(() => parseOleCfbHeader(buffer)).toThrow(
+        'Invalid FAT sector count (0): CFB requires at least 1 FAT sector.',
+      );
+    });
+
+    it('rejects CFB version 3 file with missing directory (ENDOFCHAIN)', () => {
+      const buffer = createMinimalCfbBuffer({
+        firstDirectorySectorLocation: SPECIAL_SECTOR.ENDOFCHAIN,
+      });
+      expect(() => parseOleCfbHeader(buffer)).toThrow(
+        'Invalid first directory sector location: reserved marker 0xFFFFFFFE (ENDOFCHAIN) ' +
+          'cannot be a directory sector location ' +
+          '(must be a regular sector containing the root directory entry).',
+      );
+    });
+
+    it('rejects CFB version 4 file with missing directory (ENDOFCHAIN)', () => {
+      const buffer = createMinimalCfbBuffer({
+        majorVersion: 4,
+        firstDirectorySectorLocation: SPECIAL_SECTOR.ENDOFCHAIN,
+      });
+      expect(() => parseOleCfbHeader(buffer)).toThrow(
+        'Invalid first directory sector location: reserved marker 0xFFFFFFFE (ENDOFCHAIN) ' +
+          'cannot be a directory sector location ' +
+          '(must be a regular sector containing the root directory entry).',
+      );
+    });
   });
 });
