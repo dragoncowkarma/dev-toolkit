@@ -1,22 +1,16 @@
 import { useRef, useState } from 'react';
-import { parseLz4Frame } from './lz4-header-inspector.utils.js';
+import { formatContentSize, parseLz4Frame } from './lz4-header.utils.js';
 import './lz4-header-inspector.css';
 
-function formatNumber(value) {
-  return new Intl.NumberFormat().format(value);
+function hexadecimal(value, width) {
+  return `0x${value.toString(16).toUpperCase().padStart(width, '0')}`;
 }
 
-function readFileAsArrayBuffer(file) {
-  if (typeof file.arrayBuffer === 'function') return file.arrayBuffer();
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = () => reject(new Error('Unable to read the selected file.'));
-    reader.readAsArrayBuffer(file);
-  });
-}
-
-/** Renders a local-only LZ4 frame header inspector. */
+/**
+ * Renders a client-side LZ4 frame header inspector.
+ *
+ * @returns {React.JSX.Element} The LZ4 inspector interface.
+ */
 export default function Lz4HeaderInspectorTool() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
@@ -26,91 +20,120 @@ export default function Lz4HeaderInspectorTool() {
   async function inspectFile(file) {
     if (!file) return;
     try {
-      const parsed = parseLz4Frame(await readFileAsArrayBuffer(file));
+      const parsed = parseLz4Frame(await file.arrayBuffer());
       setResult(parsed);
+      setFileName(file.name);
       setError('');
-      setFileName(file.name);
-    } catch (caught) {
+    } catch (readError) {
       setResult(null);
-      setError(caught.message || 'Unable to inspect this LZ4 frame.');
       setFileName(file.name);
+      setError(readError instanceof Error ? readError.message : 'Unable to inspect this file.');
     }
   }
 
   function handleDrop(event) {
     event.preventDefault();
-    inspectFile(event.dataTransfer.files?.[0]);
+    void inspectFile(event.dataTransfer.files?.[0]);
   }
+
+  function handleFileChange(event) {
+    void inspectFile(event.target.files?.[0]);
+  }
+
+  const dictionaryLabel = result?.dictionaryId === undefined
+    ? 'Not present'
+    : hexadecimal(result.dictionaryId, 8);
 
   return (
     <section className="lz4-header-inspector" aria-label="LZ4 Frame Header Inspector">
       <div
-        className="lz4-header-inspector__dropzone"
-        role="button"
-        tabIndex={0}
-        aria-label="Drop an LZ4 file here or choose a local file"
+        className="lz4-header-inspector__drop-zone"
         onDragOver={(event) => event.preventDefault()}
         onDrop={handleDrop}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' || event.key === ' ') inputRef.current?.click();
-        }}
-        onClick={() => inputRef.current?.click()}
       >
-        <strong>Drop an LZ4 frame here</strong>
-        <span>or choose a local file to inspect without uploading it</span>
-        <input
-          ref={inputRef}
-          type="file"
-          className="lz4-header-inspector__input"
-          aria-label="Choose an LZ4 frame file"
-          onChange={(event) => inspectFile(event.target.files?.[0])}
-        />
+        <p>Drop an LZ4 frame here, or choose a local file.</p>
+        <label className="lz4-header-inspector__file-button">
+          Choose LZ4 file
+          <input
+            ref={inputRef}
+            type="file"
+            onChange={handleFileChange}
+            aria-label="Choose an LZ4 file to inspect"
+          />
+        </label>
       </div>
 
-      {fileName && <p className="lz4-header-inspector__file">Inspecting: {fileName}</p>}
-      {error && (
-        <div className="lz4-header-inspector__alert" role="alert">⚠ {error}</div>
-      )}
-      {result && (
-        <div className="lz4-header-inspector__results" aria-live="polite">
-          <h2>Frame details</h2>
-          <dl>
-            <div><dt>Version</dt><dd>{result.version}</dd></div>
-            <div>
-              <dt>Block independence</dt><dd>{result.blockIndependent ? 'Yes' : 'No'}</dd>
-            </div>
-            <div><dt>Block checksum</dt><dd>{result.blockChecksum ? 'Present' : 'Absent'}</dd></div>
-            <div>
-              <dt>Content checksum</dt><dd>{result.contentChecksum ? 'Present' : 'Absent'}</dd>
-            </div>
-            <div><dt>Maximum block size</dt><dd>{result.maxBlockSize}</dd></div>
-            <div>
-              <dt>Content size</dt>
-              <dd>
-                {result.contentSize === null ? 'Not specified' : formatNumber(result.contentSize)}
-              </dd>
-            </div>
-            <div>
-              <dt>Dictionary ID</dt>
-              <dd>
-                {result.dictionaryId === null
-                  ? 'Not specified'
-                  : `0x${result.dictionaryId.toString(16).padStart(8, '0')}`}
-              </dd>
-            </div>
-            <div>
-              <dt>Header checksum</dt>
-              <dd>Valid (0x{result.headerChecksum.toString(16).padStart(2, '0')})</dd>
-            </div>
-            <div><dt>Block count</dt><dd>{formatNumber(result.blockCount)}</dd></div>
-            <div>
-              <dt>Compressed payload size</dt><dd>{formatNumber(result.compressedSize)} bytes</dd>
-            </div>
-            <div>
-              <dt>Uncompressed blocks</dt><dd>{formatNumber(result.uncompressedBlockCount)}</dd>
-            </div>
-          </dl>
+      {fileName && <p className="lz4-header-inspector__file-name">Inspecting: {fileName}</p>}
+      {error && <div className="lz4-header-inspector__error" role="alert">{error}</div>}
+
+      {result?.kind === 'legacy' && (
+        <div className="lz4-header-inspector__legacy" role="status">
+          LZ4IO legacy frame detected. This older format is recognized but not supported.
         </div>
+      )}
+
+      {result?.kind === 'frame' && (
+        <>
+          <h2>Frame header</h2>
+          <div className="lz4-header-inspector__table-wrap">
+            <table>
+              <caption className="sr-only">LZ4 frame header fields</caption>
+              <tbody>
+                <tr>
+                  <th scope="row">Magic number</th><td>{hexadecimal(result.magic, 8)}</td>
+                </tr>
+                <tr><th scope="row">Version</th><td>{result.version}</td></tr>
+                <tr>
+                  <th scope="row">Block maximum size</th>
+                  <td>{result.blockMaximumSize.toLocaleString()} bytes</td>
+                </tr>
+                <tr>
+                  <th scope="row">Content size</th><td>{formatContentSize(result.contentSize)}</td>
+                </tr>
+                <tr>
+                  <th scope="row">Dictionary ID</th>
+                  <td>{dictionaryLabel}</td>
+                </tr>
+                <tr>
+                  <th scope="row">Header checksum</th>
+                  <td>{hexadecimal(result.headerChecksum, 2)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>Flags</h2>
+          <ul className="lz4-header-inspector__flags" aria-label="LZ4 frame flags">
+            {Object.entries(result.flags).map(([name, enabled]) => (
+              <li key={name}>
+                <span>{name.replace(/([A-Z])/g, ' $1')}</span>
+                <strong>{enabled ? 'Enabled' : 'Disabled'}</strong>
+              </li>
+            ))}
+          </ul>
+
+          <h2>Data blocks</h2>
+          <div className="lz4-header-inspector__table-wrap">
+            <table>
+              <caption className="sr-only">LZ4 frame data blocks</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Block</th><th scope="col">Offset</th>
+                  <th scope="col">Size</th><th scope="col">Storage</th>
+                </tr>
+              </thead>
+              <tbody>
+                {result.blocks.map((block) => (
+                  <tr key={block.index}>
+                    <td>{block.index}</td><td>{block.offset.toLocaleString()}</td>
+                    <td>{block.size.toLocaleString()} bytes</td>
+                    <td>{block.uncompressed ? 'Uncompressed' : 'Compressed'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </section>
   );
