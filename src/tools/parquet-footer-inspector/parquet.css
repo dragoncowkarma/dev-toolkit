@@ -1,0 +1,7 @@
+.parquet-tool { max-width: 900px; margin: 0 auto; padding: 0 1.25rem 2rem; color: var(--color-text); }
+.parquet-tool__picker { display: inline-flex; flex-direction: column; gap: .5rem; padding: 1rem; border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-surface); }
+.parquet-tool__privacy { color: var(--color-text-muted); margin: .75rem 0; }
+.parquet-tool__error, .parquet-tool__warning { padding: .75rem 1rem; margin: .75rem 0; border-radius: var(--radius); }
+.parquet-tool__error { color: var(--color-error-light); background: var(--color-error-bg); border: 1px solid var(--color-error-border); }
+.parquet-tool__warning { color: var(--color-warning); border: 1px solid var(--color-warning); }
+.parquet-tool__results { display: grid; gap: 1rem; }.parquet-tool dl { display: grid; grid-template-columns: minmax(10rem, 1fr) 2fr; gap: .4rem 1rem; }.parquet-tool dt { color: var(--color-text-muted); }.parquet-tool dd { margin: 0; overflow-wrap: anywhere; }.parquet-tool__group { border: 1px solid var(--color-border); background: var(--color-surface); border-radius: var(--radius); padding: 1rem; }.parquet-tool__schema { padding-left: 1.5rem; }.parquet-tool__schema ul { padding-left: 1.5rem; }
