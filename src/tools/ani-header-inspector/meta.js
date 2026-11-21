@@ -3,5 +3,5 @@ export default {
   name: 'ANI Header Inspector',
   description: 'Inspect Windows Animated Cursor (.ani) headers entirely in your browser.',
   icon: '◌',
-  category: 'Image',
+  category: 'Inspector',
 };
