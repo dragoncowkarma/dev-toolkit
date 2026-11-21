@@ -1,0 +1,107 @@
+.qoi-header-inspector {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+}
+
+.qoi-header-inspector__drop-zone {
+  display: grid;
+  justify-items: center;
+  gap: 0.5rem;
+  padding: 2.5rem 1rem;
+  text-align: center;
+  background: var(--color-surface);
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+}
+
+.qoi-header-inspector__drop-zone:focus-visible {
+  outline: 2px solid var(--color-primary-light);
+  outline-offset: 3px;
+}
+
+.qoi-header-inspector__drop-zone p + p {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+.qoi-header-inspector__file-label {
+  padding: 0.5rem 1rem;
+  color: #fff;
+  background: var(--color-primary);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.qoi-header-inspector__file-label input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.qoi-header-inspector__file-name {
+  margin-top: 1rem;
+  color: var(--color-text-muted);
+}
+
+.qoi-header-inspector__metadata {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin-top: 1rem;
+  overflow: hidden;
+  background: var(--color-border);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.qoi-header-inspector__metadata > div {
+  padding: 0.85rem 1rem;
+  background: var(--color-surface);
+}
+
+.qoi-header-inspector__metadata dt {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.qoi-header-inspector__metadata dd {
+  margin: 0.2rem 0 0;
+}
+
+.qoi-header-inspector__error,
+.qoi-header-inspector__warnings {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius);
+}
+
+.qoi-header-inspector__error {
+  color: var(--color-error-light);
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+}
+
+.qoi-header-inspector__warnings {
+  color: var(--color-warning);
+  background: var(--color-surface);
+  border: 1px solid var(--color-warning);
+}
+
+.qoi-header-inspector__warnings p {
+  font-weight: 600;
+}
+
+.qoi-header-inspector__warnings ul {
+  padding-left: 1.25rem;
+}
+
+@media (min-width: 768px) {
+  .qoi-header-inspector {
+    padding: 0 2rem 3rem;
+  }
+}
