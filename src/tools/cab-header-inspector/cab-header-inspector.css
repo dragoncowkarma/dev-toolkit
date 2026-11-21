@@ -1,0 +1,14 @@
+.cab-inspector { max-width: 900px; margin: 0 auto; padding: 0 1.25rem 2rem; }
+.cab-inspector__drop-zone { display: flex; flex-direction: column; align-items: center; gap: .5rem; padding: 2.5rem 1rem; border: 2px dashed var(--color-border); border-radius: var(--radius); background: var(--color-surface); cursor: pointer; }
+.cab-inspector__drop-zone:focus { outline: 2px solid var(--color-primary); outline-offset: 3px; }
+.cab-inspector__drop-zone input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.cab-inspector__status { color: var(--color-text-muted); }
+.cab-inspector__error { padding: .75rem 1rem; border: 1px solid var(--color-error-border); border-radius: var(--radius); background: var(--color-error-bg); color: var(--color-error-light); }
+.cab-inspector__results { display: grid; gap: 1rem; margin-top: 1rem; }
+.cab-inspector__section { padding: 1rem; border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-surface); }
+.cab-inspector__section h3 { margin-top: 0; }
+.cab-inspector__section dl { margin: 0; }
+.cab-inspector__section dl div { display: grid; grid-template-columns: minmax(9rem, 1fr) 2fr; gap: 1rem; padding: .35rem 0; border-top: 1px solid var(--color-border); }
+.cab-inspector__section dt { font-weight: 600; color: var(--color-text-muted); }
+.cab-inspector__section dd { margin: 0; overflow-wrap: anywhere; }
+@media (min-width: 768px) { .cab-inspector { padding: 0 2rem 3rem; } }
