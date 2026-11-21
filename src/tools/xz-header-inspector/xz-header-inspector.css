@@ -1,51 +1,14 @@
-.xz-inspector {
-  max-width: 900px;
-  margin: 0 auto;
-  padding: 0 1.25rem 2rem;
-}
-.xz-inspector__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-}
-.xz-inspector .btn {
-  position: relative;
-  padding: 0.6rem 1rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  background: var(--color-surface);
-  color: var(--color-text);
-  cursor: pointer;
-  font: inherit;
-}
-.xz-inspector .btn:hover {
-  border-color: var(--color-primary);
-}
-.xz-inspector input {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  cursor: pointer;
-  width: 100%;
-}
-.xz-inspector__hint {
-  color: var(--color-text-muted);
-}
-.xz-inspector__error {
-  padding: 0.75rem 1rem;
-  border: 1px solid var(--color-error-border);
-  border-radius: var(--radius);
-  color: var(--color-error-light);
-  background: var(--color-error-bg);
-}
-.xz-inspector__result {
-  margin-top: 1rem;
-  padding: 1rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  background: var(--color-surface);
-}
-.xz-inspector pre {
-  overflow: auto;
-  white-space: pre-wrap;
-}
+.xz-inspector { max-width: 900px; margin: 0 auto; padding: 0 1.25rem 2rem; color: var(--color-text); }
+.xz-file-input { position: absolute; inline-size: 1px; block-size: 1px; opacity: 0; }
+.xz-drop-zone { border: 2px dashed var(--color-border); border-radius: var(--radius); padding: 2rem 1rem; text-align: center; background: var(--color-surface); }
+.xz-button { border: 1px solid var(--color-primary); border-radius: var(--radius); padding: .55rem 1rem; background: var(--color-primary); color: #fff; cursor: pointer; font: inherit; }
+.xz-button:focus-visible { outline: 2px solid var(--color-primary-light); outline-offset: 3px; }
+.xz-results, .xz-block { margin-top: 1rem; padding: 1rem; border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-surface); }
+.xz-block { background: var(--color-bg); }
+.xz-details { margin: 0; }
+.xz-details > div { display: grid; grid-template-columns: minmax(9rem, 1fr) 2fr; gap: 1rem; padding: .35rem 0; border-bottom: 1px solid var(--color-border); }
+.xz-details > div:last-child { border-bottom: 0; }
+.xz-details dt { color: var(--color-text-muted); font-weight: 600; }
+.xz-details dd { margin: 0; overflow-wrap: anywhere; }
+.xz-error { margin-top: 1rem; padding: .75rem 1rem; border: 1px solid var(--color-error-border); border-radius: var(--radius); color: var(--color-error-light); background: var(--color-error-bg); }
+@media (min-width: 768px) { .xz-inspector { padding: 0 2rem 3rem; } }
