@@ -1,0 +1,79 @@
+.glb-inspector {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+}
+
+.glb-inspector__dropzone {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 2rem;
+  text-align: center;
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.glb-inspector__dropzone:focus,
+.glb-inspector__dropzone:hover {
+  border-color: var(--color-primary);
+  outline: none;
+}
+
+.glb-inspector__file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+.glb-inspector__status,
+.glb-inspector__results {
+  margin-top: 1rem;
+}
+
+.glb-inspector__error,
+.glb-inspector__warnings {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius);
+}
+
+.glb-inspector__error {
+  color: var(--color-error-light);
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+}
+
+.glb-inspector__warnings {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+}
+
+.glb-inspector__results dl {
+  display: grid;
+  grid-template-columns: minmax(8rem, 1fr) 2fr;
+  gap: 0.5rem 1rem;
+}
+
+.glb-inspector__results dt {
+  font-weight: 700;
+}
+
+.glb-inspector__results dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.glb-inspector__chunk {
+  display: contents;
+}
+
+@media (min-width: 768px) {
+  .glb-inspector {
+    padding: 0 2rem 3rem;
+  }
+}
