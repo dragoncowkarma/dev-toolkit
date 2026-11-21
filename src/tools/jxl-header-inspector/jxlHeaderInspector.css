@@ -1,0 +1,67 @@
+.jxl-header-inspector {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.jxl-header-inspector__dropzone,
+.jxl-header-inspector__paste,
+.jxl-header-inspector__result {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1rem;
+}
+
+.jxl-header-inspector__dropzone {
+  display: grid;
+  gap: 0.75rem;
+  text-align: center;
+  border-style: dashed;
+}
+
+.jxl-header-inspector__dropzone.is-dragging {
+  border-color: var(--color-primary);
+  background: var(--color-surface-hover);
+}
+
+.jxl-header-inspector button {
+  width: fit-content;
+  justify-self: center;
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius);
+  background: var(--color-primary);
+  color: #fff;
+  cursor: pointer;
+  padding: 0.5rem 0.9rem;
+}
+
+.jxl-header-inspector__paste {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.jxl-header-inspector textarea {
+  min-height: 7rem;
+  resize: vertical;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font: 0.85rem/1.5 monospace;
+  padding: 0.75rem;
+}
+
+.jxl-header-inspector__paste button { justify-self: start; }
+.jxl-header-inspector__error { color: var(--color-error-light); }
+.jxl-header-inspector__result { display: grid; gap: 0.75rem; }
+.jxl-header-inspector dl { display: grid; grid-template-columns: minmax(9rem, 1fr) 2fr; gap: 0.35rem 1rem; }
+.jxl-header-inspector dt { color: var(--color-text-muted); font-weight: 600; }
+.jxl-header-inspector dd { margin: 0; overflow-wrap: anywhere; }
+.jxl-header-inspector__box { display: contents; }
+
+@media (min-width: 768px) {
+  .jxl-header-inspector { padding: 0 2rem 3rem; }
+}
