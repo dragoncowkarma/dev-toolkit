@@ -1,0 +1,122 @@
+.icc-inspector {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+}
+
+.icc-controls {
+  display: grid;
+  gap: 1rem;
+}
+
+.icc-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.icc-upload,
+.icc-controls button {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.icc-upload {
+  display: flex;
+  min-height: 8rem;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.65rem 1rem;
+  text-align: center;
+}
+
+.icc-upload:focus,
+.icc-upload.is-dragging,
+.icc-table-wrap:focus {
+  outline: 2px solid var(--color-primary-light);
+  outline-offset: 3px;
+}
+
+.icc-upload.is-dragging {
+  border-color: var(--color-primary);
+}
+
+.icc-controls form {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.icc-controls textarea {
+  min-height: 6rem;
+  resize: vertical;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  padding: 0.75rem;
+  font-family: monospace;
+}
+
+.icc-controls button {
+  width: fit-content;
+  padding: 0.65rem 1rem;
+}
+
+.icc-header {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 0.75rem;
+}
+
+.icc-header div {
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  padding: 0.75rem;
+}
+
+.icc-header dt {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
+.icc-header dd {
+  margin: 0.25rem 0 0;
+  overflow-wrap: anywhere;
+  font-family: monospace;
+}
+
+.icc-table-wrap {
+  max-height: 24rem;
+  overflow: auto;
+}
+
+.icc-table-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.icc-table-wrap th,
+.icc-table-wrap td {
+  border-bottom: 1px solid var(--color-border);
+  padding: 0.65rem;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.icc-table-wrap th {
+  color: var(--color-text);
+}
+
+.icc-error {
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+  padding: 0.75rem;
+}
