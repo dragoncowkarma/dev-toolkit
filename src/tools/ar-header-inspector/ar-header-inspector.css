@@ -1,0 +1,118 @@
+.ar-header-inspector {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+}
+
+.ar-header-inspector__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
+.ar-header-inspector__dropzone {
+  display: flex;
+  min-height: 180px;
+  padding: 1.5rem;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  text-align: center;
+  background: var(--color-surface);
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text-muted);
+  transition: border-color var(--transition), background var(--transition);
+}
+
+.ar-header-inspector__dropzone.is-dragging {
+  border-color: var(--color-primary);
+  background: var(--color-bg);
+}
+
+.ar-header-inspector__dropzone p {
+  margin: 0;
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.ar-header-inspector__button {
+  padding: 0.55rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-primary);
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+}
+
+.ar-header-inspector__button:hover,
+.ar-header-inspector__button:focus-visible {
+  background: var(--color-primary-light);
+}
+
+.ar-header-inspector__error {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+}
+
+.ar-header-inspector__results {
+  margin-top: 1.5rem;
+}
+
+.ar-header-inspector__results h3,
+.ar-header-inspector__results p {
+  margin: 0;
+}
+
+.ar-header-inspector__results p {
+  margin-top: 0.25rem;
+  color: var(--color-text-muted);
+}
+
+.ar-header-inspector__table-wrap {
+  margin-top: 1rem;
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.ar-header-inspector table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.ar-header-inspector th,
+.ar-header-inspector td {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.ar-header-inspector th {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.ar-header-inspector tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+@media (min-width: 768px) {
+  .ar-header-inspector {
+    padding: 0 2rem 3rem;
+  }
+}
