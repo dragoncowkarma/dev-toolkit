@@ -137,8 +137,16 @@ export function parseOleCfbHeader(input) {
     );
   }
 
-  // Header CLSID (offset 8, 16 bytes)
+  // Header CLSID (offset 8, 16 bytes: must be all zeroes)
   const clsidBytes = u8.slice(8, 24);
+  for (let i = 0; i < 16; i++) {
+    if (clsidBytes[i] !== 0) {
+      throw new Error(
+        `Invalid Header CLSID (${formatClsid(clsidBytes)}): ` +
+          'must be set to all zeroes ({00000000-0000-0000-0000-000000000000}).',
+      );
+    }
+  }
   const clsid = formatClsid(clsidBytes);
 
   // Minor version (offset 24, 2 bytes uint16le)
@@ -179,8 +187,16 @@ export function parseOleCfbHeader(input) {
   }
   const miniSectorSize = 1 << miniSectorShift;
 
-  // Reserved (offset 34, 6 bytes)
+  // Reserved (offset 34, 6 bytes: must be all zeroes)
   const reservedBytes = u8.slice(34, 40);
+  for (let i = 0; i < 6; i++) {
+    if (reservedBytes[i] !== 0) {
+      throw new Error(
+        `Invalid reserved header bytes (${formatHexBytes(reservedBytes)}): ` +
+          'must be set to all zeroes.',
+      );
+    }
+  }
 
   // For version 4, header sector is 4096 bytes and padding bytes 512..4095 must be zero
   if (majorVersion === 4) {
@@ -269,34 +285,94 @@ export function parseOleCfbHeader(input) {
 
   const maxSectorLabel = maxAvailableSectors > 0 ? maxAvailableSectors - 1 : 'none';
 
-  if (
-    firstDirectorySectorLocation <= SPECIAL_SECTOR.MAX_REGULAR &&
-    firstDirectorySectorLocation >= maxAvailableSectors
-  ) {
-    throw new Error(
-      `Declared first directory sector location (${firstDirectorySectorLocation}) ` +
-        `exceeds file bounds (max sector: ${maxSectorLabel}).`,
-    );
+  if (majorVersion === 4) {
+    if (numDirectorySectors === 0) {
+      if (firstDirectorySectorLocation !== SPECIAL_SECTOR.ENDOFCHAIN) {
+        const formattedLoc = formatSectorLocation(firstDirectorySectorLocation);
+        throw new Error(
+          `Invalid first directory sector location (${formattedLoc}): ` +
+            'must be ENDOFCHAIN (0xFFFFFFFE) when directory sector count is 0.',
+        );
+      }
+    } else {
+      if (firstDirectorySectorLocation > SPECIAL_SECTOR.MAX_REGULAR) {
+        const formattedLoc = formatSectorLocation(firstDirectorySectorLocation);
+        throw new Error(
+          `Invalid first directory sector location (${formattedLoc}): ` +
+            `must be a regular sector when directory sector count is ${numDirectorySectors}.`,
+        );
+      }
+      if (firstDirectorySectorLocation >= maxAvailableSectors) {
+        throw new Error(
+          `Declared first directory sector location (${firstDirectorySectorLocation}) ` +
+            `exceeds file bounds (max sector: ${maxSectorLabel}).`,
+        );
+      }
+    }
+  } else {
+    // Version 3: numDirectorySectors is verified to be 0 per MS-CFB
+    if (firstDirectorySectorLocation <= SPECIAL_SECTOR.MAX_REGULAR) {
+      if (firstDirectorySectorLocation >= maxAvailableSectors) {
+        throw new Error(
+          `Declared first directory sector location (${firstDirectorySectorLocation}) ` +
+            `exceeds file bounds (max sector: ${maxSectorLabel}).`,
+        );
+      }
+    } else if (firstDirectorySectorLocation !== SPECIAL_SECTOR.ENDOFCHAIN) {
+      const formattedLoc = formatSectorLocation(firstDirectorySectorLocation);
+      throw new Error(
+        'Invalid first directory sector location: reserved marker ' +
+          `${formattedLoc} cannot be a directory sector location.`,
+      );
+    }
   }
 
-  if (
-    firstMiniFatSectorLocation <= SPECIAL_SECTOR.MAX_REGULAR &&
-    firstMiniFatSectorLocation >= maxAvailableSectors
-  ) {
-    throw new Error(
-      `Declared first mini FAT sector location (${firstMiniFatSectorLocation}) ` +
-        `exceeds file bounds (max sector: ${maxSectorLabel}).`,
-    );
+  if (numMiniFatSectors === 0) {
+    if (firstMiniFatSectorLocation !== SPECIAL_SECTOR.ENDOFCHAIN) {
+      const formattedLoc = formatSectorLocation(firstMiniFatSectorLocation);
+      throw new Error(
+        `Invalid first mini FAT sector location (${formattedLoc}): ` +
+          'must be ENDOFCHAIN (0xFFFFFFFE) when mini FAT sector count is 0.',
+      );
+    }
+  } else {
+    if (firstMiniFatSectorLocation > SPECIAL_SECTOR.MAX_REGULAR) {
+      const formattedLoc = formatSectorLocation(firstMiniFatSectorLocation);
+      throw new Error(
+        `Invalid first mini FAT sector location (${formattedLoc}): ` +
+          `must be a regular sector when mini FAT sector count is ${numMiniFatSectors}.`,
+      );
+    }
+    if (firstMiniFatSectorLocation >= maxAvailableSectors) {
+      throw new Error(
+        `Declared first mini FAT sector location (${firstMiniFatSectorLocation}) ` +
+          `exceeds file bounds (max sector: ${maxSectorLabel}).`,
+      );
+    }
   }
 
-  if (
-    firstDifatSectorLocation <= SPECIAL_SECTOR.MAX_REGULAR &&
-    firstDifatSectorLocation >= maxAvailableSectors
-  ) {
-    throw new Error(
-      `Declared first DIFAT sector location (${firstDifatSectorLocation}) ` +
-        `exceeds file bounds (max sector: ${maxSectorLabel}).`,
-    );
+  if (numDifatSectors === 0) {
+    if (firstDifatSectorLocation !== SPECIAL_SECTOR.ENDOFCHAIN) {
+      const formattedLoc = formatSectorLocation(firstDifatSectorLocation);
+      throw new Error(
+        `Invalid first DIFAT sector location (${formattedLoc}): ` +
+          'must be ENDOFCHAIN (0xFFFFFFFE) when DIFAT sector count is 0.',
+      );
+    }
+  } else {
+    if (firstDifatSectorLocation > SPECIAL_SECTOR.MAX_REGULAR) {
+      const formattedLoc = formatSectorLocation(firstDifatSectorLocation);
+      throw new Error(
+        `Invalid first DIFAT sector location (${formattedLoc}): ` +
+          `must be a regular sector when DIFAT sector count is ${numDifatSectors}.`,
+      );
+    }
+    if (firstDifatSectorLocation >= maxAvailableSectors) {
+      throw new Error(
+        `Declared first DIFAT sector location (${firstDifatSectorLocation}) ` +
+          `exceeds file bounds (max sector: ${maxSectorLabel}).`,
+      );
+    }
   }
 
   // First 109 DIFAT entries in the header (offset 76..512)
@@ -390,6 +466,9 @@ export function createMinimalCfbBuffer(options = {}) {
   // Mini sector shift (offset 32): default 6
   view.setUint16(32, options.miniSectorShift ?? 6, true);
   // Reserved (offset 34..39): 6 bytes zero
+  if (options.reservedBytes) {
+    u8.set(options.reservedBytes, 34);
+  }
   // Number of directory sectors (offset 40)
   view.setUint32(40, options.numDirectorySectors ?? 0, true);
   // Number of FAT sectors (offset 44)
