@@ -189,6 +189,37 @@ describe('JpegHeaderInspectorTool UI', () => {
     expect(alert).toHaveTextContent(/Invalid marker length/i);
   });
 
+  it('displays a visible role="alert" when uploading SOI-only JPEG missing EOI', async () => {
+    render(<JpegHeaderInspectorTool />);
+
+    const soiOnly = new Uint8Array([0xFF, 0xD8]);
+    const file = new File([soiOnly], 'soi-only.jpg', { type: 'image/jpeg' });
+    const fileInput = screen.getByLabelText('Select JPEG File');
+
+    await act(async () => selectFile(fileInput, file));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toBeInTheDocument();
+    expect(alert).toHaveTextContent(/missing terminating EOI marker/i);
+    expect(screen.queryByLabelText('JPEG Summary')).not.toBeInTheDocument();
+  });
+
+  it('displays role="alert" when JPEG ends after SOS without EOI', async () => {
+    render(<JpegHeaderInspectorTool />);
+
+    const sample = new Uint8Array(jpegUtils.createSampleJpeg());
+    const withoutEoi = sample.slice(0, -2);
+    const file = new File([withoutEoi], 'missing-eoi.jpg', { type: 'image/jpeg' });
+    const fileInput = screen.getByLabelText('Select JPEG File');
+
+    await act(async () => selectFile(fileInput, file));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toBeInTheDocument();
+    expect(alert).toHaveTextContent(/missing terminating EOI marker/i);
+    expect(screen.queryByLabelText('JPEG Summary')).not.toBeInTheDocument();
+  });
+
   it('displays a visible role="alert" on file-read failure', async () => {
     vi.spyOn(jpegUtils, 'readJpegFile').mockRejectedValueOnce(
       new Error('Disk read failure'),

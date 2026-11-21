@@ -314,6 +314,31 @@ describe('jpeg.utils parser', () => {
     expect(res.segments[0].name).toBe('SOI');
     expect(res.segments[1].name).toBe('EOI');
   });
+
+  it('throws on truncated JPEG containing only SOI marker (missing EOI)', () => {
+    const soiOnly = new Uint8Array([0xFF, 0xD8]).buffer;
+    expect(() => parseJpeg(soiOnly)).toThrow(
+      /missing terminating EOI marker/i,
+    );
+  });
+
+  it('throws on truncated JPEG ending after SOS without terminating EOI marker', () => {
+    const sample = new Uint8Array(createSampleJpeg());
+    const withoutEoi = sample.slice(0, -2).buffer;
+    expect(() => parseJpeg(withoutEoi)).toThrow(
+      /missing terminating EOI marker/i,
+    );
+  });
+
+  it('throws on truncated JPEG with header segments but no terminating EOI marker', () => {
+    const withoutEoi = new Uint8Array([
+      0xFF, 0xD8, // SOI
+      0xFF, 0xFE, 0x00, 0x07, 0x48, 0x65, 0x6C, 0x6C, 0x6F, // COM "Hello"
+    ]).buffer;
+    expect(() => parseJpeg(withoutEoi)).toThrow(
+      /missing terminating EOI marker/i,
+    );
+  });
 });
 
 describe('jpeg.utils helpers', () => {

@@ -447,19 +447,30 @@ export function parseJpeg(input) {
         }
       }
 
-      if (eoiOffset !== -1) {
-        segments.push({
-          marker: 0xFFD9,
-          code: '0xFFD9',
-          name: 'EOI',
-          description: 'End of Image',
-          offset: eoiOffset,
-          length: 0,
-          details: null,
-        });
+      if (eoiOffset === -1) {
+        throw new Error(
+          'Truncated JPEG: missing terminating EOI marker (0xFFD9).',
+        );
       }
+
+      segments.push({
+        marker: 0xFFD9,
+        code: '0xFFD9',
+        name: 'EOI',
+        description: 'End of Image',
+        offset: eoiOffset,
+        length: 0,
+        details: null,
+      });
       break;
     }
+  }
+
+  const hasEoi = segments.some((s) => s.marker === 0xFFD9);
+  if (!hasEoi) {
+    throw new Error(
+      'Truncated JPEG: missing terminating EOI marker (0xFFD9).',
+    );
   }
 
   // Summarize overall image information
