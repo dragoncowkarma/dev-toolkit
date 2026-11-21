@@ -86,11 +86,13 @@ The orchestrator uses these values when dynamically assigning roles.
 
 | AI Agent | Command | Preset Models | Reasoning Levels | Default Preset |
 |----------|---------|---------------|------------------|----------------|
-| **Codex** | `codex` | `5.6 terra`, `5.6 sol`, `5.6 luna` | `낮음`, `중간`, `높음`, `매우 높음`, `최대`, `울트라` | `5.6 terra` |
-| **Antigravity** | `agy` | `gemini 3.8 flash`, `gemini 4 argon` | `low`, `medium`, `high` | `gemini 3.8 flash` |
-| **Claude** | `claude` | `sonnet 5`, `opus 5`, `haiku 4.5` | `낮음`, `중간`, `높음`, `매우 높음`, `최대` | `sonnet 5` |
+| **Codex** | `codex` | `6.1 terra`, `6.2 sol`, `6.2 astra`, `6 luna` | `낮음`, `중간`, `높음`, `매우 높음`, `최대`, `울트라` | `6.1 terra` |
+| **Antigravity** | `agy` | `gemini 3.8 flash`, `gemini 4 argon`, `gemini 4 neon`, `gemini 4 hydrogen` | `low`, `medium`, `high`, `xhigh` | `gemini 3.8 flash` |
+| **Claude** | `claude` | `sonnet 5.5`, `opus 5.5`, `haiku 5.5`, `fable 5.2` | `낮음`, `중간`, `높음`, `매우 높음`, `최대` | `sonnet 5.5` |
 
-Last verified: 2026-10-21. Re-verify before editing this table:
+Last verified: 2026-11-21 (codex-cli 0.169.0, agy 1.5.13, Claude Code 2.1.330).
+The still-listed `5.6 sol` / `5.6 terra` / `5.6 luna`, plus `6.1 sol`,
+`6 sol` and `6 astra`, remain valid Codex tags but are not presets. Re-verify before editing this table:
 
 ```bash
 codex debug models | python3 -m json.tool | grep -E '"slug"|"visibility"|"effort"'
@@ -104,6 +106,9 @@ Use `codex debug models`, not a trial `codex exec` — it reports every slug wit
 its `supported_reasoning_levels` and its `visibility`, and costs no dispatch.
 Only `visibility: list` entries are selectable presets; `gpt-reserve` and
 `codex-auto-review` are hidden internals and must stay out of the preset table.
+Likewise `agy models` lists `gemini-pro-orchestrator-neon` and
+`gemini-pro-orchestrator-g1-pro` — agy's own orchestrator agents, with no effort
+suffix — which are never role models (`EXPECTED_AGY_INTERNAL_SLUGS`).
 
 The Claude row needs two commands because the CLI has no `models` subcommand and
 `claude --help` names **none** of its own model ids — it shows only the aliases
@@ -135,8 +140,9 @@ Rules for this table:
    `.agents/workflows/swarm_orchestrator.py`. Adding a preset here without
    adding its alias there is incomplete work.
 2. A `Reasoning:` value above a model's ceiling is clamped down, never
-   rejected — `agy` stops at `high`, Claude at `최대`, Codex Luna at `최대`.
-   Only Codex Sol and Terra accept `울트라`. An unrecognized label logs a
+   rejected — `agy` Neon/Hydrogen stop at `xhigh` (`매우 높음`), Argon and
+   Flash at `high`, Claude at `최대`, Codex Luna at `최대`. Only Codex Sol,
+   Terra and Astra accept `울트라`. An unrecognized label logs a
    WARNING and resolves to `중간`.
 3. Retired model names stay in the orchestrator's alias maps so that open
    Issues and PRs tagged with them keep dispatching. Before dispatch,
