@@ -1,12 +1,15 @@
 const IDS = {
   EBML: 0x1a45dfa3,
+  EBML_VERSION: 0x4286,
+  EBML_READ_VERSION: 0x42f7,
   DOC_TYPE: 0x4282,
   DOC_TYPE_VERSION: 0x4287,
   SEGMENT: 0x18538067,
   INFO: 0x1549a966,
   TIMECODE_SCALE: 0x2ad7b1,
   DURATION: 0x4489,
-  TITLE: 0x7ba9,
+  MUXING_APP: 0x4d80,
+  WRITING_APP: 0x5741,
   TRACKS: 0x1654ae6b,
   TRACK_ENTRY: 0xae,
   TRACK_NUMBER: 0xd7,
@@ -87,6 +90,12 @@ function readUnsigned(bytes, start, end) {
   let value = 0;
   for (let index = start; index < end; index += 1)
     value = value * 256 + bytes[index];
+  if (!Number.isSafeInteger(value)) {
+    throw new EbmlParseError(
+      "UNSAFE_INTEGER",
+      "EBML integer is too large to inspect safely.",
+    );
+  }
   return value;
 }
 
@@ -121,8 +130,10 @@ function parseInfo(bytes, element) {
       info.timecodeScale = readUnsigned(bytes, child.dataStart, child.dataEnd);
     if (child.id === IDS.DURATION)
       info.duration = readFloat(bytes, child.dataStart, child.dataEnd);
-    if (child.id === IDS.TITLE)
-      info.title = readText(bytes, child.dataStart, child.dataEnd);
+    if (child.id === IDS.MUXING_APP)
+      info.muxingApp = readText(bytes, child.dataStart, child.dataEnd);
+    if (child.id === IDS.WRITING_APP)
+      info.writingApp = readText(bytes, child.dataStart, child.dataEnd);
   }
   return info;
 }
@@ -164,8 +175,7 @@ function parseTracks(bytes, element) {
     .map((child) => parseTrack(bytes, child));
 }
 
-/** Parses the EBML header and selected Matroska/WebM Segment metadata. */
-export function parseEbmlHeader(input) {
+function parseEbmlHeaderData(input) {
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
   if (
     bytes.length < 4 ||
@@ -178,16 +188,19 @@ export function parseEbmlHeader(input) {
   }
   const header = readElement(bytes, 0, bytes.length);
   const result = {
-    docType: undefined,
-    docTypeVersion: undefined,
-    info: {},
-    tracks: [],
+    status: "decoded",
+    ebml: {},
+    segment: { info: {}, tracks: [] },
   };
   for (const child of elementsIn(bytes, header.dataStart, header.dataEnd)) {
+    if (child.id === IDS.EBML_VERSION)
+      result.ebml.version = readUnsigned(bytes, child.dataStart, child.dataEnd);
+    if (child.id === IDS.EBML_READ_VERSION)
+      result.ebml.readVersion = readUnsigned(bytes, child.dataStart, child.dataEnd);
     if (child.id === IDS.DOC_TYPE)
-      result.docType = readText(bytes, child.dataStart, child.dataEnd);
+      result.ebml.docType = readText(bytes, child.dataStart, child.dataEnd);
     if (child.id === IDS.DOC_TYPE_VERSION)
-      result.docTypeVersion = readUnsigned(
+      result.ebml.docTypeVersion = readUnsigned(
         bytes,
         child.dataStart,
         child.dataEnd,
@@ -202,14 +215,32 @@ export function parseEbmlHeader(input) {
         element.dataStart,
         element.dataEnd,
       )) {
-        if (child.id === IDS.INFO) result.info = parseInfo(bytes, child);
-        if (child.id === IDS.TRACKS) result.tracks = parseTracks(bytes, child);
+        if (child.id === IDS.INFO) result.segment.info = parseInfo(bytes, child);
+        if (child.id === IDS.TRACKS) result.segment.tracks = parseTracks(bytes, child);
       }
       break;
     }
     offset = element.nextOffset;
   }
   return result;
+}
+
+/**
+ * Parses selected Matroska/WebM metadata without throwing for malformed input.
+ *
+ * @param {ArrayBuffer|Uint8Array} input - Entire file, or its leading bytes.
+ * @returns {{status: string, error?: string, ebml?: object, segment?: object}}
+ * Parsed metadata or a structured undecoded result.
+ */
+export function parseEbmlHeader(input) {
+  try {
+    return parseEbmlHeaderData(input);
+  } catch (error) {
+    return {
+      status: "undecoded",
+      error: error.message || "Unable to decode EBML metadata.",
+    };
+  }
 }
 
 /** Decodes a Base64 string into raw bytes. */

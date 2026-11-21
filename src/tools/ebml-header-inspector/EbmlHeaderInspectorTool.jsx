@@ -10,26 +10,32 @@ function ResultTable({ result }) {
     <div className="ebml-results" aria-label="Parsed EBML metadata">
       <h3>EBML header</h3>
       <dl>
+        <dt>EBML version</dt>
+        <dd>{result.ebml.version ?? "Not present"}</dd>
+        <dt>EBML read version</dt>
+        <dd>{result.ebml.readVersion ?? "Not present"}</dd>
         <dt>DocType</dt>
-        <dd>{result.docType ?? "Not present"}</dd>
+        <dd>{result.ebml.docType ?? "Not present"}</dd>
         <dt>DocType version</dt>
-        <dd>{result.docTypeVersion ?? "Not present"}</dd>
+        <dd>{result.ebml.docTypeVersion ?? "Not present"}</dd>
       </dl>
       <h3>Segment info</h3>
       <dl>
         <dt>Timecode scale</dt>
-        <dd>{result.info.timecodeScale ?? "Not present"} ns</dd>
+        <dd>{result.segment.info.timecodeScale ?? "Not present"} ns</dd>
         <dt>Duration</dt>
-        <dd>{result.info.duration ?? "Not present"}</dd>
-        <dt>Title</dt>
-        <dd>{result.info.title ?? "Not present"}</dd>
+        <dd>{result.segment.info.duration ?? "Not present"}</dd>
+        <dt>Muxing app</dt>
+        <dd>{result.segment.info.muxingApp ?? "Not present"}</dd>
+        <dt>Writing app</dt>
+        <dd>{result.segment.info.writingApp ?? "Not present"}</dd>
       </dl>
-      <h3>Tracks ({result.tracks.length})</h3>
-      {result.tracks.length === 0 ? (
+      <h3>Tracks ({result.segment.tracks.length})</h3>
+      {result.segment.tracks.length === 0 ? (
         <p>No track entries found.</p>
       ) : (
         <div className="ebml-track-list">
-          {result.tracks.map((track, index) => (
+          {result.segment.tracks.map((track, index) => (
             <article
               className="ebml-track"
               key={`${track.number ?? index}-${track.codecId ?? ""}`}
@@ -64,13 +70,9 @@ export default function EbmlHeaderInspectorTool() {
   const fileInputRef = useRef(null);
 
   function inspect(bytes) {
-    try {
-      setResult(parseEbmlHeader(bytes));
-      setError("");
-    } catch (parseError) {
-      setResult(null);
-      setError(parseError.message);
-    }
+    const parsed = parseEbmlHeader(bytes);
+    setResult(parsed.status === "decoded" ? parsed : null);
+    setError(parsed.status === "undecoded" ? parsed.error : "");
   }
 
   function handleBase64Inspect() {
