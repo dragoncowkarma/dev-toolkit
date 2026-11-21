@@ -1,0 +1,213 @@
+.ole-cfb-tool {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.ole-cfb-tool .ole-cfb-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.ole-cfb-tool .toolbar-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.ole-cfb-tool .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.ole-cfb-tool .btn:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.ole-cfb-tool .btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ole-cfb-tool .btn-primary {
+  background: var(--color-primary);
+  color: #fff;
+  border-color: var(--color-primary);
+}
+
+.ole-cfb-tool .btn-primary:hover:not(:disabled) {
+  background: var(--color-primary-light);
+  color: #fff;
+}
+
+.ole-cfb-tool .file-btn {
+  position: relative;
+  overflow: hidden;
+}
+
+.ole-cfb-tool .file-btn:focus-within {
+  outline: 2px solid var(--color-primary-light);
+  outline-offset: 3px;
+}
+
+.ole-cfb-tool .file-input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  width: 100%;
+}
+
+.ole-cfb-tool .dropzone {
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  padding: 2.5rem 1.5rem;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color var(--transition), background-color var(--transition);
+}
+
+.ole-cfb-tool .dropzone:hover,
+.ole-cfb-tool .dropzone.drag-active {
+  border-color: var(--color-primary);
+  background: var(--color-bg);
+}
+
+.ole-cfb-tool .dropzone-icon {
+  font-size: 2.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.ole-cfb-tool .dropzone-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: 0.25rem;
+}
+
+.ole-cfb-tool .dropzone-hint {
+  font-size: 0.825rem;
+  color: var(--color-text-muted);
+}
+
+.ole-cfb-tool .ole-cfb-error {
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  color: var(--color-error-light);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.ole-cfb-tool .results-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.ole-cfb-tool .card-section {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.ole-cfb-tool .section-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-text);
+  margin: 0;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.ole-cfb-tool .property-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+}
+
+.ole-cfb-tool .property-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.ole-cfb-tool .property-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ole-cfb-tool .property-value {
+  font-size: 0.9rem;
+  color: var(--color-text);
+  word-break: break-word;
+}
+
+.ole-cfb-tool .property-code {
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+  font-size: 0.85rem;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  padding: 0.2rem 0.4rem;
+  border-radius: calc(var(--radius) - 4px);
+  display: inline-block;
+}
+
+.ole-cfb-tool .difat-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  max-height: 180px;
+  overflow-y: auto;
+  padding: 0.5rem;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.ole-cfb-tool .difat-tag {
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+  font-size: 0.78rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  padding: 0.15rem 0.45rem;
+  border-radius: calc(var(--radius) - 4px);
+  color: var(--color-text);
+}
+
+@media (min-width: 768px) {
+  .ole-cfb-tool {
+    padding: 0 2rem 3rem;
+  }
+
+  .ole-cfb-tool .property-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
