@@ -26,6 +26,8 @@ const PCAPNG_BYTE_ORDER_MAGIC = 0x1a2b3c4d;
 const PCAPNG_BYTE_ORDER_MAGIC_REVERSED = 0x4d3c2b1a;
 const IPV6_EXTENSION_HEADERS = new Set([0, 43, 44, 51, 60]);
 const MAX_IPV6_EXTENSION_HEADERS = 8;
+const VLAN_ETHER_TYPES = new Set([0x8100, 0x88a8]);
+const MAX_VLAN_TAGS = 2;
 
 function requireBytes(view, offset, length, label) {
   if (!Number.isSafeInteger(offset) || !Number.isSafeInteger(length) ||
@@ -93,9 +95,25 @@ function getProtocolName(protocol) {
 function decodeEthernetPacket(view, payloadOffset, capturedLength) {
   try {
     requirePacketBytes(view, payloadOffset, capturedLength, 0, 14, 'Ethernet header');
-    const etherType = view.getUint16(payloadOffset + 12, false);
+    let etherType = view.getUint16(payloadOffset + 12, false);
+    let ipOffset = 14;
+    const vlanIds = [];
+
+    for (let tagCount = 0; tagCount < MAX_VLAN_TAGS && VLAN_ETHER_TYPES.has(etherType);
+      tagCount += 1) {
+      requirePacketBytes(view, payloadOffset, capturedLength, ipOffset, 4, 'VLAN tag');
+      vlanIds.push(view.getUint16(payloadOffset + ipOffset, false) & 0x0fff);
+      etherType = view.getUint16(payloadOffset + ipOffset + 2, false);
+      ipOffset += 4;
+    }
+
+    const vlanFields = vlanIds.length === 1
+      ? { vlanId: vlanIds[0] }
+      : vlanIds.length === 2
+        ? { outerVlanId: vlanIds[0], innerVlanId: vlanIds[1] }
+        : {};
+
     if (etherType === 0x86dd) {
-      const ipOffset = 14;
       requirePacketBytes(view, payloadOffset, capturedLength, ipOffset, 40, 'IPv6 header');
       const version = view.getUint8(payloadOffset + ipOffset) >> 4;
       if (version !== 6) return {};
@@ -141,6 +159,7 @@ function decodeEthernetPacket(view, payloadOffset, capturedLength) {
         protocol,
         protocolName: getProtocolName(protocol),
         payloadLength,
+        ...vlanFields,
       };
 
       if (protocol === 6 || protocol === 17) {
@@ -154,7 +173,6 @@ function decodeEthernetPacket(view, payloadOffset, capturedLength) {
     }
     if (etherType !== 0x0800) return {};
 
-    const ipOffset = 14;
     requirePacketBytes(view, payloadOffset, capturedLength, ipOffset, 20, 'IPv4 header');
     const ipv4VersionAndHeaderLength = view.getUint8(payloadOffset + ipOffset);
     const version = ipv4VersionAndHeaderLength >> 4;
@@ -174,6 +192,7 @@ function decodeEthernetPacket(view, payloadOffset, capturedLength) {
       protocol,
       protocolName: getProtocolName(protocol),
       totalLength: view.getUint16(payloadOffset + ipOffset + 2, false),
+      ...vlanFields,
     };
 
     if (protocol === 6 || protocol === 17) {

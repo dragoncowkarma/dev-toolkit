@@ -61,6 +61,20 @@ function makeEthernetIpv6Packet({ protocol, extensionHeaders = [], ports = [] } 
   return Array.from(payload);
 }
 
+function addVlanTags(packet, vlanTags) {
+  const taggedPacket = new Uint8Array(packet.length + vlanTags.length * 4);
+  taggedPacket.set(packet.slice(0, 12));
+  const view = new DataView(taggedPacket.buffer);
+  let tagOffset = 12;
+  for (const { etherType, vlanId } of vlanTags) {
+    view.setUint16(tagOffset, etherType, false);
+    view.setUint16(tagOffset + 2, vlanId, false);
+    tagOffset += 4;
+  }
+  taggedPacket.set(packet.slice(12), tagOffset);
+  return Array.from(taggedPacket);
+}
+
 function joinBuffers(buffers) {
   const byteLength = buffers.reduce((total, buffer) => total + buffer.byteLength, 0);
   const result = new Uint8Array(byteLength);
@@ -157,6 +171,56 @@ describe('parsePcap', () => {
     expect(result.packets[0]).toMatchObject({
       protocol: 17, protocolName: 'UDP', sourcePort: 53, destPort: 53000,
     });
+  });
+
+  it('decodes 802.1Q-tagged Ethernet, IPv4, and TCP headers', () => {
+    const result = parsePcap(makePcap({
+      payload: addVlanTags(
+        makeEthernetIpv4Packet({ protocol: 6, ports: [1, 187, 31, 144] }),
+        [{ etherType: 0x8100, vlanId: 42 }],
+      ),
+    }));
+    expect(result.packets[0]).toMatchObject({
+      etherType: 0x0800, vlanId: 42, protocolName: 'TCP', sourcePort: 443, destPort: 8080,
+    });
+  });
+
+  it('decodes 802.1Q-tagged Ethernet, IPv6, and UDP headers', () => {
+    const result = parsePcap(makePcap({
+      payload: addVlanTags(
+        makeEthernetIpv6Packet({ protocol: 17, ports: [0, 53, 207, 8] }),
+        [{ etherType: 0x8100, vlanId: 314 }],
+      ),
+    }));
+    expect(result.packets[0]).toMatchObject({
+      etherType: 0x86dd, vlanId: 314, protocolName: 'UDP', sourcePort: 53, destPort: 53000,
+    });
+  });
+
+  it('decodes QinQ-tagged Ethernet, IPv4, and exposes both VLAN IDs', () => {
+    const result = parsePcap(makePcap({
+      payload: addVlanTags(
+        makeEthernetIpv4Packet({ protocol: 6, ports: [1, 187, 31, 144] }),
+        [
+          { etherType: 0x88a8, vlanId: 100 },
+          { etherType: 0x8100, vlanId: 200 },
+        ],
+      ),
+    }));
+    expect(result.packets[0]).toMatchObject({
+      etherType: 0x0800, outerVlanId: 100, innerVlanId: 200, protocolName: 'TCP',
+    });
+  });
+
+  it('leaves truncated VLAN-tagged Ethernet frames undecoded', () => {
+    const payload = new Uint8Array(16);
+    const view = new DataView(payload.buffer);
+    view.setUint16(12, 0x8100, false);
+    view.setUint16(14, 42, false);
+    const result = parsePcap(makePcap({ payload: Array.from(payload) }));
+    expect(result.packets).toHaveLength(1);
+    expect(result.packets[0]).not.toHaveProperty('etherType');
+    expect(result.packets[0]).not.toHaveProperty('vlanId');
   });
 
   it('leaves unsupported Ethernet packets undecoded', () => {
