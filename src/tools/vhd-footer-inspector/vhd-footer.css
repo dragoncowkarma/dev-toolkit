@@ -1,0 +1,122 @@
+.vhd-footer-inspector {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+}
+
+.vhd-footer-inspector__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.vhd-footer-inspector__file-button,
+.vhd-footer-inspector__button {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  padding: 0.5rem 1rem;
+}
+
+.vhd-footer-inspector__file-button {
+  overflow: hidden;
+  position: relative;
+}
+
+.vhd-footer-inspector__file-input {
+  cursor: pointer;
+  inset: 0;
+  opacity: 0;
+  position: absolute;
+}
+
+.vhd-footer-inspector__label {
+  color: var(--color-text-muted);
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.5rem;
+  text-transform: uppercase;
+}
+
+.vhd-footer-inspector__input,
+.vhd-footer-inspector__hex {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-sizing: border-box;
+  color: var(--color-text);
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+  padding: 1rem;
+  width: 100%;
+}
+
+.vhd-footer-inspector__input {
+  min-height: 10rem;
+  resize: vertical;
+}
+
+.vhd-footer-inspector__error,
+.vhd-footer-inspector__checksum {
+  border-radius: var(--radius);
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+}
+
+.vhd-footer-inspector__error,
+.vhd-footer-inspector__checksum.is-invalid {
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  color: var(--color-error-light);
+}
+
+.vhd-footer-inspector__checksum.is-valid {
+  background: var(--color-success-bg);
+  border: 1px solid var(--color-success-border);
+  color: var(--color-success-light);
+}
+
+.vhd-footer-inspector__table-wrap {
+  margin: 1rem 0;
+  overflow-x: auto;
+}
+
+.vhd-footer-inspector table {
+  border-collapse: collapse;
+  min-width: 650px;
+  width: 100%;
+}
+
+.vhd-footer-inspector caption {
+  color: var(--color-text-muted);
+  margin-bottom: 0.5rem;
+  text-align: left;
+}
+
+.vhd-footer-inspector th,
+.vhd-footer-inspector td {
+  border: 1px solid var(--color-border);
+  padding: 0.65rem;
+  text-align: left;
+}
+
+.vhd-footer-inspector th {
+  background: var(--color-surface);
+  white-space: nowrap;
+}
+
+.vhd-footer-inspector__hex {
+  line-height: 1.5;
+  overflow: auto;
+}
+
+@media (min-width: 768px) {
+  .vhd-footer-inspector {
+    padding: 0 2rem 3rem;
+  }
+}
