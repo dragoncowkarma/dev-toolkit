@@ -1,0 +1,242 @@
+.zlib-inspector {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.zlib-inspector__header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.zlib-inspector__title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.zlib-inspector__description {
+  color: var(--color-text-muted);
+  font-size: 0.95rem;
+}
+
+.zlib-inspector__samples {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.zlib-inspector__samples-label {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+.zlib-inspector__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 0.45rem 0.9rem;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.zlib-inspector__btn:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.zlib-inspector__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.zlib-inspector__input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.zlib-inspector__label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.zlib-inspector__textarea {
+  width: 100%;
+  min-height: 100px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.9rem;
+  padding: 0.75rem 1rem;
+  resize: vertical;
+  line-height: 1.5;
+  transition: border-color var(--transition);
+}
+
+.zlib-inspector__textarea:focus {
+  outline: none;
+  border-color: var(--color-primary-light);
+}
+
+.zlib-inspector__dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 1.5rem 1rem;
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  text-align: center;
+  cursor: pointer;
+  transition: all var(--transition);
+  position: relative;
+}
+
+.zlib-inspector__dropzone:hover,
+.zlib-inspector__dropzone--active {
+  border-color: var(--color-primary);
+  background: var(--color-surface-hover);
+}
+
+.zlib-inspector__file-input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  width: 100%;
+  height: 100%;
+}
+
+.zlib-inspector__dropzone-text {
+  font-size: 0.9rem;
+  color: var(--color-text);
+}
+
+.zlib-inspector__dropzone-hint {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.zlib-inspector__error {
+  padding: 0.75rem 1rem;
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  color: var(--color-error-light);
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.zlib-inspector__results {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.zlib-inspector__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.zlib-inspector__card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.zlib-inspector__card-label {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+
+.zlib-inspector__card-value {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.zlib-inspector__card-detail {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.zlib-inspector__badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  width: fit-content;
+}
+
+.zlib-inspector__badge--valid {
+  background: rgba(52, 211, 153, 0.15);
+  color: var(--color-success);
+}
+
+.zlib-inspector__badge--invalid {
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+}
+
+.zlib-inspector__hexdump {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.zlib-inspector__hexdump-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.zlib-inspector__hexdump-header h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.zlib-inspector__code {
+  background: var(--color-code-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  overflow-x: auto;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.85rem;
+  color: var(--color-text);
+  line-height: 1.4;
+  white-space: pre;
+}
