@@ -1,0 +1,94 @@
+.rtf-inspector {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+}
+
+.rtf-inspector__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.rtf-inspector__button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  padding: 0.5rem 1rem;
+}
+
+.rtf-inspector__button:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.rtf-inspector__file-button input {
+  cursor: pointer;
+  inset: 0;
+  opacity: 0;
+  position: absolute;
+  width: 100%;
+}
+
+.rtf-inspector__file-name,
+.rtf-inspector__section > p {
+  color: var(--color-text-muted);
+}
+
+.rtf-inspector__error {
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  color: var(--color-error-light);
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+}
+
+.rtf-inspector__results {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.rtf-inspector__section {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  overflow-x: auto;
+  padding: 1rem;
+}
+
+.rtf-inspector__section h2 {
+  font-size: 1rem;
+  margin: 0 0 0.75rem;
+}
+
+.rtf-inspector__summary {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  margin: 0;
+}
+
+.rtf-inspector__summary div { display: grid; gap: 0.2rem; }
+.rtf-inspector__summary dt { color: var(--color-text-muted); font-size: 0.8rem; }
+.rtf-inspector__summary dd { margin: 0; }
+
+.rtf-inspector table { border-collapse: collapse; min-width: 480px; width: 100%; }
+.rtf-inspector th,
+.rtf-inspector td {
+  border-bottom: 1px solid var(--color-border);
+  padding: 0.5rem;
+  text-align: left;
+}
+.rtf-inspector th { color: var(--color-text-muted); font-size: 0.8rem; }
+
+@media (min-width: 768px) {
+  .rtf-inspector { padding: 0 2rem 3rem; }
+}
