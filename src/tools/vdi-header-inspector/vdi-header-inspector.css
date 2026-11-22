@@ -1,0 +1,238 @@
+.vdi-inspector-tool {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.vdi-inspector-tool .vdi-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.vdi-inspector-tool .toolbar-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.vdi-inspector-tool .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.vdi-inspector-tool .btn:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.vdi-inspector-tool .btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.vdi-inspector-tool .file-btn {
+  position: relative;
+  overflow: hidden;
+}
+
+.vdi-inspector-tool .file-btn:focus-within {
+  outline: 2px solid var(--color-primary-light);
+  outline-offset: 3px;
+}
+
+.vdi-inspector-tool .file-input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  width: 100%;
+}
+
+.vdi-inspector-tool .vdi-panels {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.vdi-inspector-tool .panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.vdi-inspector-tool .panel-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.vdi-inspector-tool .panel-textarea {
+  width: 100%;
+  min-height: 100px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.85rem;
+  color: var(--color-text);
+  resize: vertical;
+  transition: border-color var(--transition);
+}
+
+.vdi-inspector-tool .panel-textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.vdi-inspector-tool .vdi-dropzone {
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  text-align: center;
+  background: var(--color-surface);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.vdi-inspector-tool .vdi-dropzone.dragging {
+  border-color: var(--color-primary);
+  background: rgba(var(--color-primary-rgb, 99, 102, 241), 0.05);
+}
+
+.vdi-inspector-tool .dropzone-text {
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+}
+
+.vdi-inspector-tool .vdi-error {
+  padding: 0.75rem 1rem;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: var(--radius);
+  color: #ef4444;
+  font-size: 0.9rem;
+}
+
+.vdi-inspector-tool .vdi-results {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+}
+
+.vdi-inspector-tool .results-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.vdi-inspector-tool .results-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text);
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 0.5rem;
+}
+
+.vdi-inspector-tool .fields-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+
+.vdi-inspector-tool .field-card {
+  background: var(--color-bg, #1a1a24);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.vdi-inspector-tool .field-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.vdi-inspector-tool .field-value {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.9rem;
+  color: var(--color-text);
+  word-break: break-all;
+}
+
+.vdi-inspector-tool .field-badge {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 0.8rem;
+  text-transform: capitalize;
+}
+
+.vdi-inspector-tool .badge-dynamic {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+}
+
+.vdi-inspector-tool .badge-fixed {
+  background: rgba(59, 130, 246, 0.15);
+  color: #3b82f6;
+}
+
+.vdi-inspector-tool .badge-differencing {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+}
+
+.vdi-inspector-tool .badge-unknown {
+  background: rgba(156, 163, 175, 0.15);
+  color: #9ca3af;
+}
+
+.vdi-inspector-tool .hex-dump-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.vdi-inspector-tool .hex-dump {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  background: var(--color-bg, #121218);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--color-text);
+  overflow-x: auto;
+  white-space: pre;
+}
