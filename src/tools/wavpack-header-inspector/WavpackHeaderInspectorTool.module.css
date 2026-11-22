@@ -1,0 +1,118 @@
+.inspector {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  color: var(--color-text);
+}
+
+.input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+.dropzone {
+  display: flex;
+  min-height: 180px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  text-align: center;
+  transition: border-color var(--transition), background var(--transition);
+}
+
+.dropzone strong {
+  color: var(--color-text);
+}
+
+.dropzone:hover,
+.dropzone:focus-visible,
+.dropzoneDragging {
+  border-color: var(--color-primary);
+  background: var(--color-bg);
+  outline: none;
+}
+
+.filename {
+  margin: 1rem 0;
+  color: var(--color-text-muted);
+}
+
+.error {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+}
+
+.warning {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.warning ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1.25rem;
+}
+
+.results {
+  display: grid;
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+.results section {
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.results h3 {
+  margin-top: 0;
+}
+
+.metadata {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.metadata div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.metadata dt {
+  color: var(--color-text-muted);
+}
+
+.metadata dd {
+  margin: 0;
+  text-align: right;
+}
+
+@media (min-width: 640px) {
+  .inspector {
+    padding: 0 2rem 3rem;
+  }
+
+  .metadata {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
