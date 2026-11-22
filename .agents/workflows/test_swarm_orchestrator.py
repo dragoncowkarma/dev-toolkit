@@ -797,6 +797,24 @@ class AiArgvTests(unittest.TestCase):
 
         self.assertEqual("gemini-4-argon-high", argv[argv.index("--model") + 1])
 
+    def test_antigravity_neon_and_hydrogen_reach_xhigh(self):
+        for tagged, slug in (("gemini 4 neon", "gemini-4-neon-xhigh"),
+                             ("gemini 4 hydrogen", "gemini-4-hydrogen-xhigh")):
+            with self.subTest(model=tagged):
+                argv = swarm.build_ai_argv(
+                    "antigravity", tagged, "울트라", self.prompt_file, "/repo",
+                )
+                self.assertEqual(slug, argv[argv.index("--model") + 1])
+
+    def test_antigravity_accepts_an_xhigh_qualified_slug(self):
+        argv = swarm.build_ai_argv(
+            "antigravity", "gemini-4-neon-xhigh", "중간", self.prompt_file, "/repo",
+        )
+
+        self.assertEqual(
+            "gemini-4-neon-medium", argv[argv.index("--model") + 1],
+        )
+
     def test_antigravity_falls_back_to_default_for_unknown_model(self):
         argv = swarm.build_ai_argv(
             "antigravity", "gemini 9 nonexistent", "high", self.prompt_file, "/repo",
@@ -808,26 +826,26 @@ class AiArgvTests(unittest.TestCase):
 
     def test_claude_resolves_model_and_effort(self):
         argv = swarm.build_ai_argv(
-            "claude", "sonnet 5", "중간", self.prompt_file, "/repo",
+            "claude", "sonnet 5.5", "중간", self.prompt_file, "/repo",
         )
 
-        self.assertEqual("claude-sonnet-5", argv[argv.index("--model") + 1])
+        self.assertEqual("claude-sonnet-5-5", argv[argv.index("--model") + 1])
         self.assertEqual("medium", argv[argv.index("--effort") + 1])
 
     def test_claude_resolves_current_haiku_without_a_dated_suffix(self):
         argv = swarm.build_ai_argv(
-            "claude", "haiku 4.5", "낮음", self.prompt_file, "/repo",
+            "claude", "haiku 5.5", "낮음", self.prompt_file, "/repo",
         )
 
-        self.assertEqual("claude-haiku-4-5", argv[argv.index("--model") + 1])
+        self.assertEqual("claude-haiku-5-5", argv[argv.index("--model") + 1])
         self.assertEqual("low", argv[argv.index("--effort") + 1])
 
     def test_claude_clamps_effort_to_its_top_rung(self):
         argv = swarm.build_ai_argv(
-            "claude", "opus 5", "울트라", self.prompt_file, "/repo",
+            "claude", "opus 5.5", "울트라", self.prompt_file, "/repo",
         )
 
-        self.assertEqual("claude-opus-5", argv[argv.index("--model") + 1])
+        self.assertEqual("claude-opus-5-5", argv[argv.index("--model") + 1])
         self.assertEqual("max", argv[argv.index("--effort") + 1])
 
     def test_codex_passes_reasoning_effort_as_a_config_override(self):
@@ -854,7 +872,7 @@ class AiArgvTests(unittest.TestCase):
             "codex", "5.4 mini", "중간", self.prompt_file, "/repo",
         )
 
-        self.assertEqual("gpt-5.6-luna", argv[argv.index("-m") + 1])
+        self.assertEqual("gpt-6-luna", argv[argv.index("-m") + 1])
 
     def test_retired_model_names_from_pr_comments_still_resolve(self):
         """Maintainer tags live in PR comments, which cannot be rewritten.
@@ -863,14 +881,22 @@ class AiArgvTests(unittest.TestCase):
         resolve to a model the CLI accepts, or the lifecycle deadlocks.
         """
         cases = [
-            ("claude", "claude 3.7 sonnet", "claude-sonnet-5"),
-            ("claude", "sonnet 3.7", "claude-sonnet-5"),
-            ("claude", "sonnet 4.6", "claude-sonnet-5"),
-            ("claude", "opus 4.8", "claude-opus-5"),
-            ("claude", "haiku 3.5", "claude-haiku-4-5"),
-            ("codex", "gpt-5.1-codex-max", "gpt-5.6-terra"),
-            ("codex", "gpt-5.2-codex", "gpt-5.6-terra"),
-            ("codex", "5.5", "gpt-5.6-terra"),
+            ("claude", "claude 3.7 sonnet", "claude-sonnet-5-5"),
+            ("claude", "sonnet 3.7", "claude-sonnet-5-5"),
+            ("claude", "sonnet 4.6", "claude-sonnet-5-5"),
+            ("claude", "opus 4.8", "claude-opus-5-5"),
+            ("claude", "haiku 3.5", "claude-haiku-5-5"),
+            # The previous generation's presets, still on open PRs' tags.
+            ("claude", "sonnet 5", "claude-sonnet-5-5"),
+            ("claude", "opus 5", "claude-opus-5-5"),
+            ("claude", "haiku 4.5", "claude-haiku-5-5"),
+            ("claude", "fable 5", "claude-fable-5-2"),
+            ("claude", "claude-opus-5", "claude-opus-5-5"),
+            ("codex", "gpt-5.1-codex-max", "gpt-6.1-terra"),
+            ("codex", "gpt-5.2-codex", "gpt-6.1-terra"),
+            ("codex", "5.5", "gpt-6.1-terra"),
+            # 5.6 is still listed by `codex debug models`, so it stays as-is.
+            ("codex", "5.6 terra", "gpt-5.6-terra"),
         ]
         for ai, tagged, expected in cases:
             with self.subTest(ai=ai, model=tagged):
@@ -1131,13 +1157,18 @@ class MakerCheckerModelFamilyTests(unittest.TestCase):
                 )
 
 
-# Transcribed verbatim from the installed CLIs on 2026-10-21:
+# Transcribed verbatim from the installed CLIs on 2026-11-21
+# (codex-cli 0.169.0, agy 1.5.13, Claude Code 2.1.330):
 #   `agy models`         -> slug per line
 #   `codex debug models` -> slug + supported_reasoning_levels + visibility
 # These literals are the only thing standing between a mis-transcribed effort
 # table and a dispatch the CLI rejects, so they are asserted independently of
 # the orchestrator's own tables. Refresh them together, never one alone.
 EXPECTED_AGY_SLUGS = {
+    "gemini-4-neon-low", "gemini-4-neon-medium", "gemini-4-neon-high",
+    "gemini-4-neon-xhigh",
+    "gemini-4-hydrogen-low", "gemini-4-hydrogen-medium",
+    "gemini-4-hydrogen-high", "gemini-4-hydrogen-xhigh",
     "gemini-4-argon-low", "gemini-4-argon-medium", "gemini-4-argon-high",
     "gemini-3.8-flash-low", "gemini-3.8-flash-medium", "gemini-3.8-flash-high",
     "claude-opus-5-5-low", "claude-opus-5-5-medium", "claude-opus-5-5-high",
@@ -1145,14 +1176,28 @@ EXPECTED_AGY_SLUGS = {
     "gpt-oss-120b-medium",
 }
 
+# agy's own orchestrator agents: listed by `agy models` but carry no effort
+# suffix and are never dispatched for a swarm role.
+EXPECTED_AGY_INTERNAL_SLUGS = {
+    "gemini-pro-orchestrator-neon", "gemini-pro-orchestrator-g1-pro",
+}
+
 EXPECTED_CODEX_PRESETS = {
+    "gpt-6.2-sol":   ("low", "medium", "high", "xhigh", "max", "ultra"),
+    "gpt-6.2-astra": ("low", "medium", "high", "xhigh", "max", "ultra"),
+    "gpt-6.1-terra": ("low", "medium", "high", "xhigh", "max", "ultra"),
+    "gpt-6.1-sol":   ("low", "medium", "high", "xhigh", "max", "ultra"),
+    "gpt-6-astra":   ("low", "medium", "high", "xhigh", "max", "ultra"),
+    "gpt-6-sol":     ("low", "medium", "high", "xhigh", "max", "ultra"),
+    "gpt-6-luna":    ("low", "medium", "high", "xhigh", "max"),
     "gpt-5.6-sol":   ("low", "medium", "high", "xhigh", "max", "ultra"),
     "gpt-5.6-terra": ("low", "medium", "high", "xhigh", "max", "ultra"),
     "gpt-5.6-luna":  ("low", "medium", "high", "xhigh", "max"),
 }
 
 EXPECTED_CLAUDE_MODELS = {
-    "claude-opus-5", "claude-sonnet-5", "claude-fable-5", "claude-haiku-4-5",
+    "claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-2",
+    "claude-haiku-5-5",
 }
 
 
@@ -1178,12 +1223,12 @@ class TranscribedInventoryTests(unittest.TestCase):
     def test_codex_preset_efforts_match_the_published_catalog(self):
         self.assertEqual(EXPECTED_CODEX_PRESETS, swarm._CODEX_MODEL_EFFORTS)
 
-    def test_only_sol_and_terra_accept_ultra(self):
-        with_ultra = {
+    def test_only_luna_is_denied_ultra(self):
+        without_ultra = {
             slug for slug, efforts in swarm._CODEX_MODEL_EFFORTS.items()
-            if "ultra" in efforts
+            if "ultra" not in efforts
         }
-        self.assertEqual({"gpt-5.6-sol", "gpt-5.6-terra"}, with_ultra)
+        self.assertEqual({"gpt-6-luna", "gpt-5.6-luna"}, without_ultra)
 
     def test_claude_aliases_cover_exactly_the_current_generation(self):
         self.assertEqual(
@@ -1211,7 +1256,7 @@ class TranscribedInventoryTests(unittest.TestCase):
             if "\t" in line
         }
         self.assertEqual(
-            EXPECTED_AGY_SLUGS, live_agy,
+            EXPECTED_AGY_SLUGS | EXPECTED_AGY_INTERNAL_SLUGS, live_agy,
             "`agy models` has changed -- update EXPECTED_AGY_SLUGS, "
             "_AGY_MODEL_EFFORTS and AGENTS.md section 3 together",
         )
@@ -1300,7 +1345,7 @@ class RoleReasoningOverrideCompositionTests(unittest.TestCase):
                                               "reviewer": "medium",
                                               "maintainer": "low",
                                               "worker_revise": "medium"},
-            ("claude", "opus 5"):            {"worker": "max",
+            ("claude", "opus 5.5"):          {"worker": "max",
                                               "reviewer": "medium",
                                               "maintainer": "low",
                                               "worker_revise": "medium"},
@@ -1325,9 +1370,10 @@ class RoleReasoningOverrideCompositionTests(unittest.TestCase):
         set instead.
         """
         presets = {
-            "codex": ["5.6 sol", "5.6 terra", "5.6 luna"],
-            "antigravity": ["gemini 3.8 flash", "gemini 4 argon"],
-            "claude": ["sonnet 5", "opus 5", "haiku 4.5"],
+            "codex": ["6.2 sol", "6.2 astra", "6.1 terra", "6 luna"],
+            "antigravity": ["gemini 3.8 flash", "gemini 4 argon",
+                            "gemini 4 neon", "gemini 4 hydrogen"],
+            "claude": ["sonnet 5.5", "opus 5.5", "haiku 5.5", "fable 5.2"],
         }
         for role in swarm.ROLE_REASONING_OVERRIDE:
             for ai, models in presets.items():
@@ -2078,7 +2124,7 @@ class PollingLifecycleTests(unittest.TestCase):
         dispatch_maintainer.assert_called_once()
         maintainer_arg = dispatch_maintainer.call_args[0][2]
         self.assertEqual("claude", maintainer_arg.ai)
-        self.assertEqual("sonnet 5", maintainer_arg.model)
+        self.assertEqual("sonnet 5.5", maintainer_arg.model)
         self.assertEqual("높음", maintainer_arg.reasoning)
 
     def test_select_maintainer_excludes_reviewer_and_worker(self):
@@ -3591,16 +3637,20 @@ class ModelAvailabilityTests(unittest.TestCase):
         # Codex presets and CLI models
         for codex_model in EXPECTED_CODEX_PRESETS:
             self.assertIn(codex_model, swarm.AVAILABLE_MODELS["codex"])
-        self.assertIn("5.6 terra", swarm.AVAILABLE_MODELS["codex"])
-        self.assertIn("5.6 sol", swarm.AVAILABLE_MODELS["codex"])
-        self.assertIn("5.6 luna", swarm.AVAILABLE_MODELS["codex"])
+        for preset in ("6.1 terra", "6.2 sol", "6.2 astra", "6 luna",
+                       "5.6 terra", "5.6 sol", "5.6 luna"):
+            self.assertIn(preset, swarm.AVAILABLE_MODELS["codex"])
 
         # Claude models and presets
         for claude_model in EXPECTED_CLAUDE_MODELS:
             self.assertIn(claude_model, swarm.AVAILABLE_MODELS["claude"])
-        self.assertIn("sonnet 5", swarm.AVAILABLE_MODELS["claude"])
-        self.assertIn("opus 5", swarm.AVAILABLE_MODELS["claude"])
-        self.assertIn("haiku 4.5", swarm.AVAILABLE_MODELS["claude"])
+        for preset in ("sonnet 5.5", "opus 5.5", "haiku 5.5", "fable 5.2"):
+            self.assertIn(preset, swarm.AVAILABLE_MODELS["claude"])
+        # Retired presets are no longer listed but still validate via the map.
+        self.assertEqual(
+            ("sonnet 5", "높음"),
+            swarm.validate_model_availability("claude", "sonnet 5", "높음"),
+        )
 
     def test_valid_preset_models_pass_validation_unchanged(self):
         test_cases = [
@@ -3680,19 +3730,19 @@ class ModelAvailabilityTests(unittest.TestCase):
         # custom designation must be caught by default and fall back to agent presets.
         with self.assertLogs(swarm.log, level="WARNING") as captured:
             model, reasoning = swarm.validate_model_availability("claude", "claude-opus-6", "high")
-        self.assertEqual("sonnet 5", model)
+        self.assertEqual("sonnet 5.5", model)
         self.assertEqual("높음", reasoning)
         self.assertTrue(any("Model 'claude-opus-6'" in line for line in captured.output))
 
         with self.assertLogs(swarm.log, level="WARNING") as captured:
             model, reasoning = swarm.validate_model_availability("codex", "gpt-5.7-nova", "high")
-        self.assertEqual("5.6 terra", model)
+        self.assertEqual("6.1 terra", model)
         self.assertEqual("높음", reasoning)
         self.assertTrue(any("Model 'gpt-5.7-nova'" in line for line in captured.output))
 
         with self.assertLogs(swarm.log, level="WARNING") as captured:
             model, reasoning = swarm.validate_model_availability("claude", "opus 6", "높음")
-        self.assertEqual("sonnet 5", model)
+        self.assertEqual("sonnet 5.5", model)
         self.assertEqual("높음", reasoning)
         self.assertTrue(any("Model 'opus 6'" in line for line in captured.output))
 
@@ -3701,14 +3751,14 @@ class ModelAvailabilityTests(unittest.TestCase):
             model, reasoning = swarm.validate_model_availability(
                 "codex", "claude-sonnet-5", "높음"
             )
-        self.assertEqual("5.6 terra", model)
+        self.assertEqual("6.1 terra", model)
         self.assertEqual("높음", reasoning)
 
         with self.assertLogs(swarm.log, level="WARNING"):
             model, reasoning = swarm.validate_model_availability(
                 "claude", "gpt-5.6-terra", "high"
             )
-        self.assertEqual("sonnet 5", model)
+        self.assertEqual("sonnet 5.5", model)
         self.assertEqual("높음", reasoning)
 
     def test_invalid_codex_model_warns_and_falls_back_to_default(self):
@@ -3716,7 +3766,7 @@ class ModelAvailabilityTests(unittest.TestCase):
             model, reasoning = swarm.validate_model_availability(
                 "codex", "nonexistent-codex-model", "중간"
             )
-        self.assertEqual("5.6 terra", model)
+        self.assertEqual("6.1 terra", model)
         self.assertEqual("높음", reasoning)
         self.assertTrue(any("is not available for codex" in line for line in captured.output))
 
@@ -3725,7 +3775,7 @@ class ModelAvailabilityTests(unittest.TestCase):
             model, reasoning = swarm.validate_model_availability(
                 "claude", "claude-fake-99", "low"
             )
-        self.assertEqual("sonnet 5", model)
+        self.assertEqual("sonnet 5.5", model)
         self.assertEqual("높음", reasoning)
         self.assertTrue(any("is not available for claude" in line for line in captured.output))
 
@@ -3763,7 +3813,7 @@ class ModelAvailabilityTests(unittest.TestCase):
                 swarm.dispatch_worker(issue, dry_run=True)
 
         called_model = build_argv.call_args[0][1]
-        self.assertEqual("5.6 terra", called_model)
+        self.assertEqual("6.1 terra", called_model)
 
     def test_dispatch_reviewer_validates_and_replaces_invalid_model(self):
         pr = swarm.TaskPR(
@@ -3782,7 +3832,7 @@ class ModelAvailabilityTests(unittest.TestCase):
                 swarm.dispatch_reviewer(pr, worker=None, dry_run=True)
 
         called_model = build_argv.call_args[0][1]
-        self.assertEqual("sonnet 5", called_model)
+        self.assertEqual("sonnet 5.5", called_model)
 
     def test_dispatch_maintainer_validates_and_replaces_invalid_model(self):
         pr = swarm.TaskPR(
@@ -3800,7 +3850,7 @@ class ModelAvailabilityTests(unittest.TestCase):
                 swarm.dispatch_maintainer(pr, issue=None, maintainer=maintainer, dry_run=True)
 
         called_model = build_argv.call_args[0][1]
-        self.assertEqual("5.6 terra", called_model)
+        self.assertEqual("6.1 terra", called_model)
 
     def test_dispatch_worker_revision_validates_and_replaces_invalid_model(self):
         pr = swarm.TaskPR(

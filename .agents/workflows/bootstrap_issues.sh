@@ -43,7 +43,7 @@ src/
 
 ---
 
-[Worker: codex | Model: 5.6 luna | Reasoning: 최대]
+[Worker: codex | Model: 6 luna | Reasoning: 최대]
 
 > 이 Issue는 자율 AI 스웜에 의해 자동 생성되었습니다."
 
@@ -83,7 +83,7 @@ src/tools/base64/
 
 ---
 
-[Worker: claude | Model: sonnet 5 | Reasoning: 높음]
+[Worker: claude | Model: sonnet 5.5 | Reasoning: 높음]
 
 > 이 Issue는 자율 AI 스웜에 의해 자동 생성되었습니다."
 

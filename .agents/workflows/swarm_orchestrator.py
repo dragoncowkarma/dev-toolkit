@@ -209,9 +209,9 @@ DEFAULT_ROTATION = {
 # Default model and reasoning configurations for each AI agent.
 # Must stay in sync with the AGENTS.md section 3 "Default Preset" column.
 DEFAULT_AI_CONFIG: dict[str, dict[str, str]] = {
-    "codex":       {"model": "5.6 terra",        "reasoning": "높음"},
+    "codex":       {"model": "6.1 terra",        "reasoning": "높음"},
     "antigravity": {"model": "gemini 3.8 flash", "reasoning": "high"},
-    "claude":      {"model": "sonnet 5",         "reasoning": "높음"},
+    "claude":      {"model": "sonnet 5.5",       "reasoning": "높음"},
 }
 
 # Role-specific reasoning overrides (lower = fewer thinking tokens).
@@ -2174,21 +2174,22 @@ EXECUTION_INTEGRITY_NOTICE = (
 # ---------------------------------------------------------------------------
 # Model and reasoning resolution
 #
-# Verified against the installed CLIs on 2026-10-21:
-#   codex  model table : GPT-5.6-Sol, GPT-5.6-Terra, GPT-5.6-Luna.  GPT-5.4 and
-#                        GPT-5.4 Mini are retired; Codex migrates them to Terra
-#                        and Luna respectively.
-#   `agy models`       : gemini-4-argon-*, gemini-3.8-flash-*, claude-opus-5-5-*,
+# Verified against the installed CLIs on 2026-11-21:
+#   `codex debug models`: GPT-6.1-Terra, GPT-6.2-Sol, GPT-6.2-Astra, GPT-6-Luna
+#                        are the current presets; GPT-5.6-Sol/-Terra/-Luna,
+#                        GPT-6.1-Sol and GPT-6-Sol/-Astra remain valid tags but
+#                        are no longer presets.
+#   `agy models`       : gemini-4-argon-*, gemini-4-neon-*, gemini-4-hydrogen-*,
+#                        gemini-3.8-flash-*, claude-opus-5-5-*,
 #                        claude-sonnet-5-5-*, gpt-oss-120b-medium.
-#                        Gemini 3.6 Flash and Gemini 3.1 Pro are gone.
-#   claude             : claude-opus-5, claude-sonnet-5, claude-fable-5,
-#                        claude-haiku-4-5 (plus the opus/sonnet/haiku/fable
+#   claude             : claude-opus-5-5, claude-sonnet-5-5, claude-fable-5-2,
+#                        claude-haiku-5-5 (plus the opus/sonnet/haiku/fable
 #                        aliases).  NOT from `claude --help`, which names none
 #                        of these -- read from the `latest_per_family` table
 #                        embedded in the CLI binary.  See AGENTS.md section 3
 #                        for the exact command.
 #
-# Re-verify with `agy models`, `claude --help` and a `codex exec` dry dispatch
+# Re-verify with `agy models`, `claude --help` and `codex debug models`
 # whenever a provider ships a new generation, then update AGENTS.md section 3
 # and the tables below together.
 # ---------------------------------------------------------------------------
@@ -2260,7 +2261,14 @@ def _resolve_effort(reasoning: str, supported: tuple[str, ...]) -> str:
 # --- antigravity (agy) -----------------------------------------------------
 # agy bakes the effort into the model id ("gemini-4-argon-high") and rejects
 # --effort for those ids, so the resolved slug has to carry both.
+# Neon and Hydrogen add an `xhigh` rung; Argon and Flash stop at `high`.
+# `agy models` also lists `gemini-pro-orchestrator-neon` and
+# `gemini-pro-orchestrator-g1-pro`, which carry no effort suffix and are agy's
+# own orchestrator agents, not dispatchable role models — they stay out of
+# this table (TranscribedInventoryTests pins them as EXPECTED_AGY_INTERNAL_SLUGS).
 _AGY_MODEL_EFFORTS: dict[str, tuple[str, ...]] = {
+    "gemini-4-neon":     ("low", "medium", "high", "xhigh"),
+    "gemini-4-hydrogen": ("low", "medium", "high", "xhigh"),
     "gemini-4-argon":    ("low", "medium", "high"),
     "gemini-3.8-flash":  ("low", "medium", "high"),
     "claude-opus-5-5":   ("low", "medium", "high"),
@@ -2270,6 +2278,10 @@ _AGY_MODEL_EFFORTS: dict[str, tuple[str, ...]] = {
 
 _AGY_MODEL_ALIAS: dict[str, str] = {
     # AGENTS.md presets
+    "gemini 4 neon":     "gemini-4-neon",
+    "neon":              "gemini-4-neon",
+    "gemini 4 hydrogen": "gemini-4-hydrogen",
+    "hydrogen":          "gemini-4-hydrogen",
     "gemini 4 argon":    "gemini-4-argon",
     "argon":             "gemini-4-argon",
     "gemini 3.8 flash":  "gemini-3.8-flash",
@@ -2291,7 +2303,7 @@ _AGY_ALIAS_SLUGS: dict[str, str] = {
     for alias, stem in _AGY_MODEL_ALIAS.items()
 }
 
-_AGY_SLUG_SUFFIX_RE = re.compile(r"^(?P<stem>.+?)-(?:low|medium|high)$")
+_AGY_SLUG_SUFFIX_RE = re.compile(r"^(?P<stem>.+?)-(?:low|medium|high|xhigh)$")
 
 # Stem used when a tag names no known antigravity model.  MUST be a key of
 # _AGY_MODEL_EFFORTS; ModelTableIntegrityTests asserts that.
@@ -2398,107 +2410,140 @@ def _resolve_agy_model(model: str, reasoning: str) -> str:
 _CLAUDE_EFFORTS: tuple[str, ...] = ("low", "medium", "high", "xhigh", "max")
 
 _CLAUDE_MODEL_MAP: dict[str, str] = {
-    "opus 5":       "claude-opus-5",
-    "sonnet 5":     "claude-sonnet-5",
-    "fable 5":      "claude-fable-5",
-    "haiku 4.5":    "claude-haiku-4-5",
+    # AGENTS.md presets — the CLI's latest_per_family table.
+    "opus 5.5":     "claude-opus-5-5",
+    "sonnet 5.5":   "claude-sonnet-5-5",
+    "fable 5.2":    "claude-fable-5-2",
+    "haiku 5.5":    "claude-haiku-5-5",
     # Retired human-readable names → the current model in the same family.
     # Maintainer tags live in PR comments, which are an immutable record, so a
     # PR approved months ago still dispatches through these.
-    "opus 4.8":          "claude-opus-5",
-    "opus 4.7":          "claude-opus-5",
-    "opus 4.6":          "claude-opus-5",
-    "opus 4.5":          "claude-opus-5",
-    "opus 4.1":          "claude-opus-5",
-    "opus 4":            "claude-opus-5",
-    "sonnet 4.6":        "claude-sonnet-5",
-    "sonnet 4.5":        "claude-sonnet-5",
-    "sonnet 4":          "claude-sonnet-5",
-    "sonnet 3.7":        "claude-sonnet-5",
-    "claude 3.7 sonnet": "claude-sonnet-5",
-    "claude-3-7-sonnet": "claude-sonnet-5",
-    "claude-3.7-sonnet": "claude-sonnet-5",
-    "sonnet 3.5":        "claude-sonnet-5",
-    "claude 3.5 sonnet": "claude-sonnet-5",
-    "claude-3-5-sonnet": "claude-sonnet-5",
-    "claude-3.5-sonnet": "claude-sonnet-5",
-    "haiku 3.5":         "claude-haiku-4-5",
-    "claude 3.5 haiku":  "claude-haiku-4-5",
-    "claude-3-5-haiku":  "claude-haiku-4-5",
-    "claude-3.5-haiku":  "claude-haiku-4-5",
-    # Already fully-qualified names pass through — the CLI still accepts the
-    # previous generations by ID.
-    "claude-opus-5":               "claude-opus-5",
-    "claude-sonnet-5":             "claude-sonnet-5",
-    "claude-fable-5":              "claude-fable-5",
-    "claude-haiku-4-5":            "claude-haiku-4-5",
-    "claude-haiku-4-5-20251001":   "claude-haiku-4-5",
+    "opus 5":            "claude-opus-5-5",
+    "sonnet 5":          "claude-sonnet-5-5",
+    "fable 5":           "claude-fable-5-2",
+    "haiku 4.5":         "claude-haiku-5-5",
+    "opus 4.8":          "claude-opus-5-5",
+    "opus 4.7":          "claude-opus-5-5",
+    "opus 4.6":          "claude-opus-5-5",
+    "opus 4.5":          "claude-opus-5-5",
+    "opus 4.1":          "claude-opus-5-5",
+    "opus 4":            "claude-opus-5-5",
+    "sonnet 4.6":        "claude-sonnet-5-5",
+    "sonnet 4.5":        "claude-sonnet-5-5",
+    "sonnet 4":          "claude-sonnet-5-5",
+    "sonnet 3.7":        "claude-sonnet-5-5",
+    "claude 3.7 sonnet": "claude-sonnet-5-5",
+    "claude-3-7-sonnet": "claude-sonnet-5-5",
+    "claude-3.7-sonnet": "claude-sonnet-5-5",
+    "sonnet 3.5":        "claude-sonnet-5-5",
+    "claude 3.5 sonnet": "claude-sonnet-5-5",
+    "claude-3-5-sonnet": "claude-sonnet-5-5",
+    "claude-3.5-sonnet": "claude-sonnet-5-5",
+    "haiku 3.5":         "claude-haiku-5-5",
+    "claude 3.5 haiku":  "claude-haiku-5-5",
+    "claude-3-5-haiku":  "claude-haiku-5-5",
+    "claude-3.5-haiku":  "claude-haiku-5-5",
+    # Fully-qualified ids: current ones pass through, previous generations
+    # move to the current model in their family.
+    "claude-opus-5-5":             "claude-opus-5-5",
+    "claude-sonnet-5-5":           "claude-sonnet-5-5",
+    "claude-fable-5-2":            "claude-fable-5-2",
+    "claude-haiku-5-5":            "claude-haiku-5-5",
+    "claude-opus-5":               "claude-opus-5-5",
+    "claude-sonnet-5":             "claude-sonnet-5-5",
+    "claude-fable-5":              "claude-fable-5-2",
+    "claude-haiku-4-5":            "claude-haiku-5-5",
+    "claude-haiku-4-5-20251001":   "claude-haiku-5-5",
 }
 
 # --- codex -----------------------------------------------------------------
-# Reasoning efforts each Codex preset accepts, from the CLI's own model table.
-# Luna stops at `max`; Sol and Terra add the `ultra` rung.
+# Reasoning efforts each Codex preset accepts, from the CLI's own model table
+# (every `visibility: list` entry of `codex debug models`).  Luna stops at
+# `max`; Sol, Terra and Astra add the `ultra` rung.
 _CODEX_MODEL_EFFORTS: dict[str, tuple[str, ...]] = {
+    "gpt-6.2-sol":   ("low", "medium", "high", "xhigh", "max", "ultra"),
+    "gpt-6.2-astra": ("low", "medium", "high", "xhigh", "max", "ultra"),
+    "gpt-6.1-terra": ("low", "medium", "high", "xhigh", "max", "ultra"),
+    "gpt-6.1-sol":   ("low", "medium", "high", "xhigh", "max", "ultra"),
+    "gpt-6-astra":   ("low", "medium", "high", "xhigh", "max", "ultra"),
+    "gpt-6-sol":     ("low", "medium", "high", "xhigh", "max", "ultra"),
+    "gpt-6-luna":    ("low", "medium", "high", "xhigh", "max"),
     "gpt-5.6-sol":   ("low", "medium", "high", "xhigh", "max", "ultra"),
     "gpt-5.6-terra": ("low", "medium", "high", "xhigh", "max", "ultra"),
     "gpt-5.6-luna":  ("low", "medium", "high", "xhigh", "max"),
 }
 
 # Efforts assumed for a model id we do not recognize.  Deliberately excludes
-# `ultra`: only Sol and Terra accept it, and `codex debug models` shows every
-# other entry (including the hidden gpt-reserve and codex-auto-review) stopping
-# at `max`.  Granting `ultra` by default would turn an unknown-model tag into
-# two invalid arguments instead of one.
+# `ultra`: only Sol, Terra and Astra accept it, and `codex debug models` shows
+# every other entry (including the hidden gpt-reserve and codex-auto-review)
+# stopping at `max`.  Granting `ultra` by default would turn an unknown-model
+# tag into two invalid arguments instead of one.
 _CODEX_FALLBACK_EFFORTS: tuple[str, ...] = (
     "low", "medium", "high", "xhigh", "max",
 )
 
 # Map the human-friendly model names used in AGENTS.md to Codex CLI model IDs.
-# The ChatGPT-authenticated Codex CLI exposes the named variants, but not the
-# bare `gpt-5.6` ID.  Keep the generic aliases on the configured default
-# variant so a valid Issue/PR tag cannot be turned into a deterministic 400.
+# The ChatGPT-authenticated Codex CLI exposes the named variants, but not bare
+# version IDs such as `gpt-6.2`.  Generic aliases land on the newest variant of
+# that generation (Terra where one exists, else Sol) so a valid Issue/PR tag
+# cannot be turned into a deterministic 400.
 _CODEX_MODEL_MAP: dict[str, str] = {
+    # AGENTS.md presets
+    "6.2 sol":                "gpt-6.2-sol",
+    "6.2 astra":              "gpt-6.2-astra",
+    "6.1 terra":              "gpt-6.1-terra",
+    "6 luna":                 "gpt-6-luna",
+    # Other listed variants
+    "6.1 sol":                "gpt-6.1-sol",
+    "6 astra":                "gpt-6-astra",
+    "6 sol":                  "gpt-6-sol",
+    "5.6 sol":                "gpt-5.6-sol",
+    "5.6 terra":              "gpt-5.6-terra",
+    "5.6 luna":               "gpt-5.6-luna",
+    # Generic aliases → newest variant of the named tier / generation
+    "sol":                    "gpt-6.2-sol",
+    "astra":                  "gpt-6.2-astra",
+    "terra":                  "gpt-6.1-terra",
+    "luna":                   "gpt-6-luna",
+    "6.2":                    "gpt-6.2-sol",
+    "gpt-6.2":                "gpt-6.2-sol",
+    "6.1":                    "gpt-6.1-terra",
+    "gpt-6.1":                "gpt-6.1-terra",
+    "6":                      "gpt-6-sol",
+    "gpt-6":                  "gpt-6-sol",
     "5.6 (sol, terra, luna)": "gpt-5.6-terra",
     "5.6":                    "gpt-5.6-terra",
     "gpt-5.6":                "gpt-5.6-terra",
     "5.6 (sol)":              "gpt-5.6-sol",
     "5.6 (terra)":            "gpt-5.6-terra",
     "5.6 (luna)":             "gpt-5.6-luna",
-    "5.6 sol":                "gpt-5.6-sol",
-    "5.6 terra":              "gpt-5.6-terra",
-    "5.6 luna":               "gpt-5.6-luna",
-    "sol":                    "gpt-5.6-sol",
-    "terra":                  "gpt-5.6-terra",
-    "luna":                   "gpt-5.6-luna",
-    # Retired presets → the variant Codex itself migrates them to, or the
-    # default variant where Codex offers no direct successor.  Maintainer tags
-    # live in PR comments, which are an immutable record, so a PR approved
-    # months ago still dispatches through these.
-    "5.6 spark":              "gpt-5.6-luna",
-    "gpt-5.6-spark":          "gpt-5.6-luna",
-    "5.5":                    "gpt-5.6-terra",
-    "5.4":                    "gpt-5.6-terra",
-    "5.4 mini":               "gpt-5.6-luna",
-    "5.3":                    "gpt-5.6-terra",
-    "5.2":                    "gpt-5.6-terra",
-    "5.1":                    "gpt-5.6-terra",
-    "gpt-5.5":                "gpt-5.6-terra",
-    "gpt-5.5-codex":          "gpt-5.6-terra",
-    "gpt-5.4":                "gpt-5.6-terra",
-    "gpt-5.4-mini":           "gpt-5.6-luna",
-    "gpt-5.3":                "gpt-5.6-terra",
-    "gpt-5.3-codex":          "gpt-5.6-terra",
-    "gpt-5.2-codex":          "gpt-5.6-terra",
-    "gpt-5.2":                "gpt-5.6-terra",
-    "gpt-5.1-codex-max":      "gpt-5.6-terra",
-    "gpt-5.1-codex":          "gpt-5.6-terra",
-    "gpt-5-1-codex":          "gpt-5.6-terra",
-    "gpt-5.1":                "gpt-5.6-terra",
-    # Already fully-qualified names pass through.
-    "gpt-5.6-sol":            "gpt-5.6-sol",
-    "gpt-5.6-terra":          "gpt-5.6-terra",
-    "gpt-5.6-luna":           "gpt-5.6-luna",
+    # Retired presets → the current Terra (or Luna for small variants), since
+    # Codex offers no direct successor.  Maintainer tags live in PR comments,
+    # which are an immutable record, so a PR approved months ago still
+    # dispatches through these.
+    "5.6 spark":              "gpt-6-luna",
+    "gpt-5.6-spark":          "gpt-6-luna",
+    "5.5":                    "gpt-6.1-terra",
+    "5.4":                    "gpt-6.1-terra",
+    "5.4 mini":               "gpt-6-luna",
+    "5.3":                    "gpt-6.1-terra",
+    "5.2":                    "gpt-6.1-terra",
+    "5.1":                    "gpt-6.1-terra",
+    "gpt-5.5":                "gpt-6.1-terra",
+    "gpt-5.5-codex":          "gpt-6.1-terra",
+    "gpt-5.4":                "gpt-6.1-terra",
+    "gpt-5.4-mini":           "gpt-6-luna",
+    "gpt-5.3":                "gpt-6.1-terra",
+    "gpt-5.3-codex":          "gpt-6.1-terra",
+    "gpt-5.2-codex":          "gpt-6.1-terra",
+    "gpt-5.2":                "gpt-6.1-terra",
+    "gpt-5.1-codex-max":      "gpt-6.1-terra",
+    "gpt-5.1-codex":          "gpt-6.1-terra",
+    "gpt-5-1-codex":          "gpt-6.1-terra",
+    "gpt-5.1":                "gpt-6.1-terra",
 }
+# Already fully-qualified names pass through.
+_CODEX_MODEL_MAP.update({slug: slug for slug in _CODEX_MODEL_EFFORTS})
 
 
 # Registry of currently valid models and preset identifiers per AI agent.
@@ -2509,16 +2554,19 @@ AVAILABLE_MODELS: dict[str, list[str]] = {
         for stem, efforts in _AGY_MODEL_EFFORTS.items()
         for effort in efforts
     ] + [
+        "gemini 4 neon", "gemini 4 hydrogen",
         "gemini 4 argon", "gemini 3.8 flash",
+        "gemini-4-neon", "gemini-4-hydrogen",
         "gemini-4-argon", "gemini-3.8-flash",
     ],
     "claude": list(dict.fromkeys(
         list(_CLAUDE_MODEL_MAP.values()) + [
-            "opus 5", "sonnet 5", "fable 5", "haiku 4.5",
+            "opus 5.5", "sonnet 5.5", "fable 5.2", "haiku 5.5",
         ]
     )),
     "codex": list(dict.fromkeys(
         list(_CODEX_MODEL_EFFORTS.keys()) + [
+            "6.2 sol", "6.2 astra", "6.1 terra", "6 luna",
             "5.6 sol", "5.6 terra", "5.6 luna",
         ]
     )),
