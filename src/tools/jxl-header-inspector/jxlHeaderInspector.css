@@ -57,7 +57,11 @@
 .jxl-header-inspector__paste button { justify-self: start; }
 .jxl-header-inspector__error { color: var(--color-error-light); }
 .jxl-header-inspector__result { display: grid; gap: 0.75rem; }
-.jxl-header-inspector dl { display: grid; grid-template-columns: minmax(9rem, 1fr) 2fr; gap: 0.35rem 1rem; }
+.jxl-header-inspector dl {
+  display: grid;
+  grid-template-columns: minmax(9rem, 1fr) 2fr;
+  gap: 0.35rem 1rem;
+}
 .jxl-header-inspector dt { color: var(--color-text-muted); font-weight: 600; }
 .jxl-header-inspector dd { margin: 0; overflow-wrap: anywhere; }
 .jxl-header-inspector__box { display: contents; }

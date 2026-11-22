@@ -58,7 +58,7 @@ function parseCodestream(bytes, source) {
   const reader = new BitReader(bytes.slice(2), source);
   const size = readSize(reader);
   // Bundle::AllDefault stores one bit that means the metadata bundle equals its defaults.
-  const metadataDefaults = reader.read(1) === 0;
+  const metadataDefaults = reader.read(1) === 1;
   if (metadataDefaults) {
     return {
       ...size,
@@ -82,11 +82,11 @@ function parseCodestream(bytes, source) {
   }
   const floatingPoint = reader.read(1) === 1;
   const bitDepthSelector = reader.read(2);
-  const bitDepth = floatingPoint
-    ? [32, 16, 24, reader.read(6) + 1][bitDepthSelector]
-    : [8, 10, 12, reader.read(6) + 1][bitDepthSelector];
-  // This Bool has a true default, so its encoded value is inverted. Its value
-  // is not needed for basic inspection, but consuming it preserves alignment.
+  const bitDepth = bitDepthSelector === 3
+    ? reader.read(6) + 1
+    : (floatingPoint ? [32, 16, 24] : [8, 10, 12])[bitDepthSelector];
+  if (floatingPoint) reader.read(4);
+  // Its value is not needed for basic inspection, but consuming it preserves alignment.
   reader.read(1);
   const extraSelector = reader.read(2);
   let extraChannels = 0;
