@@ -159,7 +159,12 @@ function parseLegacyHeader(view, version) {
   const terminatingDataBytes = readUnsigned(view, 20, 4, 'terminating data length');
   const totalFrames = readUnsigned(view, 24, 4, 'total frames');
   const finalFrameBlocks = readUnsigned(view, 28, 4, 'final frame blocks');
-  const wavHeaderEnd = boundedEnd(LEGACY_HEADER_SIZE, wavHeaderBytes, view.byteLength, 'WAV header');
+  const wavHeaderEnd = boundedEnd(
+    LEGACY_HEADER_SIZE,
+    wavHeaderBytes,
+    view.byteLength,
+    'WAV header'
+  );
   const remainingBytes = view.byteLength - wavHeaderEnd;
   if (terminatingDataBytes > remainingBytes) {
     throw new Error(
