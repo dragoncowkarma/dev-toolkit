@@ -3,5 +3,5 @@ export default {
   name: 'AU Header Inspector',
   description: 'Inspect Sun/NeXT .au audio header metadata entirely in your browser.',
   icon: '🔊',
-  category: 'File',
+  category: 'Inspector',
 };
