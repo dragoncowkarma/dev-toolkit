@@ -143,8 +143,13 @@
   transition: border-color var(--transition);
 }
 
-.woff2-tool .file-dropzone:hover {
+.woff2-tool .file-dropzone:hover,
+.woff2-tool .file-dropzone.is-dragging {
   border-color: var(--color-primary);
+}
+
+.woff2-tool .file-dropzone.is-dragging {
+  background: rgba(99, 102, 241, 0.08);
 }
 
 .woff2-tool .file-info {

@@ -1,4 +1,12 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  createEvent,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import Woff2HeaderInspectorTool from './Woff2HeaderInspectorTool.jsx';
 import * as utils from './woff2-header-inspector.utils.js';
@@ -174,5 +182,108 @@ describe('Woff2HeaderInspectorTool', () => {
 
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('clears results and keeps read error when a second file read fails', async () => {
+    render(<Woff2HeaderInspectorTool />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'File Upload' }));
+    const fileInput = screen.getByLabelText(/Upload WOFF2 font file/i);
+
+    const firstFile = new File([utils.createSampleWoff2Header({ numTables: 14 })], 'first.woff2', {
+      type: 'font/woff2',
+    });
+    await act(async () => selectFile(fileInput, firstFile));
+
+    await waitFor(() => {
+      expect(screen.getByText('📁 first.woff2 (48 B)')).toBeInTheDocument();
+      expect(screen.getByText('14 tables')).toBeInTheDocument();
+    });
+
+    vi.spyOn(utils, 'fileToBytes').mockRejectedValueOnce(new Error('Disk read failed'));
+    const secondFile = new File(['bad'], 'second.woff2', { type: 'font/woff2' });
+    await act(async () => selectFile(fileInput, secondFile));
+
+    await waitFor(() => {
+      expect(screen.getByText('📁 second.woff2 (3 B)')).toBeInTheDocument();
+      expect(screen.getByRole('alert')).toHaveTextContent('Disk read failed');
+    });
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+  });
+
+  it('clears previous results while a second file read is pending', async () => {
+    render(<Woff2HeaderInspectorTool />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'File Upload' }));
+    const fileInput = screen.getByLabelText(/Upload WOFF2 font file/i);
+
+    const firstFile = new File([utils.createSampleWoff2Header({ numTables: 14 })], 'first.woff2', {
+      type: 'font/woff2',
+    });
+    await act(async () => selectFile(fileInput, firstFile));
+
+    await waitFor(() => {
+      expect(screen.getByText('14 tables')).toBeInTheDocument();
+    });
+
+    let resolveSecond;
+    const secondPromise = new Promise((resolve) => {
+      resolveSecond = resolve;
+    });
+    vi.spyOn(utils, 'fileToBytes').mockReturnValueOnce(secondPromise);
+
+    const secondFile = new File(
+      [utils.createSampleWoff2Header({ numTables: 22 })],
+      'second.woff2',
+      { type: 'font/woff2' },
+    );
+    selectFile(fileInput, secondFile);
+
+    // While pending, new filename shows loading state and previous header is cleared
+    expect(screen.getByText(/second\.woff2.*Reading/)).toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(screen.queryByText('14 tables')).not.toBeInTheDocument();
+
+    await act(async () => {
+      resolveSecond(utils.createSampleWoff2Header({ numTables: 22 }));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('📁 second.woff2 (48 B)')).toBeInTheDocument();
+      expect(screen.getByText('22 tables')).toBeInTheDocument();
+    });
+  });
+
+  it('handles drag-over and inspects a dropped WOFF2 file on the dropzone', async () => {
+    render(<Woff2HeaderInspectorTool />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'File Upload' }));
+    const dropzone = screen.getByTestId('woff2-file-dropzone');
+
+    const dragOverEvent = createEvent.dragOver(dropzone);
+    fireEvent(dropzone, dragOverEvent);
+    expect(dragOverEvent.defaultPrevented).toBe(true);
+    expect(dropzone).toHaveClass('is-dragging');
+
+    const droppedFile = new File(
+      [utils.createSampleWoff2Header({ numTables: 18 })],
+      'dropped.woff2',
+      { type: 'font/woff2' },
+    );
+    const dropEvent = createEvent.drop(dropzone, {
+      dataTransfer: { files: [droppedFile] },
+    });
+    await act(async () => {
+      fireEvent(dropzone, dropEvent);
+    });
+
+    expect(dropEvent.defaultPrevented).toBe(true);
+    expect(dropzone).not.toHaveClass('is-dragging');
+
+    await waitFor(() => {
+      expect(screen.getByText('📁 dropped.woff2 (48 B)')).toBeInTheDocument();
+      expect(screen.getByText('18 tables')).toBeInTheDocument();
+    });
   });
 });

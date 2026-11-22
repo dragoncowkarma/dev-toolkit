@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   base64ToBytes,
   fileToBytes,
@@ -27,56 +27,47 @@ export default function Woff2HeaderInspectorTool() {
   const [base64Input, setBase64Input] = useState('');
   const [file, setFile] = useState(null);
   const [fileBytes, setFileBytes] = useState(null);
-  const [header, setHeader] = useState(null);
-  const [error, setError] = useState('');
+  const [fileReadError, setFileReadError] = useState('');
+  const [isReadingFile, setIsReadingFile] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef(null);
   const fileRequestRef = useRef(0);
 
-  // Trigger parsing whenever input changes according to active mode
-  useEffect(() => {
-    let bytes = null;
-    let errMessage = '';
-
+  // Derive parsed header and error synchronously from active mode inputs
+  const { header, error } = useMemo(() => {
     try {
+      let bytes = null;
+
       if (mode === MODES.HEX) {
-        if (!hexInput.trim()) {
-          setHeader(null);
-          setError('');
-          return;
-        }
+        if (!hexInput.trim()) return { header: null, error: '' };
         bytes = hexToBytes(hexInput);
       } else if (mode === MODES.BASE64) {
-        if (!base64Input.trim()) {
-          setHeader(null);
-          setError('');
-          return;
-        }
+        if (!base64Input.trim()) return { header: null, error: '' };
         bytes = base64ToBytes(base64Input);
       } else if (mode === MODES.FILE) {
-        if (!fileBytes) {
-          setHeader(null);
-          setError('');
-          return;
-        }
+        if (isReadingFile) return { header: null, error: '' };
+        if (fileReadError) return { header: null, error: fileReadError };
+        if (!fileBytes) return { header: null, error: '' };
         bytes = fileBytes;
       }
 
       if (bytes) {
-        const parsed = parseWoff2Header(bytes);
-        setHeader(parsed);
-        setError('');
+        return { header: parseWoff2Header(bytes), error: '' };
       }
+
+      return { header: null, error: '' };
     } catch (err) {
-      setHeader(null);
-      errMessage = err.message || 'Failed to parse WOFF2 header.';
-      setError(errMessage);
+      return {
+        header: null,
+        error: err.message || 'Failed to parse WOFF2 header.',
+      };
     }
-  }, [mode, hexInput, base64Input, fileBytes]);
+  }, [mode, hexInput, base64Input, fileBytes, fileReadError, isReadingFile]);
 
   function handleModeChange(nextMode) {
     if (nextMode === mode) return;
     setMode(nextMode);
-    setError('');
+    setIsDragging(false);
   }
 
   function handleLoadSample() {
@@ -87,6 +78,7 @@ export default function Woff2HeaderInspectorTool() {
     } else {
       // In File mode, switch to Hex and load sample
       setMode(MODES.HEX);
+      setIsDragging(false);
       setHexInput(SAMPLE_WOFF2_HEX);
     }
   }
@@ -97,29 +89,71 @@ export default function Woff2HeaderInspectorTool() {
     setBase64Input('');
     setFile(null);
     setFileBytes(null);
-    setHeader(null);
-    setError('');
+    setFileReadError('');
+    setIsReadingFile(false);
+    setIsDragging(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
   }
 
-  async function handleFileChange(event) {
-    const selected = event.target.files?.[0];
+  async function loadFile(selected) {
     if (!selected) return;
     const requestId = (fileRequestRef.current += 1);
     setFile(selected);
-    setError('');
+    setFileBytes(null);
+    setFileReadError('');
+    setIsReadingFile(true);
 
     try {
       const bytes = await fileToBytes(selected);
       if (fileRequestRef.current !== requestId) return;
       setFileBytes(bytes);
+      setIsReadingFile(false);
     } catch (err) {
       if (fileRequestRef.current !== requestId) return;
       setFileBytes(null);
-      setError(err.message || 'Failed to read the selected file.');
+      setFileReadError(err.message || 'Failed to read the selected file.');
+      setIsReadingFile(false);
     }
+  }
+
+  function handleFileChange(event) {
+    const selected = event.target.files?.[0];
+    if (!selected) return;
+    loadFile(selected);
+  }
+
+  function handleDragEnter(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsDragging(true);
+  }
+
+  function handleDragOver(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!isDragging) setIsDragging(true);
+  }
+
+  function handleDragLeave(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!event.currentTarget.contains(event.relatedTarget)) {
+      setIsDragging(false);
+    }
+  }
+
+  function handleDrop(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsDragging(false);
+    const dropped = event.dataTransfer?.files?.[0];
+    if (!dropped) return;
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+    loadFile(dropped);
   }
 
   return (
@@ -199,7 +233,14 @@ export default function Woff2HeaderInspectorTool() {
           <label className="panel-label" htmlFor="woff2-file-input">
             WOFF2 Font File
           </label>
-          <div className="file-dropzone">
+          <div
+            className={`file-dropzone${isDragging ? ' is-dragging' : ''}`}
+            onDragEnter={handleDragEnter}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            data-testid="woff2-file-dropzone"
+          >
             <label className="btn file-btn">
               Select WOFF2 File
               <input
@@ -213,13 +254,15 @@ export default function Woff2HeaderInspectorTool() {
               />
             </label>
             {file && (
-              <div className="file-info">
+              <div className="file-info" aria-busy={isReadingFile || undefined}>
                 📁 {file.name} ({formatBytes(file.size)})
+                {isReadingFile ? ' — Reading…' : ''}
               </div>
             )}
             {!file && (
               <div className="file-info">
-                Upload a .woff2 file to inspect its 48-byte header metadata.
+                Drag and drop a .woff2 file here, or select one to inspect its 48-byte header
+                metadata.
               </div>
             )}
           </div>
