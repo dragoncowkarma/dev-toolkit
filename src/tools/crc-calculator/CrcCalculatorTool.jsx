@@ -31,8 +31,16 @@ export default function CrcCalculatorTool() {
   const fileInputRef = useRef(null);
   const requestRef = useRef(0);
 
-  const bytes = fileBytes ?? textToBytes(text);
-  const hasInput = fileBytes !== null || text !== '';
+  let bytes = fileBytes;
+  let textSizeError = '';
+  if (fileBytes === null) {
+    try {
+      bytes = textToBytes(text);
+    } catch (sizeError) {
+      textSizeError = sizeError.message;
+    }
+  }
+  const hasInput = (fileBytes !== null || text !== '') && !textSizeError;
   const results = hasInput
     ? ALGORITHMS.map((algorithm) => ({
       ...algorithm,
@@ -91,7 +99,7 @@ export default function CrcCalculatorTool() {
     }
   }
 
-  const alertMessage = error || copyError;
+  const alertMessage = error || textSizeError || copyError;
 
   return (
     <section className="crc-calculator" aria-label="CRC Checksum Calculator">
@@ -123,8 +131,8 @@ export default function CrcCalculatorTool() {
           value={text}
           onChange={handleTextChange}
           placeholder="Type or paste text to calculate checksums…"
-          aria-describedby={error ? 'crc-calculator-message' : undefined}
-          aria-invalid={Boolean(error)}
+          aria-describedby={alertMessage ? 'crc-calculator-message' : undefined}
+          aria-invalid={Boolean(textSizeError)}
           spellCheck={false}
         />
         {file && (
