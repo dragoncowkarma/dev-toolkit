@@ -1,0 +1,36 @@
+.vhdx-tool {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.vhdx-tool textarea {
+  width: 100%;
+  min-height: 12rem;
+  resize: vertical;
+  padding: 0.75rem;
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  font-family: monospace;
+}
+
+.vhdx-tool button, .vhdx-drop {
+  padding: 0.75rem;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.vhdx-drop { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+.vhdx-tool button { align-self: flex-start; cursor: pointer; }
+.vhdx-tool dl { overflow-wrap: anywhere; }
+.vhdx-tool dl div { display: grid; grid-template-columns: minmax(8rem, 1fr) 2fr; gap: 1rem; }
+.vhdx-tool dt { font-weight: 600; }
+.vhdx-tool dd { margin: 0; }
+.vhdx-error { color: var(--color-error-light); background: var(--color-error-bg); padding: 0.75rem; }
