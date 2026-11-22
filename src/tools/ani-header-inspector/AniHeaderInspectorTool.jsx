@@ -1,145 +1,96 @@
 import { useRef, useState } from 'react';
-import { bytesFromBase64, bytesFromHex, parseAni } from './ani.utils.js';
+import { inspectAniHeader } from './aniHeader.utils.js';
 import './ani-header-inspector.css';
 
-const INPUT_TYPES = {
-  HEX: 'hex',
-  BASE64: 'base64',
-};
-
 /**
- * Renders a browser-only inspector for Windows Animated Cursor files.
- *
- * @returns {React.JSX.Element} The ANI header inspector.
+ * Renders a client-side Windows ANI RIFF header inspector.
+ * @returns {React.JSX.Element} The ANI inspector interface.
  */
-export default function AniHeaderInspector() {
-  const [inputType, setInputType] = useState(INPUT_TYPES.HEX);
-  const [input, setInput] = useState('');
+export default function AniHeaderInspectorTool() {
+  const [fileName, setFileName] = useState('');
   const [result, setResult] = useState(null);
-  const [error, setError] = useState('');
-  const fileInputRef = useRef(null);
-
-  function inspect(bytes) {
-    try {
-      setResult(parseAni(bytes));
-      setError('');
-    } catch (parseError) {
-      setResult(null);
-      setError(parseError.message);
-    }
-  }
-
-  function handleInspect() {
-    try {
-      const bytes = inputType === INPUT_TYPES.HEX ? bytesFromHex(input) : bytesFromBase64(input);
-      inspect(bytes);
-    } catch (parseError) {
-      setResult(null);
-      setError(parseError.message);
-    }
-  }
+  const [readError, setReadError] = useState('');
+  const inputRef = useRef(null);
 
   async function handleFileChange(event) {
     const file = event.target.files?.[0];
     if (!file) return;
-    inspect(new Uint8Array(await file.arrayBuffer()));
+    try {
+      setFileName(file.name);
+      setResult(inspectAniHeader(await file.arrayBuffer()));
+      setReadError('');
+    } catch {
+      setResult(null);
+      setReadError('The selected file could not be read.');
+    }
   }
 
   function handleClear() {
-    setInput('');
+    setFileName('');
     setResult(null);
-    setError('');
-    if (fileInputRef.current) fileInputRef.current.value = '';
+    setReadError('');
+    if (inputRef.current) inputRef.current.value = '';
   }
 
   return (
     <section className="ani-header-inspector" aria-label="ANI Header Inspector">
-      <div className="ani-header-inspector__controls">
-        <label className="ani-header-inspector__upload">
-          Upload .ani file
-          <input ref={fileInputRef} type="file" accept=".ani" onChange={handleFileChange} />
+      <div className="ani-header-inspector__toolbar">
+        <label className="ani-header-inspector__file-button">
+          Choose ANI File
+          <input
+            ref={inputRef}
+            type="file"
+            accept=".ani,application/octet-stream"
+            onChange={handleFileChange}
+            aria-label="Choose ANI file"
+          />
         </label>
-        <button type="button" onClick={handleInspect}>Inspect pasted data</button>
         <button type="button" onClick={handleClear}>Clear</button>
       </div>
-      <fieldset className="ani-header-inspector__input-type">
-        <legend>Paste format</legend>
-        <label>
-          <input
-            checked={inputType === INPUT_TYPES.HEX}
-            name="ani-input-type"
-            type="radio"
-            value={INPUT_TYPES.HEX}
-            onChange={() => setInputType(INPUT_TYPES.HEX)}
-          />
-          Hex
-        </label>
-        <label>
-          <input
-            checked={inputType === INPUT_TYPES.BASE64}
-            name="ani-input-type"
-            type="radio"
-            value={INPUT_TYPES.BASE64}
-            onChange={() => setInputType(INPUT_TYPES.BASE64)}
-          />
-          Base64
-        </label>
-      </fieldset>
-      <label className="ani-header-inspector__paste" htmlFor="ani-paste-input">
-        {inputType === INPUT_TYPES.HEX ? 'ANI bytes in hexadecimal' : 'ANI bytes in Base64'}
-        <textarea
-          id="ani-paste-input"
-          value={input}
-          onChange={(event) => setInput(event.target.value)}
-          placeholder="Paste ANI file bytes here"
-          spellCheck={false}
-        />
-      </label>
-      {error && <p className="ani-header-inspector__error" role="alert">{error}</p>}
-      {result && <Results result={result} />}
+
+      {fileName && <p className="ani-header-inspector__filename">Inspecting: {fileName}</p>}
+      {readError && <p className="ani-header-inspector__error" role="alert">{readError}</p>}
+
+      {result && (
+        <div className="ani-header-inspector__results">
+          <h2>RIFF Container</h2>
+          <dl>
+            <dt>Form type</dt><dd>{result.formType ?? 'Unavailable'}</dd>
+            <dt>Declared RIFF size</dt><dd>{result.riffSize ?? 'Unavailable'}</dd>
+            <dt>Frame chunks</dt><dd>{result.frames.length}</dd>
+            <dt>Rate values</dt>
+            <dd>{result.rates.length ? result.rates.join(', ') : 'None'}</dd>
+            <dt>Sequence values</dt>
+            <dd>{result.sequence.length ? result.sequence.join(', ') : 'None'}</dd>
+          </dl>
+
+          {result.header && (
+            <>
+              <h2>ANIHEADER</h2>
+              <dl>
+                <dt>Frames / steps</dt>
+                <dd>{result.header.frameCount} / {result.header.stepCount}</dd>
+                <dt>Dimensions</dt><dd>{result.header.width} × {result.header.height}</dd>
+                <dt>Bit count / planes</dt>
+                <dd>{result.header.bitCount} / {result.header.planes}</dd>
+                <dt>Default jiffy rate</dt><dd>{result.header.defaultJiffyRate}</dd>
+                <dt>Flags</dt><dd>0x{result.header.flags.toString(16).padStart(8, '0')}</dd>
+                <dt>Frame encoding</dt>
+                <dd>
+                  {result.header.framesAreIconImages ? 'ICO/CUR images' : 'Raw bitmap data'}
+                </dd>
+              </dl>
+            </>
+          )}
+
+          <h2>Diagnostics</h2>
+          {result.diagnostics.length ? (
+            <ul className="ani-header-inspector__diagnostics" role="alert">
+              {result.diagnostics.map((diagnostic) => <li key={diagnostic}>{diagnostic}</li>)}
+            </ul>
+          ) : <p className="ani-header-inspector__valid">No structural problems found.</p>}
+        </div>
+      )}
     </section>
   );
-}
-
-function Results({ result }) {
-  const { header } = result;
-  return (
-    <section
-      className="ani-header-inspector__results"
-      aria-label="ANI inspection results"
-      aria-live="polite"
-    >
-      <h2>ANI header</h2>
-      <dl>
-        <Result label="RIFF size" value={`${result.riffSize} bytes`} />
-        <Result label="Frames" value={header.frameCount} />
-        <Result label="Steps" value={header.stepCount} />
-        <Result label="Default dimensions" value={`${header.width} × ${header.height}`} />
-        <Result label="Bit count" value={header.bitCount} />
-        <Result label="Planes" value={header.planes} />
-        <Result label="Display rate" value={`${header.displayRate} jiffies`} />
-        <Result label="Flags" value={`0x${header.flags.toString(16).padStart(8, '0')}`} />
-        <Result label="AF_ICON" value={header.framesAreIcons ? 'Yes (ICO/CUR frames)' : 'No'} />
-      </dl>
-      <h2>Embedded frames ({result.frames.length})</h2>
-      <ol>
-        {result.frames.map((frame, index) => (
-          <li key={`${frame.offset}-${index}`}>
-            Frame {index + 1}: offset {frame.offset}, {frame.length} bytes
-          </li>
-        ))}
-      </ol>
-      <OptionalValues label="Per-frame rates" values={result.rates} suffix=" jiffies" />
-      <OptionalValues label="Frame sequence" values={result.sequence} suffix="" />
-    </section>
-  );
-}
-
-function Result({ label, value }) {
-  return <><dt>{label}</dt><dd>{value}</dd></>;
-}
-
-function OptionalValues({ label, values, suffix }) {
-  if (values.length === 0) return null;
-  return <p><strong>{label}:</strong> {values.map((value) => `${value}${suffix}`).join(', ')}</p>;
 }
