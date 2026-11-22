@@ -145,4 +145,39 @@ describe('VmdkHeaderInspectorTool', () => {
     );
     expect(screen.getByText('magicNumber')).toBeInTheDocument();
   });
+
+  describe('newline detection flag', () => {
+    function loadBase64(overrides) {
+      render(<VmdkHeaderInspectorTool />);
+      fireEvent.click(screen.getByRole('button', { name: 'Base64' }));
+      fireEvent.change(screen.getByLabelText('Base64 Header Input'), {
+        target: { value: utils.bytesToBase64(utils.buildSampleVmdkHeader(overrides)) },
+      });
+    }
+
+    it('reports detection disabled and keeps raw bytes visible when bit 0 is clear', () => {
+      loadBase64({ flags: 0x00000002, singleEndLineChar: 0x41 });
+
+      expect(
+        screen.getByText('Newline detection disabled (flag bit 0 clear)'),
+      ).toBeInTheDocument();
+      expect(screen.getByText('0x41 0x20 0x0D 0x0A')).toBeInTheDocument();
+      expect(screen.queryByText(/^Valid \(LF/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/^Mismatch/)).not.toBeInTheDocument();
+    });
+
+    it('reports valid when bit 0 is set and bytes match LF / SP / CR / LF', () => {
+      loadBase64({ flags: 0x00000001 });
+
+      expect(screen.getByText('Valid (LF / SP / CR / LF)')).toBeInTheDocument();
+      expect(screen.getByText('0x0A 0x20 0x0D 0x0A')).toBeInTheDocument();
+    });
+
+    it('reports mismatch when bit 0 is set and bytes do not match', () => {
+      loadBase64({ flags: 0x00000001, doubleEndLineChar1: 0x0a });
+
+      expect(screen.getByText('Mismatch (expected LF / SP / CR / LF)')).toBeInTheDocument();
+      expect(screen.getByText('0x0A 0x20 0x0A 0x0A')).toBeInTheDocument();
+    });
+  });
 });

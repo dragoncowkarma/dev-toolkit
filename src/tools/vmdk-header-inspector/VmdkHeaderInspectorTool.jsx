@@ -239,7 +239,11 @@ export default function VmdkHeaderInspectorTool() {
         ]
           .map((byte) => formatHex(byte, 2))
           .join(' '),
-        decoded: header.lineEndingsValid ? 'Valid (LF / SP / CR / LF)' : 'Mismatch',
+        decoded: !(header.flags & 0x1)
+          ? 'Newline detection disabled (flag bit 0 clear)'
+          : header.lineEndingsValid
+            ? 'Valid (LF / SP / CR / LF)'
+            : 'Mismatch (expected LF / SP / CR / LF)',
       },
       {
         field: 'compressAlgorithm',
