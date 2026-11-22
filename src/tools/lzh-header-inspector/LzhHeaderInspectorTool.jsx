@@ -72,7 +72,6 @@ export default function LzhHeaderInspector() {
             label="File CRC-16"
             value={`0x${result.crc16.toString(16).padStart(4, '0')}`}
           />
-          <Metadata label="File CRC-16" value={`0x${result.crc16.toString(16).padStart(4, '0')}`} />
           <Metadata
             label="Packed size"
             value={`${NUMBER_FORMATTER.format(result.packedSize)} bytes`}
