@@ -1,0 +1,47 @@
+.qcow2-tool {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  color: var(--color-text);
+}
+
+.qcow2-tool form, .qcow2-drop {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 1rem 0;
+  padding: 1rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.qcow2-drop { border-style: dashed; }
+.qcow2-tool textarea, .qcow2-tool select, .qcow2-tool button {
+  font: inherit;
+  color: var(--color-text);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.7rem;
+}
+.qcow2-tool textarea { min-height: 9rem; resize: vertical; }
+.qcow2-tool button { cursor: pointer; align-self: flex-start; }
+.qcow2-tool button:hover { border-color: var(--color-primary); }
+.qcow2-tool dl { border: 1px solid var(--color-border); border-radius: var(--radius); }
+.qcow2-tool dl div { padding: 0.75rem; border-bottom: 1px solid var(--color-border); }
+.qcow2-tool dl div:last-child { border-bottom: 0; }
+.qcow2-tool dt { color: var(--color-text-muted); font-weight: 600; }
+.qcow2-tool dd { margin: 0.25rem 0 0; overflow-wrap: anywhere; }
+.qcow2-error {
+  color: var(--color-error-light);
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  padding: 0.75rem;
+  border-radius: var(--radius);
+}
+@media (min-width: 768px) {
+  .qcow2-tool { padding: 0 2rem 3rem; }
+  .qcow2-tool dl div { display: grid; grid-template-columns: 1fr 2fr; gap: 1rem; }
+  .qcow2-tool dd { margin: 0; }
+}
