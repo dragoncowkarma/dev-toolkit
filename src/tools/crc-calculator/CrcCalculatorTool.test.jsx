@@ -45,4 +45,36 @@ describe('CrcCalculatorTool', () => {
       'File is too large. Choose a file up to 256.0 KB.'
     );
   });
+
+  it('shows an error and skips results for oversized pasted text, then recovers on edit', () => {
+    render(<CrcCalculatorTool />);
+    const textarea = screen.getByLabelText('Text input');
+
+    fireEvent.change(textarea, { target: { value: 'a'.repeat(MAX_INPUT_BYTES + 1) } });
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Text is too large. Keep input up to 256.0 KB.'
+    );
+    expect(textarea).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.queryByText('0xF4')).not.toBeInTheDocument();
+
+    fireEvent.change(textarea, { target: { value: '123456789' } });
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(textarea).toHaveAttribute('aria-invalid', 'false');
+    expect(screen.getByText('0xF4')).toBeInTheDocument();
+  });
+
+  it('clears the oversized-text error when Clear is clicked', () => {
+    render(<CrcCalculatorTool />);
+    const textarea = screen.getByLabelText('Text input');
+
+    fireEvent.change(textarea, { target: { value: 'a'.repeat(MAX_INPUT_BYTES + 1) } });
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(textarea).toHaveValue('');
+  });
 });

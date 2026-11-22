@@ -1,5 +1,21 @@
 /**
+ * Largest input accepted by the CRC calculator, for both file uploads and
+ * textarea input.
+ *
+ * Each input byte is processed synchronously by three bit-at-a-time CRC
+ * algorithms. Keeping input to 256 KB bounds that work before reading the
+ * file/text into memory and avoids a multi-second main-thread stall on large
+ * input.
+ */
+export const MAX_INPUT_BYTES = 256 * 1024;
+
+/**
  * Converts text into its UTF-8 byte representation.
+ *
+ * Rejects text whose UTF-8 byte length exceeds {@link MAX_INPUT_BYTES} before
+ * the synchronous bit-by-bit CRC loops run on it. A cheap length pre-check
+ * (every UTF-8 character is at least 1 byte) avoids allocating the full
+ * encoded buffer for obviously oversized input.
  * @param {string} text
  * @returns {Uint8Array}
  */
@@ -7,17 +23,15 @@ export function textToBytes(text) {
   if (typeof text !== 'string') {
     throw new TypeError('Input must be a string.');
   }
-  return new TextEncoder().encode(text);
+  if (text.length > MAX_INPUT_BYTES) {
+    throw new Error(`Text is too large. Keep input up to ${formatFileSize(MAX_INPUT_BYTES)}.`);
+  }
+  const encoded = new TextEncoder().encode(text);
+  if (encoded.byteLength > MAX_INPUT_BYTES) {
+    throw new Error(`Text is too large. Keep input up to ${formatFileSize(MAX_INPUT_BYTES)}.`);
+  }
+  return encoded;
 }
-
-/**
- * Largest file accepted by the CRC calculator.
- *
- * Each uploaded byte is processed synchronously by three bit-at-a-time CRC
- * algorithms. Keeping uploads to 256 KB bounds that work before reading the
- * file into memory and avoids a multi-second main-thread stall on large files.
- */
-export const MAX_INPUT_BYTES = 256 * 1024;
 
 /**
  * Calculates CRC-8 using polynomial 0x07, initial value 0x00, and no reflection.

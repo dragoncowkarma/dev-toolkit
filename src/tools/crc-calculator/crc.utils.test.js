@@ -33,4 +33,25 @@ describe('CRC checksum algorithms', () => {
 
     expect(() => fileToBytes(file)).toThrow('File is too large. Choose a file up to 256.0 KB.');
   });
+
+  it('rejects text whose character length exceeds the input limit', () => {
+    const text = 'a'.repeat(MAX_INPUT_BYTES + 1);
+
+    expect(() => textToBytes(text)).toThrow('Text is too large. Keep input up to 256.0 KB.');
+  });
+
+  it('rejects multi-byte UTF-8 text within the character limit but over the byte limit', () => {
+    // Each '€' character encodes to 3 UTF-8 bytes, so a string whose character
+    // length is <= MAX_INPUT_BYTES can still exceed it once encoded.
+    const text = '€'.repeat(MAX_INPUT_BYTES);
+
+    expect(() => textToBytes(text)).toThrow('Text is too large. Keep input up to 256.0 KB.');
+  });
+
+  it('accepts text exactly at the input limit', () => {
+    const text = 'a'.repeat(MAX_INPUT_BYTES);
+
+    expect(() => textToBytes(text)).not.toThrow();
+    expect(textToBytes(text).byteLength).toBe(MAX_INPUT_BYTES);
+  });
 });
