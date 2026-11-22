@@ -1,0 +1,112 @@
+.swf-header-inspector {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+}
+
+.swf-header-inspector__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.swf-header-inspector__file-button,
+.swf-header-inspector__clear {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  padding: 0.6rem 1rem;
+}
+
+.swf-header-inspector__file-button {
+  position: relative;
+  overflow: hidden;
+}
+
+.swf-header-inspector__file-button input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.swf-header-inspector__file-button:focus-within,
+.swf-header-inspector__clear:focus-visible {
+  outline: 2px solid var(--color-primary-light);
+  outline-offset: 3px;
+}
+
+.swf-header-inspector__file-button:hover,
+.swf-header-inspector__clear:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.swf-header-inspector__hint,
+.swf-header-inspector__file-name {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+.swf-header-inspector__results {
+  margin-top: 1.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  padding: 1.25rem;
+}
+
+.swf-header-inspector__results h2 {
+  margin-top: 0;
+}
+
+.swf-header-inspector__results dl {
+  display: grid;
+  grid-template-columns: minmax(9rem, 0.45fr) 1fr;
+  gap: 0.75rem 1rem;
+  margin-bottom: 0;
+}
+
+.swf-header-inspector__results dt {
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
+.swf-header-inspector__results dd {
+  margin: 0;
+}
+
+.swf-header-inspector__secondary {
+  display: block;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+  margin-top: 0.2rem;
+}
+
+.swf-header-inspector__error,
+.swf-header-inspector__notice {
+  margin-top: 1rem;
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+}
+
+.swf-header-inspector__error {
+  border: 1px solid var(--color-error-border);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+}
+
+.swf-header-inspector__notice {
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+}
+
+@media (min-width: 768px) {
+  .swf-header-inspector {
+    padding: 0 2rem 3rem;
+  }
+}
