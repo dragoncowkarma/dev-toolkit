@@ -1,0 +1,72 @@
+.djvu-inspector {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+}
+
+.djvu-inspector__privacy,
+.djvu-inspector__dropzone,
+.djvu-inspector__label {
+  color: var(--color-text-muted);
+}
+
+.djvu-inspector__dropzone,
+.djvu-inspector textarea,
+.djvu-inspector__results {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.djvu-inspector__dropzone {
+  margin: 1rem 0;
+  padding: 1.25rem;
+  text-align: center;
+}
+
+.djvu-inspector__file-button,
+.djvu-inspector button {
+  display: inline-block;
+  padding: 0.55rem 0.9rem;
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius);
+  background: var(--color-primary);
+  color: #fff;
+  cursor: pointer;
+}
+
+.djvu-inspector__file-button input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.djvu-inspector__dropzone p { margin-top: 0.75rem; }
+
+.djvu-inspector textarea {
+  display: block;
+  width: 100%;
+  min-height: 8rem;
+  margin-top: 0.4rem;
+  padding: 0.75rem;
+  color: var(--color-text);
+  font: 0.85rem/1.5 monospace;
+  resize: vertical;
+}
+
+.djvu-inspector__actions { display: flex; gap: 0.6rem; margin-top: 0.75rem; }
+.djvu-inspector__secondary { background: var(--color-surface) !important; color: var(--color-text) !important; }
+.djvu-inspector__results { margin-top: 1rem; padding: 1rem; }
+.djvu-inspector h2, .djvu-inspector h3 { margin-bottom: 0.6rem; }
+.djvu-inspector h3 { margin-top: 1rem; }
+.djvu-inspector dl { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0.45rem 1rem; }
+.djvu-inspector dt { color: var(--color-text-muted); }
+.djvu-inspector dd { overflow-wrap: anywhere; }
+.djvu-inspector__chunks { padding-left: 1.25rem; }
+.djvu-inspector__error { margin-top: 1rem; padding: 0.75rem; color: var(--color-error-light); background: var(--color-error-bg); border: 1px solid var(--color-error-border); border-radius: var(--radius); }
+.djvu-inspector__error ul { padding-left: 1.25rem; }
+
+@media (min-width: 768px) {
+  .djvu-inspector { padding: 0 2rem 3rem; }
+}
