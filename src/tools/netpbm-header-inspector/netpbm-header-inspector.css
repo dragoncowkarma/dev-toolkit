@@ -1,0 +1,88 @@
+.netpbm-inspector {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+}
+.netpbm-inspector__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+.netpbm-inspector__dropzone {
+  padding: 2rem 1rem;
+  text-align: center;
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+.netpbm-inspector__dropzone.is-dragging {
+  border-color: var(--color-primary);
+}
+.netpbm-inspector__button {
+  padding: 0.5rem 1rem;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  font: inherit;
+  cursor: pointer;
+}
+.netpbm-inspector__label {
+  display: block;
+  margin-top: 1rem;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.netpbm-inspector__textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 8rem;
+  margin-top: 0.5rem;
+  padding: 0.75rem;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  font: 0.875rem/1.5 monospace;
+}
+.netpbm-inspector__error {
+  margin-top: 1rem;
+  padding: 0.75rem;
+  color: var(--color-error-light);
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+}
+.netpbm-inspector__metadata {
+  display: grid;
+  grid-template-columns: 1fr;
+  margin: 1rem 0 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.netpbm-inspector__metadata > div {
+  display: grid;
+  grid-template-columns: minmax(9rem, 1fr) 2fr;
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+}
+.netpbm-inspector__metadata > div:last-child {
+  border-bottom: 0;
+}
+.netpbm-inspector__metadata dt {
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+.netpbm-inspector__metadata dd {
+  margin: 0;
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+}
+@media (min-width: 768px) {
+  .netpbm-inspector {
+    padding: 0 2rem 3rem;
+  }
+}
