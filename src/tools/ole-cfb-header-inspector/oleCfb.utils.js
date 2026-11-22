@@ -364,13 +364,37 @@ export function parseOleCfbHeader(input) {
     }
   }
 
+  // When FAT count exceeds the 109 header DIFAT slots, validate DIFAT chain capacity
+  if (numFatSectors > 109) {
+    const remainingFatSectors = numFatSectors - 109;
+    const entriesPerDifatSector = sectorSize / 4 - 1;
+    const totalDifatCapacity = numDifatSectors * entriesPerDifatSector;
+    if (totalDifatCapacity < remainingFatSectors) {
+      throw new Error(
+        `Declared DIFAT sector count (${numDifatSectors}) provides capacity for ` +
+          `${totalDifatCapacity} FAT sector(s), but ${remainingFatSectors} additional ` +
+          'FAT sector(s) are required beyond the header.',
+      );
+    }
+  }
+
   // First 109 DIFAT entries in the header (offset 76..512)
   const difatEntries = [];
   const activeDifatEntries = [];
+  const seenFatSectors = new Set();
+  const expectedHeaderFatCount = Math.min(numFatSectors, 109);
+
   for (let i = 0; i < 109; i++) {
     const entrySector = view.getUint32(76 + i * 4, true);
     difatEntries.push(entrySector);
-    if (entrySector !== SPECIAL_SECTOR.FREESECT) {
+
+    if (i < expectedHeaderFatCount) {
+      if (entrySector === SPECIAL_SECTOR.FREESECT) {
+        throw new Error(
+          `Header DIFAT entry at index ${i} is FREESECT, but ${numFatSectors} FAT ` +
+            `sector(s) are declared (expected populated entry for FAT sector ${i + 1}).`,
+        );
+      }
       if (entrySector > SPECIAL_SECTOR.MAX_REGULAR) {
         throw new Error(
           `Invalid DIFAT entry at index ${i}: reserved sector marker ` +
@@ -383,7 +407,21 @@ export function parseOleCfbHeader(input) {
             `(max sector: ${maxSectorLabel}).`,
         );
       }
+      if (seenFatSectors.has(entrySector)) {
+        throw new Error(
+          `Duplicate FAT sector location (sector ${entrySector}) in header DIFAT at index ${i}.`,
+        );
+      }
+      seenFatSectors.add(entrySector);
       activeDifatEntries.push({ index: i, sector: entrySector });
+    } else {
+      if (entrySector !== SPECIAL_SECTOR.FREESECT) {
+        throw new Error(
+          `Header DIFAT entry at index ${i} is populated (sector ${entrySector}), ` +
+            `but only ${numFatSectors} FAT sector(s) are declared (entries from index ` +
+            `${expectedHeaderFatCount} onwards must be FREESECT).`,
+        );
+      }
     }
   }
 
@@ -464,7 +502,8 @@ export function createMinimalCfbBuffer(options = {}) {
   const defaultNumDirSectors = major === 4 ? 1 : 0;
   view.setUint32(40, options.numDirectorySectors ?? defaultNumDirSectors, true);
   // Number of FAT sectors (offset 44): default 1
-  view.setUint32(44, options.numFatSectors ?? 1, true);
+  const numFatSectors = options.numFatSectors ?? 1;
+  view.setUint32(44, numFatSectors, true);
   // First directory sector location (offset 48): default 1
   view.setUint32(48, options.firstDirectorySectorLocation ?? 1, true);
   // Transaction signature (offset 52)
@@ -481,13 +520,13 @@ export function createMinimalCfbBuffer(options = {}) {
   view.setUint32(72, options.numDifatSectors ?? 0, true);
 
   // DIFAT entries (offset 76..512, 109 entries):
-  // Entry 0 defaults to sector 0 (FAT sector), entries 1..108 default to FREESECT
+  const expectedHeaderFatCount = Math.min(numFatSectors, 109);
   for (let i = 0; i < 109; i++) {
     let entry = SPECIAL_SECTOR.FREESECT;
     if (options.difatEntries && options.difatEntries[i] !== undefined) {
       entry = options.difatEntries[i];
-    } else if (!options.difatEntries && i === 0 && (options.numFatSectors ?? 1) > 0) {
-      entry = 0;
+    } else if (!options.difatEntries && i < expectedHeaderFatCount) {
+      entry = i;
     }
     view.setUint32(76 + i * 4, entry, true);
   }

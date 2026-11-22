@@ -432,4 +432,101 @@ describe('parseOleCfbHeader', () => {
       );
     });
   });
+
+  describe('Regression tests: DIFAT entries and FAT sector count cross-checks', () => {
+    it('rejects underspecified DIFAT entries when FAT count exceeds populated slots', () => {
+      const buffer = createMinimalCfbBuffer({
+        size: 2048,
+        numFatSectors: 2,
+        difatEntries: [0],
+        firstDirectorySectorLocation: 0,
+      });
+      expect(() => parseOleCfbHeader(buffer)).toThrow(
+        'Header DIFAT entry at index 1 is FREESECT, but 2 FAT sector(s) are declared ' +
+          '(expected populated entry for FAT sector 2).',
+      );
+    });
+
+    it('rejects underspecified header DIFAT entries when an entry is explicitly FREESECT', () => {
+      const buffer = createMinimalCfbBuffer({
+        size: 2048,
+        numFatSectors: 2,
+        difatEntries: [0, SPECIAL_SECTOR.FREESECT],
+        firstDirectorySectorLocation: 0,
+      });
+      expect(() => parseOleCfbHeader(buffer)).toThrow(
+        'Header DIFAT entry at index 1 is FREESECT, but 2 FAT sector(s) are declared ' +
+          '(expected populated entry for FAT sector 2).',
+      );
+    });
+
+    it('rejects overspecified DIFAT entries when populated slots exceed declared FAT count', () => {
+      const buffer = createMinimalCfbBuffer({
+        size: 2048,
+        numFatSectors: 1,
+        difatEntries: [0, 1],
+      });
+      expect(() => parseOleCfbHeader(buffer)).toThrow(
+        'Header DIFAT entry at index 1 is populated (sector 1), but only 1 FAT sector(s) ' +
+          'are declared (entries from index 1 onwards must be FREESECT).',
+      );
+    });
+
+    it('rejects duplicate FAT sector locations in header DIFAT entries', () => {
+      const buffer = createMinimalCfbBuffer({
+        size: 2048,
+        numFatSectors: 2,
+        difatEntries: [0, 0],
+        firstDirectorySectorLocation: 1,
+      });
+      expect(() => parseOleCfbHeader(buffer)).toThrow(
+        'Duplicate FAT sector location (sector 0) in header DIFAT at index 1.',
+      );
+    });
+
+    it('rejects FAT sector count exceeding 109 when DIFAT sector count is zero', () => {
+      // 512-byte sectors: header (1) + 110 FAT + 1 dir = 112 sectors -> 57344 bytes
+      const buffer = createMinimalCfbBuffer({
+        size: 512 * 115,
+        numFatSectors: 110,
+        numDifatSectors: 0,
+        firstDirectorySectorLocation: 109,
+      });
+      expect(() => parseOleCfbHeader(buffer)).toThrow(
+        'Declared DIFAT sector count (0) provides capacity for 0 FAT sector(s), ' +
+          'but 1 additional FAT sector(s) are required beyond the header.',
+      );
+    });
+
+    it('rejects FAT count exceeding 109 when declared DIFAT chain capacity is insufficient', () => {
+      // v3 DIFAT sector holds (512 / 4) - 1 = 127 entries.
+      // 109 header + 128 remainder = 237 FAT sectors. 1 DIFAT sector provides 127 < 128.
+      const buffer = createMinimalCfbBuffer({
+        size: 512 * 242,
+        numFatSectors: 237,
+        numDifatSectors: 1,
+        firstDifatSectorLocation: 109,
+        firstDirectorySectorLocation: 110,
+      });
+      expect(() => parseOleCfbHeader(buffer)).toThrow(
+        'Declared DIFAT sector count (1) provides capacity for 127 FAT sector(s), ' +
+          'but 128 additional FAT sector(s) are required beyond the header.',
+      );
+    });
+
+    it('accepts FAT count exceeding 109 when DIFAT capacity can represent remainder', () => {
+      // 110 FAT sectors: 109 in header, 1 remainder. 1 DIFAT sector provides 127 >= 1.
+      const buffer = createMinimalCfbBuffer({
+        size: 512 * 115,
+        numFatSectors: 110,
+        numDifatSectors: 1,
+        firstDifatSectorLocation: 109,
+        firstDirectorySectorLocation: 110,
+      });
+      const result = parseOleCfbHeader(buffer);
+      expect(result.numFatSectors).toBe(110);
+      expect(result.numDifatSectors).toBe(1);
+      expect(result.activeDifatEntries.length).toBe(109);
+    });
+  });
 });
