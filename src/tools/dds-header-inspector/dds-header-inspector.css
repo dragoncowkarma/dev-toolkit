@@ -1,0 +1,117 @@
+.dds-header-inspector {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+}
+
+.dds-header-inspector__input,
+.dds-header-inspector__dump,
+.dds-header-inspector__summary section {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1rem;
+}
+
+.dds-header-inspector__input,
+.dds-header-inspector__summary {
+  display: grid;
+  gap: 1rem;
+}
+
+.dds-header-inspector__input p,
+.dds-header-inspector label,
+.dds-header-inspector dt {
+  color: var(--color-text-muted);
+}
+
+.dds-header-inspector__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.dds-header-inspector button,
+.dds-header-inspector__file-button {
+  width: fit-content;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  cursor: pointer;
+  padding: 0.5rem 0.9rem;
+}
+
+.dds-header-inspector button:hover,
+.dds-header-inspector__file-button:hover {
+  border-color: var(--color-primary);
+}
+
+.dds-header-inspector input[type='file'] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+}
+
+.dds-header-inspector textarea,
+.dds-header-inspector pre {
+  background: var(--color-code-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+  padding: 0.75rem;
+}
+
+.dds-header-inspector textarea {
+  min-height: 160px;
+  resize: vertical;
+}
+
+.dds-header-inspector__error {
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  color: var(--color-error-light);
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+}
+
+.dds-header-inspector__summary {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  margin: 1rem 0;
+}
+
+.dds-header-inspector__summary h3,
+.dds-header-inspector__dump h3 {
+  margin-bottom: 0.75rem;
+}
+
+.dds-header-inspector__summary dl {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.dds-header-inspector__value {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.dds-header-inspector dd {
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.dds-header-inspector__dump pre {
+  margin: 0;
+  overflow-x: auto;
+}
+
+@media (min-width: 768px) {
+  .dds-header-inspector {
+    padding: 0 2rem 3rem;
+  }
+}
