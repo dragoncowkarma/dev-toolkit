@@ -2174,21 +2174,22 @@ EXECUTION_INTEGRITY_NOTICE = (
 # ---------------------------------------------------------------------------
 # Model and reasoning resolution
 #
-# Verified against the installed CLIs on 2026-10-21:
-#   codex  model table : GPT-5.6-Sol, GPT-5.6-Terra, GPT-5.6-Luna.  GPT-5.4 and
-#                        GPT-5.4 Mini are retired; Codex migrates them to Terra
-#                        and Luna respectively.
-#   `agy models`       : gemini-4-argon-*, gemini-3.8-flash-*, claude-opus-5-5-*,
+# Verified against the installed CLIs on 2026-11-21:
+#   `codex debug models`: GPT-6.1-Terra, GPT-6.2-Sol, GPT-6.2-Astra, GPT-6-Luna
+#                        are the current presets; GPT-5.6-Sol/-Terra/-Luna,
+#                        GPT-6.1-Sol and GPT-6-Sol/-Astra remain valid tags but
+#                        are no longer presets.
+#   `agy models`       : gemini-4-argon-*, gemini-4-neon-*, gemini-4-hydrogen-*,
+#                        gemini-3.8-flash-*, claude-opus-5-5-*,
 #                        claude-sonnet-5-5-*, gpt-oss-120b-medium.
-#                        Gemini 3.6 Flash and Gemini 3.1 Pro are gone.
-#   claude             : claude-opus-5, claude-sonnet-5, claude-fable-5,
-#                        claude-haiku-4-5 (plus the opus/sonnet/haiku/fable
+#   claude             : claude-opus-5-5, claude-sonnet-5-5, claude-fable-5-2,
+#                        claude-haiku-5-5 (plus the opus/sonnet/haiku/fable
 #                        aliases).  NOT from `claude --help`, which names none
 #                        of these -- read from the `latest_per_family` table
 #                        embedded in the CLI binary.  See AGENTS.md section 3
 #                        for the exact command.
 #
-# Re-verify with `agy models`, `claude --help` and a `codex exec` dry dispatch
+# Re-verify with `agy models`, `claude --help` and `codex debug models`
 # whenever a provider ships a new generation, then update AGENTS.md section 3
 # and the tables below together.
 # ---------------------------------------------------------------------------
