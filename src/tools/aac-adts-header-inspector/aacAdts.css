@@ -1,0 +1,78 @@
+.aac-adts-tool {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  color: var(--color-text);
+}
+
+.aac-adts-dropzone {
+  display: grid;
+  justify-items: center;
+  gap: 0.75rem;
+  padding: 2.5rem 1rem;
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  text-align: center;
+}
+
+.aac-adts-dropzone.is-dragging {
+  border-color: var(--color-primary);
+  background: var(--color-bg);
+}
+
+.aac-adts-dropzone p { margin: 0; }
+
+.aac-adts-hint { color: var(--color-text-muted); font-size: 0.875rem; }
+
+.aac-adts-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.aac-adts-button:hover, .aac-adts-button:focus-visible {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.aac-adts-button input { position: absolute; inline-size: 1px; block-size: 1px; opacity: 0; }
+
+.aac-adts-file-row, .aac-adts-results { margin-top: 1rem; }
+
+.aac-adts-file-row { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+
+.aac-adts-error {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+}
+
+.aac-adts-frame {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.aac-adts-frame h2 { margin-top: 0; font-size: 1.1rem; }
+.aac-adts-frame dl { display: grid; grid-template-columns: 1fr; gap: 0; margin: 0; }
+.aac-adts-field { display: flex; justify-content: space-between; gap: 1rem; padding: 0.5rem 0; border-top: 1px solid var(--color-border); }
+.aac-adts-field dt { color: var(--color-text-muted); }
+.aac-adts-field dd { margin: 0; text-align: right; }
+
+@media (min-width: 768px) {
+  .aac-adts-tool { padding: 0 2rem 3rem; }
+  .aac-adts-frame dl { grid-template-columns: 1fr 1fr; column-gap: 2rem; }
+}
