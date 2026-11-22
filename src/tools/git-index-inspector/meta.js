@@ -3,5 +3,5 @@ export default {
   name: 'Git Index Inspector',
   description: 'Inspect .git/index headers, entries, extensions, and checksums locally.',
   icon: '⌘',
-  category: 'Developer',
+  category: 'Inspector',
 };

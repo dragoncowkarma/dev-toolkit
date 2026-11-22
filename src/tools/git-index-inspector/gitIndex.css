@@ -1,11 +1,71 @@
-.git-index-inspector { max-width: 1100px; margin: 0 auto; padding: 0 1.25rem 2rem; }
-.git-index-inspector__controls { display: flex; align-items: center; flex-wrap: wrap; gap: .75rem; }
-.git-index-inspector__upload, .git-index-inspector__clear { padding: .5rem 1rem; border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-surface); color: var(--color-text); cursor: pointer; font: inherit; }
-.git-index-inspector__table-wrap { overflow-x: auto; border: 1px solid var(--color-border); border-radius: var(--radius); }
-.git-index-inspector table { width: 100%; border-collapse: collapse; font-size: .85rem; }
-.git-index-inspector th, .git-index-inspector td { padding: .75rem; text-align: left; vertical-align: top; border-bottom: 1px solid var(--color-border); }
-.git-index-inspector dt { color: var(--color-text-muted); }
-.git-index-inspector dd { margin: .2rem 0 0; }
-.git-index-inspector__header { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 1rem; }
-.git-index-inspector__error { color: var(--color-error-light); background: var(--color-error-bg); border: 1px solid var(--color-error-border); border-radius: var(--radius); padding: .75rem 1rem; }
-@media (min-width: 768px) { .git-index-inspector { padding: 0 2rem 3rem; } }
+.git-index-inspector {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+}
+
+.git-index-inspector__controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .75rem;
+}
+
+.git-index-inspector__upload,
+.git-index-inspector__clear {
+  padding: .5rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+}
+
+.git-index-inspector__table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.git-index-inspector table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .85rem;
+}
+
+.git-index-inspector th,
+.git-index-inspector td {
+  padding: .75rem;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.git-index-inspector dt {
+  color: var(--color-text-muted);
+}
+
+.git-index-inspector dd {
+  margin: .2rem 0 0;
+}
+
+.git-index-inspector__header {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 1rem;
+}
+
+.git-index-inspector__error {
+  color: var(--color-error-light);
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  padding: .75rem 1rem;
+}
+
+@media (min-width: 768px) {
+  .git-index-inspector {
+    padding: 0 2rem 3rem;
+  }
+}
