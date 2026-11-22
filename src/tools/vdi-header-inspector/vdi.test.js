@@ -45,8 +45,8 @@ describe('VDI Header Parsing Utils', () => {
     expect(header.blockSizeFormatted).toBe('1.00 MB');
     expect(header.blocksCount).toBe(10240);
     expect(header.blocksAllocated).toBe(128);
-    expect(header.uuidImage).toBe('01020304-0506-0708-090a-0b0c0d0e0f10');
-    expect(header.uuidLastSnapshot).toBe('11121314-1516-1718-191a-1b1c1d1e1f20');
+    expect(header.uuidImage).toBe('04030201-0605-0807-090a-0b0c0d0e0f10');
+    expect(header.uuidLastSnapshot).toBe('14131211-1615-1817-191a-1b1c1d1e1f20');
   });
 
   it('parses a valid fixed image header correctly', () => {
@@ -66,16 +66,84 @@ describe('VDI Header Parsing Utils', () => {
     expect(result.header.description).toBe('Pre-allocated Fixed VDI');
   });
 
+  it('parses a valid undo image header correctly', () => {
+    const buffer = createSampleVdiHeader({
+      imageType: 3, // Undo
+      description: 'Undo Disk Image',
+    });
+
+    const result = parseVdiHeader(buffer);
+    expect(result.ok).toBe(true);
+    expect(result.header.imageType).toBe('undo');
+    expect(result.header.imageTypeRaw).toBe(3);
+  });
+
   it('parses a valid differencing image header correctly', () => {
     const buffer = createSampleVdiHeader({
-      imageType: 3, // Differencing
+      imageType: 4, // Differencing
       description: 'Snapshot Child Disk',
     });
 
     const result = parseVdiHeader(buffer);
     expect(result.ok).toBe(true);
     expect(result.header.imageType).toBe('differencing');
-    expect(result.header.imageTypeRaw).toBe(3);
+    expect(result.header.imageTypeRaw).toBe(4);
+  });
+
+  it('decodes all four UUID fields matching VirtualBox and QEMU canonical representations', () => {
+    // Canonical UUIDs to test:
+    // uuidImage: "7f10dabe-4242-11ef-93a5-00155d012345"
+    //   time_low: 0x7f10dabe -> LE: [0xbe, 0xda, 0x10, 0x7f]
+    //   time_mid: 0x4242 -> LE: [0x42, 0x42]
+    //   time_hi: 0x11ef -> LE: [0xef, 0x11]
+    //   clock_seq: [0x93, 0xa5]
+    //   node: [0x00, 0x15, 0x5d, 0x01, 0x23, 0x45]
+    const uuidImageBytes = [
+      0xbe, 0xda, 0x10, 0x7f, 0x42, 0x42, 0xef, 0x11,
+      0x93, 0xa5, 0x00, 0x15, 0x5d, 0x01, 0x23, 0x45,
+    ];
+
+    // uuidLastSnapshot: "a1b2c3d4-e5f6-789a-bcde-f0123456789a"
+    //   time_low: 0xa1b2c3d4 -> LE: [0xd4, 0xc3, 0xb2, 0xa1]
+    //   time_mid: 0xe5f6 -> LE: [0xf6, 0xe5]
+    //   time_hi: 0x789a -> LE: [0x9a, 0x78]
+    //   clock_seq: [0xbc, 0xde]
+    //   node: [0xf0, 0x12, 0x34, 0x56, 0x78, 0x9a]
+    const uuidLastSnapBytes = [
+      0xd4, 0xc3, 0xb2, 0xa1, 0xf6, 0xe5, 0x9a, 0x78,
+      0xbc, 0xde, 0xf0, 0x12, 0x34, 0x56, 0x78, 0x9a,
+    ];
+
+    // uuidLink: "04030201-0605-0807-090a-0b0c0d0e0f10"
+    const uuidLinkBytes = [
+      0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+      0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10,
+    ];
+
+    // uuidParent: "deadbeef-cafe-4b00-8192-aabbccddeeff"
+    //   time_low: 0xdeadbeef -> LE: [0xef, 0xbe, 0xad, 0xde]
+    //   time_mid: 0xcafe -> LE: [0xfe, 0xca]
+    //   time_hi: 0x4b00 -> LE: [0x00, 0x4b]
+    //   clock_seq: [0x81, 0x92]
+    //   node: [0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff]
+    const uuidParentBytes = [
+      0xef, 0xbe, 0xad, 0xde, 0xfe, 0xca, 0x00, 0x4b,
+      0x81, 0x92, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff,
+    ];
+
+    const buffer = createSampleVdiHeader({
+      uuidImage: uuidImageBytes,
+      uuidLastSnap: uuidLastSnapBytes,
+      uuidLink: uuidLinkBytes,
+      uuidParent: uuidParentBytes,
+    });
+
+    const result = parseVdiHeader(buffer);
+    expect(result.ok).toBe(true);
+    expect(result.header.uuidImage).toBe('7f10dabe-4242-11ef-93a5-00155d012345');
+    expect(result.header.uuidLastSnapshot).toBe('a1b2c3d4-e5f6-789a-bcde-f0123456789a');
+    expect(result.header.uuidLink).toBe('04030201-0605-0807-090a-0b0c0d0e0f10');
+    expect(result.header.uuidParent).toBe('deadbeef-cafe-4b00-8192-aabbccddeeff');
   });
 
   it('preserves raw image type value when type is unknown', () => {
@@ -185,13 +253,19 @@ describe('VDI Header Parsing Utils', () => {
   });
 
   describe('formatUuid', () => {
-    it('formats 16-byte UUID into standard string layout', () => {
+    it('decodes 16-byte UUID in VirtualBox little-endian byte order for time fields', () => {
       const buf = new ArrayBuffer(16);
       const view = new DataView(buf);
       for (let i = 0; i < 16; i += 1) {
         view.setUint8(i, i + 1);
       }
-      expect(formatUuid(view, 0)).toBe('01020304-0506-0708-090a-0b0c0d0e0f10');
+      expect(formatUuid(view, 0)).toBe('04030201-0605-0807-090a-0b0c0d0e0f10');
+    });
+
+    it('formats null/zero UUID correctly', () => {
+      const buf = new ArrayBuffer(16);
+      const view = new DataView(buf);
+      expect(formatUuid(view, 0)).toBe('00000000-0000-0000-0000-000000000000');
     });
   });
 });

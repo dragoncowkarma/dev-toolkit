@@ -207,6 +207,11 @@
   color: #3b82f6;
 }
 
+.vdi-inspector-tool .badge-undo {
+  background: rgba(168, 85, 247, 0.15);
+  color: #a855f7;
+}
+
 .vdi-inspector-tool .badge-differencing {
   background: rgba(245, 158, 11, 0.15);
   color: #f59e0b;

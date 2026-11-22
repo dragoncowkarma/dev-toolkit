@@ -22,6 +22,26 @@ export default function VdiHeaderInspectorTool() {
   const [isDragging, setIsDragging] = useState(false);
 
   const fileInputRef = useRef(null);
+  const activeReaderRef = useRef(null);
+  const currentReadIdRef = useRef(0);
+
+  function cancelPendingRead() {
+    currentReadIdRef.current += 1;
+    if (activeReaderRef.current) {
+      try {
+        activeReaderRef.current.abort();
+      } catch {
+        // ignore abort errors
+      }
+      activeReaderRef.current = null;
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      cancelPendingRead();
+    };
+  }, []);
 
   function processBuffer(buffer, label = '') {
     const dump = formatHexDump(buffer);
@@ -40,22 +60,38 @@ export default function VdiHeaderInspectorTool() {
 
   function handleFile(file) {
     if (!file) return;
+    cancelPendingRead();
+    const readId = ++currentReadIdRef.current;
+
     setFileName(file.name);
     setHexInput('');
 
     const reader = new FileReader();
+    activeReaderRef.current = reader;
+
     reader.onload = (e) => {
+      if (readId !== currentReadIdRef.current) return;
+      activeReaderRef.current = null;
       const buffer = e.target?.result;
       if (buffer instanceof ArrayBuffer) {
         processBuffer(buffer, file.name);
       }
     };
     reader.onerror = () => {
+      if (readId !== currentReadIdRef.current) return;
+      activeReaderRef.current = null;
       setError('Failed to read the specified file.');
       setParsedResult(null);
       setHexDump('');
     };
-    reader.readAsArrayBuffer(file);
+    reader.onabort = () => {
+      if (readId === currentReadIdRef.current) {
+        activeReaderRef.current = null;
+      }
+    };
+
+    const headerSlice = typeof file.slice === 'function' ? file.slice(0, 512) : file;
+    reader.readAsArrayBuffer(headerSlice);
   }
 
   function handleFileInputChange(e) {
@@ -66,6 +102,7 @@ export default function VdiHeaderInspectorTool() {
   }
 
   function handleHexInputChange(e) {
+    cancelPendingRead();
     const val = e.target.value;
     setHexInput(val);
     setFileName('');
@@ -112,6 +149,7 @@ export default function VdiHeaderInspectorTool() {
   }
 
   function handleLoadSample(type) {
+    cancelPendingRead();
     const imageType = type === 'fixed' ? 2 : 1;
     const sampleBuffer = createSampleVdiHeader({
       imageType,
@@ -122,6 +160,7 @@ export default function VdiHeaderInspectorTool() {
   }
 
   function handleClear() {
+    cancelPendingRead();
     setHexInput('');
     setFileName('');
     setParsedResult(null);
@@ -136,9 +175,11 @@ export default function VdiHeaderInspectorTool() {
     ? 'badge-dynamic'
     : parsedResult?.imageType === 'fixed'
       ? 'badge-fixed'
-      : parsedResult?.imageType === 'differencing'
-        ? 'badge-differencing'
-        : 'badge-unknown';
+      : parsedResult?.imageType === 'undo'
+        ? 'badge-undo'
+        : parsedResult?.imageType === 'differencing'
+          ? 'badge-differencing'
+          : 'badge-unknown';
 
   return (
     <section className="vdi-inspector-tool" aria-label="VDI Header Inspector">

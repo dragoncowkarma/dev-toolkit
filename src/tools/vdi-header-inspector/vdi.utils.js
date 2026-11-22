@@ -9,29 +9,32 @@ export const MIN_HEADER_SIZE = 456; // Up through uuid_parent (0x1B8 + 16 = 0x1C
 export const IMAGE_TYPE_NAMES = {
   1: 'dynamic',
   2: 'fixed',
-  3: 'differencing',
+  3: 'undo',
+  4: 'differencing',
 };
 
 /**
- * Formats a 16-byte UUID from DataView at the given byte offset.
- * Standard sequential layout: 4-2-2-2-6 hex bytes.
+ * Formats a 16-byte UUID from DataView at the given byte offset according to
+ * VirtualBox / COM layout.
+ * The first 32-bit (time_low) and next two 16-bit fields (time_mid, time_hi_and_version)
+ * are stored little-endian in VDI, while the clock sequence and node bytes are sequential.
  *
  * @param {DataView} view
  * @param {number} offset
  * @returns {string}
  */
 export function formatUuid(view, offset) {
-  const parts = [];
-  for (let i = 0; i < 16; i += 1) {
-    parts.push(view.getUint8(offset + i).toString(16).padStart(2, '0'));
+  const p1 = view.getUint32(offset, true).toString(16).padStart(8, '0');
+  const p2 = view.getUint16(offset + 4, true).toString(16).padStart(4, '0');
+  const p3 = view.getUint16(offset + 6, true).toString(16).padStart(4, '0');
+  const b8 = view.getUint8(offset + 8).toString(16).padStart(2, '0');
+  const b9 = view.getUint8(offset + 9).toString(16).padStart(2, '0');
+  const p4 = `${b8}${b9}`;
+  let p5 = '';
+  for (let i = 10; i < 16; i += 1) {
+    p5 += view.getUint8(offset + i).toString(16).padStart(2, '0');
   }
-  return [
-    parts.slice(0, 4).join(''),
-    parts.slice(4, 6).join(''),
-    parts.slice(6, 8).join(''),
-    parts.slice(8, 10).join(''),
-    parts.slice(10, 16).join(''),
-  ].join('-');
+  return `${p1}-${p2}-${p3}-${p4}-${p5}`;
 }
 
 /**
@@ -294,7 +297,7 @@ export function createSampleVdiHeader(options = {}) {
     major = 1,
     minor = 1,
     headerSize = 512,
-    imageType = 1, // 1 = dynamic, 2 = fixed, 3 = differencing
+    imageType = 1, // 1 = dynamic, 2 = fixed, 3 = undo, 4 = differencing
     imageFlags = 0,
     description = 'VirtualBox VDI Test Disk',
     offsetBlocks = 512,
