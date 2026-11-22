@@ -1,0 +1,130 @@
+.nes-rom-tool {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+}
+
+.nes-rom-tool .nes-rom-dropzone {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  min-height: 150px;
+  padding: 1.25rem;
+  text-align: center;
+  background: var(--color-surface);
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius);
+}
+
+.nes-rom-tool .nes-rom-dropzone--active {
+  border-color: var(--color-primary);
+}
+
+.nes-rom-tool .nes-rom-dropzone p {
+  width: 100%;
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.nes-rom-tool .nes-rom-button {
+  position: relative;
+  display: inline-flex;
+  padding: 0.55rem 1rem;
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  background: var(--color-primary);
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.nes-rom-tool .nes-rom-button--secondary {
+  color: var(--color-text);
+  background: var(--color-surface);
+  border-color: var(--color-border);
+}
+
+.nes-rom-tool .nes-rom-button:hover,
+.nes-rom-tool .nes-rom-button:focus-visible {
+  border-color: var(--color-primary-light);
+  outline: none;
+}
+
+.nes-rom-tool .nes-rom-button input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.nes-rom-tool .nes-rom-error {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  color: var(--color-error-light);
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+}
+
+.nes-rom-tool .nes-rom-results {
+  margin-top: 1rem;
+}
+
+.nes-rom-tool .nes-rom-file-name {
+  margin: 0 0 0.75rem;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+.nes-rom-tool .nes-rom-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+.nes-rom-tool .nes-rom-card {
+  padding: 1rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.nes-rom-tool .nes-rom-card h3 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+}
+
+.nes-rom-tool .nes-rom-card dl {
+  margin: 0;
+}
+
+.nes-rom-tool .nes-rom-detail {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.4rem 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.nes-rom-tool .nes-rom-detail:first-child {
+  border-top: 0;
+}
+
+.nes-rom-tool .nes-rom-detail dt {
+  color: var(--color-text-muted);
+}
+
+.nes-rom-tool .nes-rom-detail dd {
+  margin: 0;
+  text-align: right;
+}
+
+@media (min-width: 700px) {
+  .nes-rom-tool .nes-rom-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
