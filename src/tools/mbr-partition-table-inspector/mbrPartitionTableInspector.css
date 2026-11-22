@@ -1,0 +1,132 @@
+.mbr-inspector {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  color: var(--color-text);
+}
+
+.mbr-inspector__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.mbr-inspector__button {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+}
+
+.mbr-inspector__button:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.mbr-inspector__file-button {
+  position: relative;
+  overflow: hidden;
+}
+
+.mbr-inspector__file-button:focus-within {
+  outline: 2px solid var(--color-primary-light);
+  outline-offset: 3px;
+}
+
+.mbr-inspector__file-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.mbr-inspector__privacy-note,
+.mbr-inspector__file-name {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+.mbr-inspector__results {
+  margin-top: 1.25rem;
+}
+
+.mbr-inspector__summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem;
+  margin: 0 0 1rem;
+}
+
+.mbr-inspector__summary div,
+.mbr-inspector__note,
+.mbr-inspector__error {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  padding: 0.75rem 1rem;
+}
+
+.mbr-inspector__summary dt {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.mbr-inspector__summary dd {
+  margin: 0.25rem 0 0;
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+}
+
+.mbr-inspector__note {
+  border-color: var(--color-primary);
+}
+
+.mbr-inspector__error {
+  margin-top: 1rem;
+  border-color: var(--color-error-border);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+}
+
+.mbr-inspector__table-wrap {
+  overflow-x: auto;
+}
+
+.mbr-inspector table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--color-surface);
+}
+
+.mbr-inspector caption {
+  padding: 0.75rem 0;
+  text-align: left;
+  font-weight: 600;
+}
+
+.mbr-inspector th,
+.mbr-inspector td {
+  border: 1px solid var(--color-border);
+  padding: 0.625rem;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.mbr-inspector th {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+}
+
+@media (min-width: 768px) {
+  .mbr-inspector {
+    padding: 0 2rem 3rem;
+  }
+}
