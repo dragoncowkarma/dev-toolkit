@@ -1,0 +1,7 @@
+.arj-inspector { display: grid; gap: 0.75rem; }
+.arj-inspector input { max-width: 100%; }
+.arj-inspector [role='alert'] { color: var(--color-error, #c33); }
+.arj-header-details dl { display: grid; gap: 0.5rem; }
+.arj-header-details dl div { display: grid; grid-template-columns: minmax(10rem, 1fr) 2fr; gap: 1rem; }
+.arj-header-details dt { font-weight: 600; }
+.arj-header-details dd { margin: 0; overflow-wrap: anywhere; }
