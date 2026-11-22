@@ -1,0 +1,75 @@
+.squashfs-inspector {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+}
+
+.squashfs-inspector__intro,
+.squashfs-inspector__help,
+.squashfs-inspector__file {
+  color: var(--color-text-muted);
+}
+
+.squashfs-inspector__upload {
+  display: inline-block;
+  margin-top: 1rem;
+  font-weight: 600;
+}
+
+.squashfs-inspector__input {
+  display: block;
+  margin-top: 0.5rem;
+}
+
+.squashfs-inspector__help {
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.squashfs-inspector__error {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  color: var(--color-error-light);
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+}
+
+.squashfs-inspector__results {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.squashfs-inspector__results dl {
+  display: grid;
+  grid-template-columns: minmax(9rem, 1fr) minmax(0, 2fr);
+  gap: 0.5rem 1rem;
+}
+
+.squashfs-inspector__results dt {
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
+.squashfs-inspector__results dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+}
+
+.squashfs-inspector__field {
+  display: contents;
+}
+
+.squashfs-inspector__flags {
+  margin-bottom: 0;
+}
+
+@media (min-width: 768px) {
+  .squashfs-inspector {
+    padding: 0 2rem 3rem;
+  }
+}
