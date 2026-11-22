@@ -1,0 +1,130 @@
+.flv-header-inspector {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  color: var(--color-text);
+}
+
+.flv-header-inspector__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.flv-header-inspector__upload,
+.flv-header-inspector button {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  padding: 0.5rem 0.8rem;
+}
+
+.flv-header-inspector__upload:focus-within,
+.flv-header-inspector button:focus-visible {
+  outline: 2px solid var(--color-primary-light);
+  outline-offset: 3px;
+}
+
+.flv-header-inspector__upload input {
+  max-width: 15rem;
+}
+
+.flv-header-inspector__file-name,
+.flv-header-inspector__hint {
+  color: var(--color-text-muted);
+}
+
+.flv-header-inspector__hint {
+  margin: 0.75rem 0 1.25rem;
+}
+
+.flv-header-inspector__section {
+  margin-top: 1.25rem;
+}
+
+.flv-header-inspector__section h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.1rem;
+}
+
+.flv-header-inspector__details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.flv-header-inspector__details div {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  padding: 0.75rem;
+}
+
+.flv-header-inspector__details dt {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
+.flv-header-inspector__details dd {
+  margin: 0.25rem 0 0;
+  font-weight: 600;
+}
+
+.flv-header-inspector__diagnostic {
+  border-radius: var(--radius);
+  margin-top: 0.75rem;
+  padding: 0.75rem 1rem;
+}
+
+.flv-header-inspector__diagnostic.error {
+  border: 1px solid var(--color-error-border);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+}
+
+.flv-header-inspector__diagnostic.warning {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.flv-header-inspector__table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.flv-header-inspector table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.flv-header-inspector th,
+.flv-header-inspector td {
+  border-bottom: 1px solid var(--color-border);
+  padding: 0.65rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.flv-header-inspector tr:last-child td {
+  border-bottom: 0;
+}
+
+.flv-header-inspector th {
+  background: var(--color-surface);
+  white-space: nowrap;
+}
+
+@media (min-width: 768px) {
+  .flv-header-inspector {
+    padding: 0 2rem 3rem;
+  }
+}
