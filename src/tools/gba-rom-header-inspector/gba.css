@@ -1,0 +1,14 @@
+.gba-inspector { max-width: 900px; margin: auto; padding: 0 1.25rem 2rem; }
+.gba-inspector form, .gba-drop {
+  display: flex; flex-direction: column; gap: .5rem; margin: 1rem 0;
+}
+.gba-drop { border: 1px dashed var(--color-border); border-radius: var(--radius); padding: 1rem; }
+.gba-inspector textarea, .gba-inspector select, .gba-inspector button {
+  background: var(--color-surface); color: var(--color-text); border: 1px solid var(--color-border);
+  border-radius: var(--radius); padding: .6rem; font: inherit;
+}
+.gba-inspector textarea { min-height: 10rem; resize: vertical; }
+.gba-inspector button { align-self: start; cursor: pointer; }
+.gba-inspector dt { font-weight: bold; margin-top: .75rem; }
+.gba-inspector dd { margin-left: 0; overflow-wrap: anywhere; }
+.gba-inspector [role="alert"] { color: var(--color-error-light); }
