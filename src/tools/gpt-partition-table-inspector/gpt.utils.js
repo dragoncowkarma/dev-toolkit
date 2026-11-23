@@ -301,7 +301,10 @@ export function parseGpt(input) {
   // Compute Partition Entry Array CRC32 if entries are fully within buffer.
   const entryStart = Number(partitionEntryLba) * sectorSize;
   const totalArrayBytes = entryCount * entrySize;
-  const hasFullEntryArray = bytes.length >= entryStart + totalArrayBytes;
+  const hasFullEntryArray =
+    entryStart >= 0 &&
+    entryStart <= bytes.length &&
+    bytes.length >= entryStart + totalArrayBytes;
 
   let computedArrayCrc = null;
   let arrayCrcMatch = null;
@@ -313,10 +316,12 @@ export function parseGpt(input) {
 
   // Parse partition entries, skipping all-zero entries.
   const partitions = [];
-  if (entrySize >= 128) {
+  let scannedEntryCount = 0;
+  if (entrySize >= 128 && entryStart >= 0 && entryStart < bytes.length) {
     for (let i = 0; i < entryCount; i++) {
       const offset = entryStart + i * entrySize;
       if (offset + entrySize > bytes.length) break;
+      scannedEntryCount++;
 
       // Check if type GUID is all zeros.
       let isZeroType = true;
@@ -383,6 +388,7 @@ export function parseGpt(input) {
     partitionEntryLba,
     entryCount,
     entrySize,
+    scannedEntryCount,
     partitionArrayCrc32: storedArrayCrc,
     computedArrayCrc32: computedArrayCrc,
     arrayCrcMatch,

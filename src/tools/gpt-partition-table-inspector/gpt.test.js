@@ -119,6 +119,71 @@ describe('4Kn disk support', () => {
     expect(result.sectorSize).toBe(4096);
     expect(result.headerOffset).toBe(4096);
   });
+
+  it('marks partition list as incomplete when entries extend beyond buffer', () => {
+    // 4Kn disk layout with 128 entries of 128 bytes starting at LBA 2 (byte 8192).
+    // Total array requires 8192 + 16384 = 24576 bytes.
+    // Create a 24576-byte full image where entry 100 (byte 8192 + 100 * 128 = 20992)
+    // is an active partition.
+    const fullDisk = new Uint8Array(24576);
+    const fullView = new DataView(fullDisk.buffer);
+
+    // MBR signature at 510..511
+    fullDisk[510] = 0x55;
+    fullDisk[511] = 0xAA;
+
+    // GPT Header at 4096
+    const sig = [0x45, 0x46, 0x49, 0x20, 0x50, 0x41, 0x52, 0x54];
+    sig.forEach((b, i) => { fullDisk[4096 + i] = b; });
+    fullView.setUint32(4096 + 8, 0x00010000, true);
+    fullView.setUint32(4096 + 12, 92, true);
+    fullView.setBigUint64(4096 + 24, 1n, true);
+    fullView.setBigUint64(4096 + 32, 204799n, true);
+    fullView.setBigUint64(4096 + 40, 34n, true);
+    fullView.setBigUint64(4096 + 48, 204766n, true);
+    fullView.setBigUint64(4096 + 72, 2n, true);
+    fullView.setUint32(4096 + 80, 128, true);
+    fullView.setUint32(4096 + 84, 128, true);
+
+    // Active partition entry at index 100 (starts at 8192 + 100 * 128 = 20992)
+    // Type GUID: Linux Filesystem Data (0FC63DAF-8483-4772-8E79-3D69D8477DE4)
+    const entry100Offset = 8192 + 100 * 128;
+    const typeGuidBytes = [
+      0xAF, 0x3D, 0xC6, 0x0F, 0x83, 0x84, 0x72, 0x47,
+      0x8E, 0x79, 0x3D, 0x69, 0xD8, 0x47, 0x7D, 0xE4,
+    ];
+    typeGuidBytes.forEach((b, i) => { fullDisk[entry100Offset + i] = b; });
+    fullView.setBigUint64(entry100Offset + 32, 2048n, true);
+    fullView.setBigUint64(entry100Offset + 40, 4096n, true);
+
+    // Compute array CRC and header CRC on full image
+    const arrayCrc = crc32(fullDisk.subarray(8192, 8192 + 128 * 128));
+    fullView.setUint32(4096 + 88, arrayCrc, true);
+
+    const headerCopy = new Uint8Array(fullDisk.subarray(4096, 4096 + 92));
+    headerCopy[16] = 0; headerCopy[17] = 0; headerCopy[18] = 0; headerCopy[19] = 0;
+    fullView.setUint32(4096 + 16, crc32(headerCopy), true);
+
+    // 1. Full buffer parses partition 101 successfully
+    const fullResult = parseGpt(fullDisk);
+    expect(fullResult.hasFullEntryArray).toBe(true);
+    expect(fullResult.scannedEntryCount).toBe(128);
+    expect(fullResult.partitions).toHaveLength(1);
+    expect(fullResult.partitions[0].index).toBe(101);
+
+    // 2. Truncated buffer limited to MAX_GPT_BYTES (17408 bytes)
+    const truncatedBuffer = fullDisk.subarray(0, MAX_GPT_BYTES);
+    const truncatedResult = parseGpt(truncatedBuffer);
+
+    expect(truncatedResult.sectorSize).toBe(4096);
+    expect(truncatedResult.entryCount).toBe(128);
+    // (17408 - 8192) / 128 = 72 entries scanned
+    expect(truncatedResult.scannedEntryCount).toBe(72);
+    expect(truncatedResult.hasFullEntryArray).toBe(false);
+    expect(truncatedResult.computedArrayCrc32).toBeNull();
+    // Entry 100 was beyond the 17408-byte buffer, so 0 partitions in scanned range
+    expect(truncatedResult.partitions).toHaveLength(0);
+  });
 });
 
 describe('file slice reading', () => {

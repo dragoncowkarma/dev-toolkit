@@ -29,6 +29,13 @@ export default function GptPartitionTableInspectorTool() {
   const [gptData, setGptData] = useState(null);
   const [error, setError] = useState('');
   const fileInputRef = useRef(null);
+  const activeRequestIdRef = useRef(0);
+
+  useEffect(() => {
+    return () => {
+      activeRequestIdRef.current += 1;
+    };
+  }, []);
 
   // Parse whenever hex input changes in hex mode.
   useEffect(() => {
@@ -51,25 +58,30 @@ export default function GptPartitionTableInspectorTool() {
 
   async function handleFileUpload(file) {
     if (!file) return;
+    const requestId = ++activeRequestIdRef.current;
     setFileName(file.name);
     setFileSize(file.size);
     try {
       const bytes = await readGptSlice(file);
+      if (requestId !== activeRequestIdRef.current) return;
       const parsed = parseGpt(bytes);
       setGptData(parsed);
       setError('');
     } catch (err) {
+      if (requestId !== activeRequestIdRef.current) return;
       setGptData(null);
       setError(err.message);
     }
   }
 
   function handleModeChange(newMode) {
+    activeRequestIdRef.current += 1;
     setMode(newMode);
     setError('');
   }
 
   function handleLoadSample() {
+    activeRequestIdRef.current += 1;
     const sampleBytes = createSampleGptBytes();
     const hex = bytesToHex(sampleBytes);
     setMode(INPUT_MODES.HEX);
@@ -77,6 +89,7 @@ export default function GptPartitionTableInspectorTool() {
   }
 
   function handleClear() {
+    activeRequestIdRef.current += 1;
     setHexInput('');
     setFileName('');
     setFileSize(null);
@@ -263,12 +276,32 @@ export default function GptPartitionTableInspectorTool() {
           <section className="card" aria-labelledby="gpt-partitions-title">
             <div className="card-header">
               <h2 id="gpt-partitions-title" className="card-title">
-                Partition Entries ({gptData.partitions.length} active)
+                {gptData.hasFullEntryArray
+                  ? `Partition Entries (${gptData.partitions.length} active)`
+                  : `Partition Entries (${gptData.partitions.length} active scanned, incomplete)`}
               </h2>
+              {!gptData.hasFullEntryArray && (
+                <span className="badge badge-warning">List Incomplete</span>
+              )}
             </div>
 
+            {!gptData.hasFullEntryArray && (
+              <div className="incomplete-notice" role="status">
+                Partition entry array is truncated by the 34-sector read limit. Showing{' '}
+                {gptData.partitions.length} active partition(s) from the first{' '}
+                {gptData.scannedEntryCount} of {gptData.entryCount} entries; remaining entries
+                were not inspected.
+              </div>
+            )}
+
             {gptData.partitions.length === 0 ? (
-              <p className="prop-value">No active partitions defined (all entries are zero).</p>
+              <p className="prop-value">
+                {gptData.hasFullEntryArray
+                  ? 'No active partitions defined (all entries are zero).'
+                  : `No active partitions found in the first ${gptData.scannedEntryCount} ` +
+                    'inspected entries (partition list is incomplete; entries beyond read ' +
+                    'limit were not inspected).'}
+              </p>
             ) : (
               <div className="partitions-list">
                 {gptData.partitions.map((part) => (
