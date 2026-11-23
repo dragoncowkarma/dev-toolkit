@@ -133,6 +133,74 @@ describe('NdsRomHeaderInspectorTool UI', () => {
     });
     expect(writeTextMock.mock.calls[0][0]).toContain('Nintendo DS ROM Header Summary');
     expect(writeTextMock.mock.calls[0][0]).toContain('Total ROM Size: ');
+    expect(writeTextMock.mock.calls[0][0]).toContain('Device Size:   32.0 MB');
     expect(screen.getByText('Copied!')).toBeInTheDocument();
+  });
+
+  it('displays chip capacity correctly for device capacity 0 (128.0 KB)', async () => {
+    const writeTextMock = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, {
+      clipboard: {
+        writeText: writeTextMock,
+      },
+    });
+
+    const sample = createSyntheticHeader({ gameTitle: 'HOMEBREW', deviceCapacity: 0 });
+    const hex = bytesToHexString(sample);
+
+    render(<NdsRomHeaderInspectorTool />);
+
+    const pasteModeBtn = screen.getByRole('button', { name: 'Paste Hex / Base64' });
+    fireEvent.click(pasteModeBtn);
+
+    const textarea = screen.getByLabelText(/Paste ROM Header Bytes/);
+    fireEvent.change(textarea, { target: { value: hex } });
+
+    expect(await screen.findByText('HOMEBREW')).toBeInTheDocument();
+    expect(screen.getByText('Chip Capacity')).toBeInTheDocument();
+    expect(screen.getByText('128.0 KB')).toBeInTheDocument();
+
+    const copyBtn = screen.getByRole('button', { name: 'Copy Summary' });
+    fireEvent.click(copyBtn);
+
+    await waitFor(() => {
+      expect(writeTextMock).toHaveBeenCalledTimes(1);
+    });
+    expect(writeTextMock.mock.calls[0][0]).toContain('Device Size:   128.0 KB');
+  });
+
+  it('displays Unknown chip capacity for boundary and malformed capacity values', async () => {
+    const writeTextMock = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, {
+      clipboard: {
+        writeText: writeTextMock,
+      },
+    });
+
+    const sample = createSyntheticHeader({ gameTitle: 'OVERFLOW31', deviceCapacity: 31 });
+    const hex = bytesToHexString(sample);
+
+    render(<NdsRomHeaderInspectorTool />);
+
+    const pasteModeBtn = screen.getByRole('button', { name: 'Paste Hex / Base64' });
+    fireEvent.click(pasteModeBtn);
+
+    const textarea = screen.getByLabelText(/Paste ROM Header Bytes/);
+    fireEvent.change(textarea, { target: { value: hex } });
+
+    expect(await screen.findByText('OVERFLOW31')).toBeInTheDocument();
+    expect(screen.getByText('Chip Capacity')).toBeInTheDocument();
+    expect(screen.getByText('Unknown')).toBeInTheDocument();
+    // Ensure negative byte sizes or '0 B' are never displayed
+    expect(screen.queryByText('-281474976710656')).not.toBeInTheDocument();
+    expect(screen.queryByText('0 B')).not.toBeInTheDocument();
+
+    const copyBtn = screen.getByRole('button', { name: 'Copy Summary' });
+    fireEvent.click(copyBtn);
+
+    await waitFor(() => {
+      expect(writeTextMock).toHaveBeenCalledTimes(1);
+    });
+    expect(writeTextMock.mock.calls[0][0]).toContain('Device Size:   Unknown');
   });
 });

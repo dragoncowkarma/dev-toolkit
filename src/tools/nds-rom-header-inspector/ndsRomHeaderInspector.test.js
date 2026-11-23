@@ -3,10 +3,13 @@ import {
   base64ToBytes,
   bytesToHexString,
   calculateCrc16,
+  calculateDeviceCapacity,
   createSyntheticHeader,
   formatBytes,
   formatHex,
   hexToBytes,
+  MAX_DEVICE_CAPACITY,
+  MIN_DEVICE_CAPACITY,
   parseInputToBytes,
   parseNdsHeader,
   STANDARD_NINTENDO_LOGO,
@@ -259,5 +262,201 @@ describe('parseNdsHeader', () => {
     const result = parseNdsHeader(b64);
     expect(result.ok).toBe(true);
     expect(result.gameTitle).toBe('SUPER MARIO');
+  });
+
+  it('correctly decodes device capacity 0 as 128 KiB', () => {
+    const header = createSyntheticHeader({ deviceCapacity: 0 });
+    const result = parseNdsHeader(header);
+
+    expect(result.ok).toBe(true);
+    expect(result.deviceCapacity).toBe(0);
+    expect(result.deviceCapacityValid).toBe(true);
+    expect(result.chipSizeBytes).toBe(128 * 1024);
+    expect(result.chipSizeFormatted).toBe('128.0 KB');
+  });
+
+  it('correctly decodes ordinary device capacity values (e.g. 7 and 8)', () => {
+    const header7 = createSyntheticHeader({ deviceCapacity: 7 });
+    const result7 = parseNdsHeader(header7);
+    expect(result7.ok).toBe(true);
+    expect(result7.deviceCapacity).toBe(7);
+    expect(result7.chipSizeBytes).toBe(16 * 1024 * 1024);
+    expect(result7.chipSizeFormatted).toBe('16.0 MB');
+
+    const header8 = createSyntheticHeader({ deviceCapacity: 8 });
+    const result8 = parseNdsHeader(header8);
+    expect(result8.ok).toBe(true);
+    expect(result8.deviceCapacity).toBe(8);
+    expect(result8.chipSizeBytes).toBe(32 * 1024 * 1024);
+    expect(result8.chipSizeFormatted).toBe('32.0 MB');
+  });
+
+  it('correctly decodes upper boundary device capacity 15 (4 GB)', () => {
+    const header15 = createSyntheticHeader({ deviceCapacity: 15 });
+    const result15 = parseNdsHeader(header15);
+    expect(result15.ok).toBe(true);
+    expect(result15.deviceCapacity).toBe(15);
+    expect(result15.chipSizeBytes).toBe(4 * 1024 * 1024 * 1024);
+    expect(result15.chipSizeFormatted).toBe('4.0 GB');
+  });
+
+  it('handles malformed capacity 31 without negative chip size', () => {
+    const header31 = createSyntheticHeader({ deviceCapacity: 31 });
+    const result31 = parseNdsHeader(header31);
+
+    expect(result31.ok).toBe(true);
+    expect(result31.deviceCapacity).toBe(31);
+    expect(result31.deviceCapacityValid).toBe(false);
+    expect(result31.chipSizeBytes).toBeNull();
+    expect(result31.chipSizeFormatted).toBe('Unknown');
+    // Ensure 32-bit shift overflow does not produce negative byte size
+    expect(result31.chipSizeBytes).not.toBe(-281474976710656);
+  });
+
+  it('handles malformed capacity 32 without wrapping to base size', () => {
+    const header32 = createSyntheticHeader({ deviceCapacity: 32 });
+    const result32 = parseNdsHeader(header32);
+
+    expect(result32.ok).toBe(true);
+    expect(result32.deviceCapacity).toBe(32);
+    expect(result32.deviceCapacityValid).toBe(false);
+    expect(result32.chipSizeBytes).toBeNull();
+    expect(result32.chipSizeFormatted).toBe('Unknown');
+    expect(result32.chipSizeBytes).not.toBe(128 * 1024);
+  });
+
+  it('handles unsupported byte 255 as unknown capacity', () => {
+    const header255 = createSyntheticHeader({ deviceCapacity: 255 });
+    const result255 = parseNdsHeader(header255);
+
+    expect(result255.ok).toBe(true);
+    expect(result255.deviceCapacity).toBe(255);
+    expect(result255.deviceCapacityValid).toBe(false);
+    expect(result255.chipSizeBytes).toBeNull();
+    expect(result255.chipSizeFormatted).toBe('Unknown');
+  });
+});
+
+describe('calculateDeviceCapacity', () => {
+  // Authoritative reference: GBATEK Nintendo DS Cartridge Header (014h - Devicecapacity)
+  // Formula: Chipsize = 128KB SHL nn (128 KiB * 2^nn)
+  // Valid exponent range: 0x00 (128 KiB) to 0x0F (4 GB, 32-bit cart address space ceiling).
+
+  it('exports valid range constants matching GBATEK specification', () => {
+    expect(MIN_DEVICE_CAPACITY).toBe(0x00);
+    expect(MAX_DEVICE_CAPACITY).toBe(0x0f);
+  });
+
+  it('calculates capacity for zero exponent (128 KiB base size)', () => {
+    const result = calculateDeviceCapacity(0);
+    expect(result.valid).toBe(true);
+    expect(result.bytes).toBe(128 * 1024);
+    expect(result.formatted).toBe('128.0 KB');
+  });
+
+  it('calculates ordinary supported retail capacities', () => {
+    // 0x01: 256 KiB
+    expect(calculateDeviceCapacity(1)).toEqual({
+      bytes: 256 * 1024,
+      formatted: '256.0 KB',
+      valid: true,
+    });
+
+    // 0x06: 8 MB
+    expect(calculateDeviceCapacity(6)).toEqual({
+      bytes: 8 * 1024 * 1024,
+      formatted: '8.0 MB',
+      valid: true,
+    });
+
+    // 0x07: 16 MB (GBATEK explicit example: "eg. 07h = 16MB")
+    expect(calculateDeviceCapacity(7)).toEqual({
+      bytes: 16 * 1024 * 1024,
+      formatted: '16.0 MB',
+      valid: true,
+    });
+
+    // 0x08: 32 MB
+    expect(calculateDeviceCapacity(8)).toEqual({
+      bytes: 32 * 1024 * 1024,
+      formatted: '32.0 MB',
+      valid: true,
+    });
+
+    // 0x09: 64 MB
+    expect(calculateDeviceCapacity(9)).toEqual({
+      bytes: 64 * 1024 * 1024,
+      formatted: '64.0 MB',
+      valid: true,
+    });
+
+    // 0x0C: 512 MB (largest commercial retail NDS cartridges)
+    expect(calculateDeviceCapacity(12)).toEqual({
+      bytes: 512 * 1024 * 1024,
+      formatted: '512.0 MB',
+      valid: true,
+    });
+  });
+
+  it('calculates upper boundary capacity (0x0F = 4 GB)', () => {
+    expect(calculateDeviceCapacity(15)).toEqual({
+      bytes: 4 * 1024 * 1024 * 1024,
+      formatted: '4.0 GB',
+      valid: true,
+    });
+  });
+
+  it('returns Unknown and null bytes for capacity exceeding 4 GB boundary (16)', () => {
+    const result = calculateDeviceCapacity(16);
+    expect(result.valid).toBe(false);
+    expect(result.bytes).toBeNull();
+    expect(result.formatted).toBe('Unknown');
+  });
+
+  it('handles shift-overflowing values 31 and 32 without negative or wrapped sizes', () => {
+    // Capacity 31 in 32-bit signed bitwise shift (1 << 31) yields -2147483648
+    const cap31 = calculateDeviceCapacity(31);
+    expect(cap31.valid).toBe(false);
+    expect(cap31.bytes).toBeNull();
+    expect(cap31.formatted).toBe('Unknown');
+
+    // Capacity 32 in JS bitwise shift wraps modulo 32 (1 << (32 % 32) = 1)
+    const cap32 = calculateDeviceCapacity(32);
+    expect(cap32.valid).toBe(false);
+    expect(cap32.bytes).toBeNull();
+    expect(cap32.formatted).toBe('Unknown');
+  });
+
+  it('rejects malformed, negative, or non-integer inputs', () => {
+    expect(calculateDeviceCapacity(-1)).toEqual({
+      bytes: null,
+      formatted: 'Unknown',
+      valid: false,
+    });
+    expect(calculateDeviceCapacity(255)).toEqual({
+      bytes: null,
+      formatted: 'Unknown',
+      valid: false,
+    });
+    expect(calculateDeviceCapacity(NaN)).toEqual({
+      bytes: null,
+      formatted: 'Unknown',
+      valid: false,
+    });
+    expect(calculateDeviceCapacity(null)).toEqual({
+      bytes: null,
+      formatted: 'Unknown',
+      valid: false,
+    });
+    expect(calculateDeviceCapacity('8')).toEqual({
+      bytes: null,
+      formatted: 'Unknown',
+      valid: false,
+    });
+    expect(calculateDeviceCapacity(4.5)).toEqual({
+      bytes: null,
+      formatted: 'Unknown',
+      valid: false,
+    });
   });
 });

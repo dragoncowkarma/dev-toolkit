@@ -340,7 +340,7 @@ export default function NdsRomHeaderInspectorTool() {
                 {headerData.totalRomSizeFormatted} ({headerData.totalRomSize.toLocaleString()} B)
               </span>
             </div>
-            {headerData.chipSizeBytes > 0 && (
+            {headerData.chipSizeFormatted && (
               <div className="field-item">
                 <span className="field-label">Chip Capacity</span>
                 <span className="field-value">{headerData.chipSizeFormatted}</span>
