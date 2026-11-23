@@ -1,0 +1,32 @@
+.bitlocker-tool {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.bitlocker-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+}
+
+.bitlocker-tool button, .bitlocker-tool textarea {
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+  font: inherit;
+}
+
+.bitlocker-tool button { cursor: pointer; }
+.bitlocker-tool textarea { min-height: 12rem; resize: vertical; font-family: monospace; }
+.bitlocker-tool dl { display: grid; grid-template-columns: minmax(10rem, 1fr) 2fr; gap: 0.5rem; }
+.bitlocker-tool dt { color: var(--color-text-muted); }
+.bitlocker-tool dd { margin: 0; overflow-wrap: anywhere; }
+.bitlocker-block { border-top: 1px solid var(--color-border); }
+.bitlocker-error { color: var(--color-error-light); }
