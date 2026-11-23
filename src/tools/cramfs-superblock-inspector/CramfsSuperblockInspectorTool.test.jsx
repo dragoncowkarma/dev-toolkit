@@ -255,7 +255,7 @@ describe('CramfsSuperblockInspectorTool', () => {
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 
-  it('ignores superseded asynchronous read when user clicks Clear before read finishes', async () => {
+  it('ignores superseded async read when user clicks Clear before read finishes', async () => {
     const deferred = createDeferred();
     cramfsUtils.readBlobAsArrayBuffer.mockReturnValueOnce(deferred.promise);
 
@@ -290,7 +290,7 @@ describe('CramfsSuperblockInspectorTool', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
-  it('ignores superseded asynchronous read when user loads a sample before read finishes', async () => {
+  it('ignores superseded async read when user loads a sample before read finishes', async () => {
     const deferred = createDeferred();
     cramfsUtils.readBlobAsArrayBuffer.mockReturnValueOnce(deferred.promise);
 
