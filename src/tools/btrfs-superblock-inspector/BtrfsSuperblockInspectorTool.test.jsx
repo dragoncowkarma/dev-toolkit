@@ -180,7 +180,7 @@ describe('BtrfsSuperblockInspectorTool', () => {
     expect(copyFsidBtn).toHaveTextContent('✓ Copied');
   });
 
-  it('ignores obsolete file read when a newer file read succeeds earlier (out-of-order success)', async () => {
+  it('ignores obsolete file read on out-of-order success', async () => {
     let resolveFirst;
     const firstPromise = new Promise((resolve) => {
       resolveFirst = resolve;
@@ -223,7 +223,7 @@ describe('BtrfsSuperblockInspectorTool', () => {
     expect(screen.queryByText('📁 first.img')).not.toBeInTheDocument();
   });
 
-  it('ignores obsolete file read error when a newer file read succeeds earlier (out-of-order failure)', async () => {
+  it('ignores obsolete file read error on out-of-order failure', async () => {
     let rejectFirst;
     const firstPromise = new Promise((_, reject) => {
       rejectFirst = reject;
