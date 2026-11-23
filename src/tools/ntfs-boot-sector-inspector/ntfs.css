@@ -1,7 +1,64 @@
-.ntfs-inspector { display: grid; gap: 1rem; }
-.ntfs-inspector__drop { display: grid; gap: .5rem; padding: 1rem; border: 1px dashed var(--color-border); }
-.ntfs-inspector .panel-textarea { min-height: 8rem; }
-.ntfs-inspector__fields { display: grid; gap: .5rem; margin: 0; }
-.ntfs-inspector__fields div { display: flex; flex-wrap: wrap; gap: .5rem; justify-content: space-between; }
-.ntfs-inspector__fields dd { margin: 0; overflow-wrap: anywhere; }
-.ntfs-inspector__dump { overflow: auto; padding: 1rem; border: 1px solid var(--color-border); }
+.ntfs-inspector {
+  display: grid;
+  align-self: start;
+  gap: 1rem;
+}
+
+.ntfs-inspector__drop {
+  display: grid;
+  gap: .5rem;
+  padding: 1rem;
+  border: 1px dashed var(--color-border);
+}
+
+.ntfs-inspector .panel-textarea,
+.ntfs-inspector .btn {
+  padding: .6rem;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  font: inherit;
+}
+
+.ntfs-inspector .panel-textarea {
+  min-height: 8rem;
+  resize: vertical;
+}
+
+.ntfs-inspector .btn {
+  justify-self: start;
+  cursor: pointer;
+}
+
+.ntfs-inspector [role="alert"] {
+  padding: .75rem;
+  color: var(--color-error-light);
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+}
+
+.ntfs-inspector__fields {
+  display: grid;
+  gap: .5rem;
+  margin: 0;
+}
+
+.ntfs-inspector__fields div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+  justify-content: space-between;
+}
+
+.ntfs-inspector__fields dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.ntfs-inspector__dump {
+  overflow: auto;
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+}

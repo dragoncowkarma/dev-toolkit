@@ -46,7 +46,8 @@ export default function NtfsBootSectorInspectorTool() {
   const rows = result && [
     ['Bytes per sector', result.bytesPerSector],
     ['Sectors per cluster', result.sectorsPerCluster],
-    ['Media descriptor', `0x${result.mediaDescriptor.toString(16).padStart(2, '0').toUpperCase()}`],
+    ['Media descriptor',
+      `0x${result.mediaDescriptor.toString(16).padStart(2, '0').toUpperCase()}`],
     ['Sectors per track', result.sectorsPerTrack],
     ['Heads', result.heads],
     ['Hidden sectors', result.hiddenSectors],
