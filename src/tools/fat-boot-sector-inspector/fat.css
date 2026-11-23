@@ -1,0 +1,13 @@
+.fat-inspector { max-width: 900px; margin: 0 auto; padding: 0 1.25rem 2rem; }
+.fat-drop { border: 1px dashed var(--color-border); border-radius: var(--radius);
+  padding: 1.5rem; margin: 1rem 0; }
+.fat-button { display: inline-block; background: var(--color-surface);
+  color: var(--color-text); border: 1px solid var(--color-border); border-radius: var(--radius);
+  font: inherit; padding: 0.5rem 1rem; cursor: pointer; }
+.fat-button:focus-within { outline: 2px solid var(--color-primary-light); }
+.fat-button input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.fat-results { border: 1px solid var(--color-border); border-radius: var(--radius); }
+.fat-results div { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; padding: 0.6rem; }
+.fat-results div + div { border-top: 1px solid var(--color-border); }
+.fat-results dd { margin: 0; overflow-wrap: anywhere; }
+.fat-error { color: var(--color-error-light); }
