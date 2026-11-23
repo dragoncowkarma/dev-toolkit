@@ -34,10 +34,19 @@ describe('CRC-16 calculation', () => {
 });
 
 describe('Formatting utilities', () => {
-  it('formats hex values with zero padding', () => {
+  it('formats hex values with zero padding and preserves values exceeding 32 bits', () => {
     expect(formatHex(0x4000, 8)).toBe('0x00004000');
     expect(formatHex(0x15c, 4)).toBe('0x015C');
     expect(formatHex(null)).toBe('0x0000');
+    expect(formatHex(undefined)).toBe('0x0000');
+    expect(formatHex(Number.NaN)).toBe('0x0000');
+    expect(formatHex(Number.POSITIVE_INFINITY)).toBe('0x0000');
+    expect(formatHex(0, 8)).toBe('0x00000000');
+    expect(formatHex(0xffffffff, 8)).toBe('0xFFFFFFFF');
+    expect(formatHex(0x100000000, 8)).toBe('0x100000000');
+    expect(formatHex(0x100000001, 8)).toBe('0x100000001');
+    expect(formatHex(0x1fffffffe, 8)).toBe('0x1FFFFFFFE');
+    expect(formatHex(-1, 8)).toBe('0xFFFFFFFF');
   });
 
   it('formats byte sizes into readable units', () => {
@@ -150,6 +159,67 @@ describe('validateArmOffsets', () => {
     expect(result.arm9Valid).toBe(false);
     expect(result.errors[0]).toMatch(/ARM9 binary extends beyond total ROM size/);
   });
+
+  it('preserves full end address in ARM9 out-of-bounds diagnostic exceeding 0xFFFFFFFF', () => {
+    const result = validateArmOffsets({
+      arm9Offset: 0xffffffff,
+      arm9Size: 2,
+      arm7Offset: 0x160,
+      arm7Size: 0,
+      totalRomSize: 0xffffffff,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.arm9Valid).toBe(false);
+    expect(result.arm7Valid).toBe(true);
+    expect(result.errors).toContain(
+      'ARM9 binary extends beyond total ROM size (0x100000001 > 0xFFFFFFFF).'
+    );
+  });
+
+  it('preserves full end address in ARM7 out-of-bounds diagnostic exceeding 0xFFFFFFFF', () => {
+    const result = validateArmOffsets({
+      arm9Offset: 0x160,
+      arm9Size: 0,
+      arm7Offset: 0xffffffff,
+      arm7Size: 2,
+      totalRomSize: 0xffffffff,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.arm9Valid).toBe(true);
+    expect(result.arm7Valid).toBe(false);
+    expect(result.errors).toContain(
+      'ARM7 binary extends beyond total ROM size (0x100000001 > 0xFFFFFFFF).'
+    );
+  });
+
+  it('preserves exact 32-bit boundary wrap value 0x100000000 in diagnostics', () => {
+    const result = validateArmOffsets({
+      arm9Offset: 0xffffffff,
+      arm9Size: 1,
+      arm7Offset: 0x160,
+      arm7Size: 0,
+      totalRomSize: 0xfffffffe,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.arm9Valid).toBe(false);
+    expect(result.errors).toContain(
+      'ARM9 binary extends beyond total ROM size (0x100000000 > 0xFFFFFFFE).'
+    );
+  });
+
+  it('accepts payloads where offset + size exactly equals total ROM size', () => {
+    const result = validateArmOffsets({
+      arm9Offset: 0x4000,
+      arm9Size: 0x10000,
+      arm7Offset: 0x14000,
+      arm7Size: 0x8000,
+      totalRomSize: 0x1c000, // exactly 0x14000 + 0x8000
+    });
+    expect(result.valid).toBe(true);
+    expect(result.arm9Valid).toBe(true);
+    expect(result.arm7Valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
 });
 
 describe('parseNdsHeader', () => {
@@ -249,6 +319,36 @@ describe('parseNdsHeader', () => {
     expect(result.arm9.valid).toBe(false);
     expect(result.valid).toBe(false);
     expect(result.validationErrors.length).toBeGreaterThan(0);
+  });
+
+  it('preserves full end address when ARM9 exceeds total ROM size in parseNdsHeader', () => {
+    const header = createSyntheticHeader({
+      arm9RomOffset: 0xffffffff,
+      arm9Size: 2,
+      totalRomSize: 0xffffffff,
+    });
+    const result = parseNdsHeader(header);
+    expect(result.ok).toBe(true);
+    expect(result.valid).toBe(false);
+    expect(result.arm9.valid).toBe(false);
+    expect(result.validationErrors).toContain(
+      'ARM9 binary extends beyond total ROM size (0x100000001 > 0xFFFFFFFF).'
+    );
+  });
+
+  it('preserves full end address when ARM7 exceeds total ROM size in parseNdsHeader', () => {
+    const header = createSyntheticHeader({
+      arm7RomOffset: 0xffffffff,
+      arm7Size: 2,
+      totalRomSize: 0xffffffff,
+    });
+    const result = parseNdsHeader(header);
+    expect(result.ok).toBe(true);
+    expect(result.valid).toBe(false);
+    expect(result.arm7.valid).toBe(false);
+    expect(result.validationErrors).toContain(
+      'ARM7 binary extends beyond total ROM size (0x100000001 > 0xFFFFFFFF).'
+    );
   });
 
   it('parses valid Base64 string directly', () => {

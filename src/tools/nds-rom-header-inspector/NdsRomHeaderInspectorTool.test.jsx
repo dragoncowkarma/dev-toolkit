@@ -203,4 +203,79 @@ describe('NdsRomHeaderInspectorTool UI', () => {
     });
     expect(writeTextMock.mock.calls[0][0]).toContain('Device Size:   Unknown');
   });
+
+  it('displays full calculated end address when ARM9 exceeds 0xFFFFFFFF', async () => {
+    const sample = createSyntheticHeader({
+      arm9RomOffset: 0xffffffff,
+      arm9Size: 2,
+      totalRomSize: 0xffffffff,
+    });
+    const hex = bytesToHexString(sample);
+
+    render(<NdsRomHeaderInspectorTool />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Paste Hex / Base64' }));
+    fireEvent.change(screen.getByLabelText(/Paste ROM Header Bytes/), { target: { value: hex } });
+
+    expect(await screen.findByText('✕ Issues Detected')).toBeInTheDocument();
+    expect(
+      screen.getByText('ARM9 binary extends beyond total ROM size (0x100000001 > 0xFFFFFFFF).')
+    ).toBeInTheDocument();
+  });
+
+  it('displays full calculated end address when ARM7 exceeds 0xFFFFFFFF', async () => {
+    const sample = createSyntheticHeader({
+      arm7RomOffset: 0xffffffff,
+      arm7Size: 2,
+      totalRomSize: 0xffffffff,
+    });
+    const hex = bytesToHexString(sample);
+
+    render(<NdsRomHeaderInspectorTool />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Paste Hex / Base64' }));
+    fireEvent.change(screen.getByLabelText(/Paste ROM Header Bytes/), { target: { value: hex } });
+
+    expect(await screen.findByText('✕ Issues Detected')).toBeInTheDocument();
+    expect(
+      screen.getByText('ARM7 binary extends beyond total ROM size (0x100000001 > 0xFFFFFFFF).')
+    ).toBeInTheDocument();
+  });
+
+  it('copies summary with validation warnings preserving full unwrapped end address', async () => {
+    const writeTextMock = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, {
+      clipboard: {
+        writeText: writeTextMock,
+      },
+    });
+
+    const sample = createSyntheticHeader({
+      arm9RomOffset: 0xffffffff,
+      arm9Size: 2,
+      totalRomSize: 0xffffffff,
+    });
+    const hex = bytesToHexString(sample);
+
+    render(<NdsRomHeaderInspectorTool />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Paste Hex / Base64' }));
+    fireEvent.change(screen.getByLabelText(/Paste ROM Header Bytes/), { target: { value: hex } });
+
+    expect(await screen.findByText('✕ Issues Detected')).toBeInTheDocument();
+
+    const copyBtn = screen.getByRole('button', { name: 'Copy Summary' });
+    fireEvent.click(copyBtn);
+
+    await waitFor(() => {
+      expect(writeTextMock).toHaveBeenCalledTimes(1);
+    });
+    const copiedSummary = writeTextMock.mock.calls[0][0];
+    expect(copiedSummary).toContain('Validation Warnings:');
+    expect(copiedSummary).toContain(
+      'ARM9 binary extends beyond total ROM size (0x100000001 > 0xFFFFFFFF).'
+    );
+    expect(copiedSummary).toContain('ROM Offset:  0xFFFFFFFF');
+    expect(copiedSummary).toContain('Total ROM Size: 4.0 GB (4294967295 bytes)');
+  });
 });
