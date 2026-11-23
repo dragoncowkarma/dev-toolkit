@@ -221,9 +221,19 @@ describe('detectScanlineEncoding - flat, old RLE, and new RLE', () => {
     expect(detectScanlineEncoding(prefix, 512)).toBe('new RLE');
   });
 
-  it('returns flat when scanlineBytes is empty or shorter than 4 bytes', () => {
-    expect(detectScanlineEncoding(new Uint8Array(0), 512)).toBe('flat');
-    expect(detectScanlineEncoding(new Uint8Array([0x02, 0x02, 0x02]), 512)).toBe('flat');
+  it.each([0, 1, 2, 3])('returns unknown when only %i scanline bytes are available', (n) => {
+    const bytes = new Uint8Array([0x02, 0x02, 0x02, 0x00]).subarray(0, n);
+    expect(detectScanlineEncoding(bytes, 512)).toBe('unknown');
+  });
+
+  it('reports unknown and available byte count for a header-only file', () => {
+    const bytes = makeHdrBytes(
+      ['#?RADIANCE', 'FORMAT=32-bit_rle_rgbe', '', '-Y 4 +X 64'],
+      [0x02, 0x02],
+    );
+    const parsed = parseRadianceHdrHeader(bytes);
+    expect(parsed.scanlineEncoding).toBe('unknown');
+    expect(parsed.scanlineBytesAvailable).toBe(2);
   });
 
   it('detects old RLE when a subsequent pixel entry has R=1, G=1, B=1 repeat marker', () => {

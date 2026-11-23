@@ -9,6 +9,18 @@ import {
 import { useCopyFeedback } from '../../hooks/useCopyFeedback.js';
 import './radianceHdrHeaderInspector.css';
 
+function describeUnknownEncoding(parsedHeader, fileInfo) {
+  const available = parsedHeader.scanlineBytesAvailable;
+  const sliceLimited = fileInfo && fileInfo.size > fileInfo.inspectedBytes;
+  const reason = sliceLimited
+    ? 'the header ends at the bounded leading-slice read limit'
+    : 'the file ends right after the header (truncated or header-only)';
+  return (
+    `Unknown: only ${available} of 4 scanline bytes needed are available because ` +
+    `${reason}. Pixel data was not verified.`
+  );
+}
+
 const DEDICATED_VARIABLE_KEYS = new Set(['SOFTWARE', 'COLORCORR', 'PRIMARIES', 'VIEW']);
 
 function formatMetricFloat(value) {
@@ -233,6 +245,11 @@ export default function RadianceHdrHeaderInspectorTool() {
               <strong className="summary-value" data-testid="hdr-scanline-encoding">
                 {parsedHeader.scanlineEncoding}
               </strong>
+              {parsedHeader.scanlineEncoding === 'unknown' && (
+                <span className="summary-sub" data-testid="hdr-scanline-unknown-note">
+                  {describeUnknownEncoding(parsedHeader, fileInfo)}
+                </span>
+              )}
               <span className="summary-sub">
                 {parsedHeader.scanlineCount} scanlines × {parsedHeader.scanlineLength} px
               </span>

@@ -32,6 +32,22 @@ afterEach(() => {
 });
 
 describe('RadianceHdrHeaderInspectorTool', () => {
+  it('presents insufficient scanline data as unknown rather than flat', async () => {
+    render(<RadianceHdrHeaderInspectorTool />);
+    const text = '#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n-Y 4 +X 64\n';
+    const file = new File([text], 'header-only.hdr');
+    await act(async () => {
+      selectFile(screen.getByLabelText('Upload a Radiance HDR file'), file);
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('hdr-scanline-encoding')).toHaveTextContent('unknown');
+    });
+    expect(screen.getByTestId('hdr-scanline-encoding')).not.toHaveTextContent('flat');
+    expect(screen.getByTestId('hdr-scanline-unknown-note')).toHaveTextContent(
+      /not verified/i,
+    );
+  });
+
   it('parses and displays a valid uploaded Radiance HDR file', async () => {
     render(<RadianceHdrHeaderInspectorTool />);
 

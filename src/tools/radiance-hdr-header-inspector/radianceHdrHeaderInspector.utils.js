@@ -212,11 +212,12 @@ function isUint8Array(value) {
  *
  * @param {Uint8Array} scanlineBytes - Leading pixel bytes right after the resolution line.
  * @param {number} scanlineLength - Length of each scanline (minor axis dimension).
- * @returns {'new RLE' | 'old RLE' | 'flat'}
+ * @returns {'new RLE' | 'old RLE' | 'flat' | 'unknown'} 'unknown' when fewer than four
+ *   scanline bytes are available, so no encoding can be determined.
  */
 export function detectScanlineEncoding(scanlineBytes, scanlineLength) {
   if (!isUint8Array(scanlineBytes) || scanlineBytes.length < 4) {
-    return 'flat';
+    return 'unknown';
   }
 
   const b0 = scanlineBytes[0];
@@ -294,7 +295,8 @@ function parseNumericTuple(rawValue, expectedCount) {
  *   minorAxis: 'X' | 'Y',
  *   scanlineLength: number,
  *   scanlineCount: number,
- *   scanlineEncoding: 'new RLE' | 'old RLE' | 'flat',
+ *   scanlineEncoding: 'new RLE' | 'old RLE' | 'flat' | 'unknown',
+ *   scanlineBytesAvailable: number,
  *   headerByteLength: number
  * }}
  */
@@ -468,6 +470,7 @@ export function parseRadianceHdrHeader(input) {
     scanlineLength: resolution.scanlineLength,
     scanlineCount: resolution.scanlineCount,
     scanlineEncoding,
+    scanlineBytesAvailable: scanlineBytes.length,
     headerByteLength,
   };
 }
