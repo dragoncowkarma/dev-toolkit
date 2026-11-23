@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import Ext4SuperblockInspectorTool from './Ext4SuperblockInspectorTool.jsx';
 import { createSampleSuperblock } from './ext4.utils.js';
@@ -115,5 +115,155 @@ describe('Ext4SuperblockInspectorTool component', () => {
 
     expect(writeTextMock).toHaveBeenCalledTimes(1);
     expect(writeTextMock.mock.calls[0][0]).toContain('00000400');
+  });
+
+  it('cancels and ignores in-flight file read when Clear is clicked', () => {
+    let capturedReader = null;
+    const OriginalFileReader = globalThis.FileReader;
+    class ControllableFileReader extends EventTarget {
+      constructor() {
+        super();
+        this.result = null;
+        this.onload = null;
+        this.onerror = null;
+        this.onabort = null;
+        capturedReader = this;
+      }
+      readAsArrayBuffer() {
+        // Do not resolve synchronously
+      }
+      abort() {
+        if (this.onabort) this.onabort();
+      }
+    }
+    globalThis.FileReader = ControllableFileReader;
+
+    try {
+      render(<Ext4SuperblockInspectorTool />);
+      const file = new File([createSampleSuperblock('ext4')], 'test.img');
+      const dropzone = screen.getByRole('button', { name: /Drop or select disk image file/i });
+      fireEvent.drop(dropzone, { dataTransfer: { files: [file] } });
+
+      expect(capturedReader).not.toBeNull();
+
+      // Click Clear before file read finishes
+      const clearBtn = screen.getByRole('button', { name: /Clear/i });
+      fireEvent.click(clearBtn);
+
+      // Late completion from stale reader
+      capturedReader.result = createSampleSuperblock('ext4').buffer;
+      act(() => {
+        capturedReader.onload?.();
+      });
+
+      // Results must NOT repopulate
+      expect(screen.queryByTestId('ext4-results')).not.toBeInTheDocument();
+      expect(screen.getByLabelText(/paste disk image hex bytes/i)).toHaveValue('');
+    } finally {
+      globalThis.FileReader = OriginalFileReader;
+    }
+  });
+
+  it('ignores out-of-order file reader completions when another file is selected', () => {
+    const readers = [];
+    const OriginalFileReader = globalThis.FileReader;
+    class ControllableFileReader extends EventTarget {
+      constructor() {
+        super();
+        this.result = null;
+        this.onload = null;
+        this.onerror = null;
+        this.onabort = null;
+        readers.push(this);
+      }
+      readAsArrayBuffer() {}
+      abort() {
+        if (this.onabort) this.onabort();
+      }
+    }
+    globalThis.FileReader = ControllableFileReader;
+
+    try {
+      render(<Ext4SuperblockInspectorTool />);
+      const file1 = new File([createSampleSuperblock('ext4')], 'slow-ext4.img');
+      const file2 = new File([createSampleSuperblock('ext2')], 'fast-ext2.img');
+
+      const dropzone = screen.getByRole('button', { name: /Drop or select disk image file/i });
+
+      // Start file 1 read
+      fireEvent.drop(dropzone, { dataTransfer: { files: [file1] } });
+      const reader1 = readers[0];
+
+      // Start file 2 read before file 1 finishes
+      fireEvent.drop(dropzone, { dataTransfer: { files: [file2] } });
+      const reader2 = readers[1];
+
+      // File 2 finishes first
+      reader2.result = createSampleSuperblock('ext2').buffer;
+      act(() => {
+        reader2.onload?.();
+      });
+
+      expect(screen.getByTestId('ext4-results')).toBeInTheDocument();
+      expect(screen.getByText('ext2')).toBeInTheDocument();
+      expect(screen.getByText('boot-ext2')).toBeInTheDocument();
+
+      // File 1 finishes late (out of order)
+      reader1.result = createSampleSuperblock('ext4').buffer;
+      act(() => {
+        reader1.onload?.();
+      });
+
+      // Results must still show file 2 (ext2), not overwritten by stale file 1
+      expect(screen.getByText('ext2')).toBeInTheDocument();
+      expect(screen.getByText('boot-ext2')).toBeInTheDocument();
+      expect(screen.queryByText('rootfs-ext4')).not.toBeInTheDocument();
+    } finally {
+      globalThis.FileReader = OriginalFileReader;
+    }
+  });
+
+  it('cancels and ignores in-flight file read when sample is loaded or hex is entered', () => {
+    let capturedReader = null;
+    const OriginalFileReader = globalThis.FileReader;
+    class ControllableFileReader extends EventTarget {
+      constructor() {
+        super();
+        this.result = null;
+        this.onload = null;
+        this.onerror = null;
+        this.onabort = null;
+        capturedReader = this;
+      }
+      readAsArrayBuffer() {}
+      abort() {
+        if (this.onabort) this.onabort();
+      }
+    }
+    globalThis.FileReader = ControllableFileReader;
+
+    try {
+      render(<Ext4SuperblockInspectorTool />);
+      const file = new File([createSampleSuperblock('ext4')], 'slow.img');
+      const dropzone = screen.getByRole('button', { name: /Drop or select disk image file/i });
+      fireEvent.drop(dropzone, { dataTransfer: { files: [file] } });
+
+      // User selects Sample ext2
+      fireEvent.click(screen.getByRole('button', { name: /Sample ext2/i }));
+      expect(screen.getByText('ext2')).toBeInTheDocument();
+      expect(screen.getByText('boot-ext2')).toBeInTheDocument();
+
+      // Stale reader completes
+      capturedReader.result = createSampleSuperblock('ext4').buffer;
+      act(() => {
+        capturedReader.onload?.();
+      });
+
+      // Still ext2
+      expect(screen.getByText('ext2')).toBeInTheDocument();
+      expect(screen.queryByText('rootfs-ext4')).not.toBeInTheDocument();
+    } finally {
+      globalThis.FileReader = OriginalFileReader;
+    }
   });
 });

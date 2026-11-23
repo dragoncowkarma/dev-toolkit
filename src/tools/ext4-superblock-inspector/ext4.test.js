@@ -1,14 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import {
   bytesToHex,
+  combineExt4Timestamp,
   createSampleSuperblock,
   decodeFeatureFlags,
   decodeNullTerminatedString,
+  decodeStateFlags,
   FEATURE_COMPAT,
   formatHexDump,
   formatUuid,
   hexToBytes,
   parseExt4Superblock,
+  STATE_FLAGS,
 } from './ext4.utils.js';
 
 describe('ext4.utils - helper functions', () => {
@@ -194,5 +197,101 @@ describe('ext4.utils - parseExt4Superblock', () => {
     expect(parseExt4Superblock(undefined).ok).toBe(false);
     expect(parseExt4Superblock({ invalid: true }).ok).toBe(false);
     expect(parseExt4Superblock('not a valid hex string!').ok).toBe(false);
+  });
+
+  it('correctly decodes upper 8 bits for ext4 timestamps', () => {
+    // Low word 1, high byte 1 -> 40-bit timestamp: (1 << 32) + 1 = 4294967297
+    const sample = createSampleSuperblock('ext4', {
+      writeTime: 1,
+      writeTimeHi: 1,
+      mountTime: 100,
+      mountTimeHi: 2,
+      lastCheckTime: 50,
+      lastCheckTimeHi: 1,
+    });
+
+    const result = parseExt4Superblock(sample);
+    expect(result.ok).toBe(true);
+
+    // write time: (1 << 32) + 1 = 4,294,967,297 seconds (year 2106, not 1970)
+    expect(result.data.writeTime).toBe(4294967297);
+    expect(result.data.writeTimeHi).toBe(1);
+    expect(result.data.writeTimeFormatted).toBe('2106-02-07T06:28:17.000Z');
+    expect(result.data.writeTimeFormatted).not.toContain('1970');
+
+    // mount time: (2 << 32) + 100 = 8,589,934,692
+    expect(result.data.mountTime).toBe(8589934692);
+    expect(result.data.mountTimeHi).toBe(2);
+    expect(result.data.mountTimeFormatted).toBe(new Date(8589934692 * 1000).toISOString());
+
+    // last check time: (1 << 32) + 50 = 4,294,967,346
+    expect(result.data.lastCheckTime).toBe(4294967346);
+    expect(result.data.lastCheckTimeHi).toBe(1);
+    expect(result.data.lastCheckTimeFormatted).toBe('2106-02-07T06:29:06.000Z');
+  });
+
+  it('combines ext4 timestamp helper with lo and hi fields', () => {
+    expect(combineExt4Timestamp(0, 0)).toBe(0);
+    expect(combineExt4Timestamp(1, 1)).toBe(4294967297);
+    expect(combineExt4Timestamp(12345, 0)).toBe(12345);
+    expect(combineExt4Timestamp(0, 1)).toBe(4294967296);
+  });
+
+  it('decodes filesystem state as bitmask flags, including combinations and orphans', () => {
+    // 0x0003: EXT4_VALID_FS (0x0001) | EXT4_ERROR_FS (0x0002)
+    const sampleCombo = createSampleSuperblock('ext4', { state: 0x0003 });
+    const resultCombo = parseExt4Superblock(sampleCombo);
+    expect(resultCombo.ok).toBe(true);
+    expect(resultCombo.data.stateFlags).toEqual([
+      'Clean (EXT4_VALID_FS)',
+      'Errors detected (EXT4_ERROR_FS)',
+    ]);
+    expect(resultCombo.data.state).toBe(
+      'Clean (EXT4_VALID_FS), Errors detected (EXT4_ERROR_FS)',
+    );
+    expect(resultCombo.data.isClean).toBe(false);
+
+    // 0x0005: EXT4_VALID_FS (0x0001) | EXT4_ORPHAN_FS (0x0004)
+    const sampleOrphan = createSampleSuperblock('ext4', { state: 0x0005 });
+    const resultOrphan = parseExt4Superblock(sampleOrphan);
+    expect(resultOrphan.ok).toBe(true);
+    expect(resultOrphan.data.stateFlags).toEqual([
+      'Clean (EXT4_VALID_FS)',
+      'Orphans being recovered (EXT4_ORPHAN_FS)',
+    ]);
+    expect(resultOrphan.data.isClean).toBe(false);
+
+    // 0x0007: EXT4_VALID_FS (0x0001) | EXT4_ERROR_FS (0x0002) | EXT4_ORPHAN_FS (0x0004)
+    const sampleAll = createSampleSuperblock('ext4', { state: 0x0007 });
+    const resultAll = parseExt4Superblock(sampleAll);
+    expect(resultAll.ok).toBe(true);
+    expect(resultAll.data.stateFlags).toEqual([
+      'Clean (EXT4_VALID_FS)',
+      'Errors detected (EXT4_ERROR_FS)',
+      'Orphans being recovered (EXT4_ORPHAN_FS)',
+    ]);
+    expect(resultAll.data.isClean).toBe(false);
+
+    // Unknown bits retained: 0x0009 (0x0001 | 0x0008)
+    const sampleUnknown = createSampleSuperblock('ext4', { state: 0x0009 });
+    const resultUnknown = parseExt4Superblock(sampleUnknown);
+    expect(resultUnknown.ok).toBe(true);
+    expect(resultUnknown.data.stateFlags).toEqual([
+      'Clean (EXT4_VALID_FS)',
+      'UNKNOWN_0x8',
+    ]);
+    expect(resultUnknown.data.state).toContain('UNKNOWN_0x8');
+  });
+
+  it('decodes state flags standalone', () => {
+    expect(STATE_FLAGS[0x0001]).toContain('Clean');
+    expect(decodeStateFlags(0x0001)).toEqual(['Clean (EXT4_VALID_FS)']);
+    expect(decodeStateFlags(0x0002)).toEqual(['Errors detected (EXT4_ERROR_FS)']);
+    expect(decodeStateFlags(0x0004)).toEqual(['Orphans being recovered (EXT4_ORPHAN_FS)']);
+    expect(decodeStateFlags(0x0003)).toEqual([
+      'Clean (EXT4_VALID_FS)',
+      'Errors detected (EXT4_ERROR_FS)',
+    ]);
+    expect(decodeStateFlags(0)).toEqual([]);
   });
 });

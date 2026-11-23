@@ -59,11 +59,13 @@ export const FEATURE_RO_COMPAT = Object.freeze({
   0x8000: 'orphan_present',
 });
 
-export const STATE_LABELS = Object.freeze({
-  1: 'Clean (EXT4_VALID_FS)',
-  2: 'Errors detected (EXT4_ERROR_FS)',
-  4: 'Orphan inodes recovering (EXT4_ORPHAN_FS)',
+export const STATE_FLAGS = Object.freeze({
+  0x0001: 'Clean (EXT4_VALID_FS)',
+  0x0002: 'Errors detected (EXT4_ERROR_FS)',
+  0x0004: 'Orphans being recovered (EXT4_ORPHAN_FS)',
 });
+
+export const STATE_LABELS = STATE_FLAGS;
 
 export const ERRORS_BEHAVIOR_LABELS = Object.freeze({
   1: 'Continue (EXT4_ERRORS_CONTINUE)',
@@ -173,6 +175,17 @@ export function decodeFeatureFlags(flags, knownMap) {
 }
 
 /**
+ * Decodes 16-bit filesystem state bitmask into a list of flags.
+ * Preserves any unknown set bits as UNKNOWN_0x<hex>.
+ *
+ * @param {number} stateRaw - 16-bit filesystem state flags integer.
+ * @returns {string[]} List of flag descriptions.
+ */
+export function decodeStateFlags(stateRaw) {
+  return decodeFeatureFlags(stateRaw, STATE_FLAGS);
+}
+
+/**
  * Formats a byte array as a standard hex dump with address, hex values, and ASCII view.
  *
  * @param {Uint8Array} bytes - The byte array to display.
@@ -217,6 +230,18 @@ export function formatTimestamp(timestamp) {
   } catch {
     return 'Invalid Date';
   }
+}
+
+/**
+ * Combines a 32-bit low word and an 8-bit high byte into a 40-bit ext4 timestamp (seconds).
+ *
+ * @param {number} lo - Low 32 bits (seconds).
+ * @param {number} [hi=0] - High 8 bits.
+ * @returns {number} Combined 40-bit timestamp in seconds.
+ */
+export function combineExt4Timestamp(lo, hi = 0) {
+  if (!lo && !hi) return 0;
+  return Number((BigInt(hi) << 32n) | BigInt(lo >>> 0));
 }
 
 /**
@@ -293,14 +318,14 @@ export function parseExt4Superblock(input, options = {}) {
     const blocksPerGroup = view.getUint32(0x20, true);
     const clustersPerGroup = view.getUint32(0x24, true);
     const inodesPerGroup = view.getUint32(0x28, true);
-    const mountTime = view.getUint32(0x2C, true);
-    const writeTime = view.getUint32(0x30, true);
+    const mountTimeLo = view.getUint32(0x2C, true);
+    const writeTimeLo = view.getUint32(0x30, true);
     const mountCount = view.getUint16(0x34, true);
     const maxMountCount = view.getInt16(0x36, true);
     const stateRaw = view.getUint16(0x3A, true);
     const errorsBehaviorRaw = view.getUint16(0x3C, true);
     const minorRevLevel = view.getUint16(0x3E, true);
-    const lastCheckTime = view.getUint32(0x40, true);
+    const lastCheckTimeLo = view.getUint32(0x40, true);
     const checkInterval = view.getUint32(0x44, true);
     const creatorOsRaw = view.getUint32(0x48, true);
     const revLevel = view.getUint32(0x4C, true);
@@ -368,7 +393,19 @@ export function parseExt4Superblock(input, options = {}) {
     const volumeName = decodeNullTerminatedString(sbBytes.slice(0x78, 0x88));
     const lastMountedPath = decodeNullTerminatedString(sbBytes.slice(0x88, 0xC8));
 
-    const stateLabel = STATE_LABELS[stateRaw] ?? `Unknown (0x${stateRaw.toString(16)})`;
+    // Upper 8 bits of timestamps at offsets 0x274, 0x275, 0x277
+    const mountTimeHi = view.getUint8(0x274);
+    const writeTimeHi = view.getUint8(0x275);
+    const lastCheckTimeHi = view.getUint8(0x277);
+
+    const mountTime = combineExt4Timestamp(mountTimeLo, mountTimeHi);
+    const writeTime = combineExt4Timestamp(writeTimeLo, writeTimeHi);
+    const lastCheckTime = combineExt4Timestamp(lastCheckTimeLo, lastCheckTimeHi);
+
+    const stateFlags = decodeStateFlags(stateRaw);
+    const stateLabel =
+      stateFlags.length > 0 ? stateFlags.join(', ') : `Unknown (0x${stateRaw.toString(16)})`;
+    const isClean = (stateRaw & 0x0001) !== 0 && (stateRaw & 0x0006) === 0;
     const errorsBehaviorLabel =
       ERRORS_BEHAVIOR_LABELS[errorsBehaviorRaw] ?? `Unknown (${errorsBehaviorRaw})`;
     const creatorOsLabel = CREATOR_OS_LABELS[creatorOsRaw] ?? `Unknown (${creatorOsRaw})`;
@@ -397,18 +434,22 @@ export function parseExt4Superblock(input, options = {}) {
         clustersPerGroup,
         inodesPerGroup,
         mountTime,
+        mountTimeHi,
         mountTimeFormatted: formatTimestamp(mountTime),
         writeTime,
+        writeTimeHi,
         writeTimeFormatted: formatTimestamp(writeTime),
         mountCount,
         maxMountCount,
         stateRaw,
         state: stateLabel,
-        isClean: stateRaw === 1,
+        stateFlags,
+        isClean,
         errorsBehaviorRaw,
         errorsBehavior: errorsBehaviorLabel,
         minorRevLevel,
         lastCheckTime,
+        lastCheckTimeHi,
         lastCheckTimeFormatted: formatTimestamp(lastCheckTime),
         checkInterval,
         creatorOsRaw,
@@ -537,6 +578,27 @@ export function createSampleSuperblock(variant = 'ext4', customOverrides = {}) {
   // Apply custom overrides
   if (customOverrides.magic !== undefined) {
     view.setUint16(0x38, customOverrides.magic, true);
+  }
+  if (customOverrides.state !== undefined) {
+    view.setUint16(0x3A, customOverrides.state, true);
+  }
+  if (customOverrides.mountTime !== undefined) {
+    view.setUint32(0x2C, customOverrides.mountTime, true);
+  }
+  if (customOverrides.writeTime !== undefined) {
+    view.setUint32(0x30, customOverrides.writeTime, true);
+  }
+  if (customOverrides.lastCheckTime !== undefined) {
+    view.setUint32(0x40, customOverrides.lastCheckTime, true);
+  }
+  if (customOverrides.mountTimeHi !== undefined) {
+    view.setUint8(0x274, customOverrides.mountTimeHi);
+  }
+  if (customOverrides.writeTimeHi !== undefined) {
+    view.setUint8(0x275, customOverrides.writeTimeHi);
+  }
+  if (customOverrides.lastCheckTimeHi !== undefined) {
+    view.setUint8(0x277, customOverrides.lastCheckTimeHi);
   }
   if (customOverrides.featureCompat !== undefined) {
     view.setUint32(0x5C, customOverrides.featureCompat, true);

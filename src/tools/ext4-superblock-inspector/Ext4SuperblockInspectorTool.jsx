@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useCopyFeedback } from '../../hooks/useCopyFeedback.js';
 import {
   bytesToHex,
@@ -23,6 +23,29 @@ export default function Ext4SuperblockInspectorTool() {
   const [copied, showCopied] = useCopyFeedback({ initialValue: false, resetValue: false });
 
   const fileInputRef = useRef(null);
+  const activeReadIdRef = useRef(0);
+  const activeReaderRef = useRef(null);
+
+  /**
+   * Cancels and invalidates any in-flight file read operations.
+   */
+  function cancelActiveRead() {
+    activeReadIdRef.current += 1;
+    if (activeReaderRef.current) {
+      try {
+        activeReaderRef.current.abort();
+      } catch {
+        // Ignore abort errors
+      }
+      activeReaderRef.current = null;
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      cancelActiveRead();
+    };
+  }, []);
 
   /**
    * Reads the first 2048 bytes of a file slice and parses the ext superblock.
@@ -31,14 +54,20 @@ export default function Ext4SuperblockInspectorTool() {
    */
   function handleFile(file) {
     if (!file) return;
+    cancelActiveRead();
+    const readId = activeReadIdRef.current;
+
     setFileName(file.name);
     setHexInput('');
     setError('');
 
     const slice = file.slice(0, 2048);
     const reader = new FileReader();
+    activeReaderRef.current = reader;
 
     reader.onload = () => {
+      if (activeReadIdRef.current !== readId) return;
+      activeReaderRef.current = null;
       const arrayBuffer = /** @type {ArrayBuffer} */ (reader.result);
       const result = parseExt4Superblock(arrayBuffer);
       if (result.ok) {
@@ -51,8 +80,15 @@ export default function Ext4SuperblockInspectorTool() {
     };
 
     reader.onerror = () => {
+      if (activeReadIdRef.current !== readId) return;
+      activeReaderRef.current = null;
       setParsedData(null);
       setError('Failed to read the selected file slice.');
+    };
+
+    reader.onabort = () => {
+      if (activeReadIdRef.current !== readId) return;
+      activeReaderRef.current = null;
     };
 
     reader.readAsArrayBuffer(slice);
@@ -85,6 +121,7 @@ export default function Ext4SuperblockInspectorTool() {
   }
 
   function handleHexChange(event) {
+    cancelActiveRead();
     const text = event.target.value;
     setHexInput(text);
     setFileName('');
@@ -106,6 +143,7 @@ export default function Ext4SuperblockInspectorTool() {
   }
 
   function loadSample(variant) {
+    cancelActiveRead();
     const sampleBytes = createSampleSuperblock(variant);
     const hex = bytesToHex(sampleBytes);
     setFileName('');
@@ -121,6 +159,7 @@ export default function Ext4SuperblockInspectorTool() {
   }
 
   function handleClear() {
+    cancelActiveRead();
     setHexInput('');
     setFileName('');
     setParsedData(null);
