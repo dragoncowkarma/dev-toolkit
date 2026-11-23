@@ -30,7 +30,10 @@ export default function XfsSuperblockInspectorTool() {
     if (!file) return;
     try {
       const bytes = await readSuperblock(file);
-      if (request.current === id) setInput(formatHex(bytes));
+      if (request.current === id) {
+        if (bytes.length === 0) setError(parseXfsSuperblock(bytes).error);
+        else setInput(formatHex(bytes));
+      }
     } catch {
       if (request.current === id) setError('Unable to read file.');
     }
