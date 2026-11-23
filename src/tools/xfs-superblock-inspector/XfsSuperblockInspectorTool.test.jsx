@@ -37,6 +37,16 @@ it('ignores out-of-order FileReader completions and reads slices', async () => {
   expect(screen.getByText('Superblock fields (version 5)')).toBeInTheDocument();
 });
 
+it('shows the short-buffer alert for an empty file', async () => {
+  vi.stubGlobal('FileReader', FakeReader);
+  render(<XfsSuperblockInspectorTool />);
+  fireEvent.change(screen.getByLabelText('XFS image file'), {
+    target: { files: [new File([], 'empty')] },
+  });
+  await act(async () => readers[0].finish(new Uint8Array(0)));
+  expect(screen.getByRole('alert')).toHaveTextContent('Superblock must contain 512 bytes.');
+});
+
 it('ignores completion after Clear or manual input', () => {
   vi.stubGlobal('FileReader', FakeReader);
   render(<XfsSuperblockInspectorTool />);
