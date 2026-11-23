@@ -1,0 +1,7 @@
+.nilfs2-tool { display: grid; gap: 1rem; }
+.nilfs2-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; }
+.nilfs2-result { border: 1px solid var(--border-color, #777); border-radius: 0.5rem; padding: 1rem; }
+.nilfs2-result dl { display: grid; gap: 0.5rem; }
+.nilfs2-result dl > div { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.nilfs2-result dt { font-weight: 600; }
+.nilfs2-result dd { margin: 0; overflow-wrap: anywhere; }
