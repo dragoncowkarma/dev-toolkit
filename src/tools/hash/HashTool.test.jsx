@@ -60,7 +60,11 @@ describe('HashTool real-time text hashing', () => {
     render(<HashTool />);
 
     fireEvent.change(screen.getByLabelText('Text'), { target: { value: 'hello' } });
-    await waitFor(() => expect(screen.getByLabelText('MD5 hash')).not.toHaveTextContent('—'));
+    await waitFor(() =>
+      expect(screen.getByLabelText('MD5 hash')).toHaveTextContent(
+        '5d41402abc4b2a76b9719d911017c592'
+      )
+    );
 
     fireEvent.change(screen.getByLabelText('Text'), { target: { value: '' } });
     await waitFor(() => expect(screen.getByLabelText('MD5 hash')).toHaveTextContent('—'));
@@ -221,7 +225,11 @@ describe('HashTool copy behavior', () => {
     render(<HashTool />);
 
     fireEvent.change(screen.getByLabelText('Text'), { target: { value: 'hello' } });
-    await waitFor(() => expect(screen.getByLabelText('MD5 hash')).not.toHaveTextContent('—'));
+    await waitFor(() =>
+      expect(screen.getByLabelText('MD5 hash')).toHaveTextContent(
+        '5d41402abc4b2a76b9719d911017c592'
+      )
+    );
 
     const md5Row = screen.getByLabelText('MD5 hash').closest('.hash-result-row');
     await act(async () => {
@@ -240,7 +248,11 @@ describe('HashTool copy behavior', () => {
     render(<HashTool />);
 
     fireEvent.change(screen.getByLabelText('Text'), { target: { value: 'hello' } });
-    await waitFor(() => expect(screen.getByLabelText('MD5 hash')).not.toHaveTextContent('—'));
+    await waitFor(() =>
+      expect(screen.getByLabelText('MD5 hash')).toHaveTextContent(
+        '5d41402abc4b2a76b9719d911017c592'
+      )
+    );
 
     // Every algorithm's Copy control must resolve to exactly one button with
     // a name unique to that algorithm, not a shared generic "Copy" name.
@@ -260,7 +272,11 @@ describe('HashTool copy behavior', () => {
     render(<HashTool />);
 
     fireEvent.change(screen.getByLabelText('Text'), { target: { value: 'hello' } });
-    await waitFor(() => expect(screen.getByLabelText('MD5 hash')).not.toHaveTextContent('—'));
+    await waitFor(() =>
+      expect(screen.getByLabelText('MD5 hash')).toHaveTextContent(
+        '5d41402abc4b2a76b9719d911017c592'
+      )
+    );
 
     const md5Row = screen.getByLabelText('MD5 hash').closest('.hash-result-row');
     await act(async () => {
