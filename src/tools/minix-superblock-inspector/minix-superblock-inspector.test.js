@@ -1,0 +1,200 @@
+import { describe, expect, it } from 'vitest';
+import {
+  createSampleMinixSuperblock,
+  formatFileSize,
+  formatStateFlags,
+  MINIX_MAGIC,
+  MINIX_STATE_FLAGS,
+  parseMinixSuperblock,
+} from './minix-superblock-inspector.utils.js';
+
+describe('formatFileSize', () => {
+  it('formats various byte sizes', () => {
+    expect(formatFileSize(0)).toBe('0 B');
+    expect(formatFileSize(512)).toBe('512 B');
+    expect(formatFileSize(1024)).toBe('1.0 KB');
+    expect(formatFileSize(1048576)).toBe('1.0 MB');
+    expect(formatFileSize(1073741824)).toBe('1.0 GB');
+    expect(formatFileSize(-5)).toBe('0 B');
+  });
+});
+
+describe('formatStateFlags', () => {
+  it('formats null/undefined state for Minix v3', () => {
+    const formatted = formatStateFlags(null);
+    expect(formatted.rawHex).toBe('N/A');
+    expect(formatted.summary).toContain('v3');
+  });
+
+  it('formats valid/clean flag (0x0001)', () => {
+    const formatted = formatStateFlags(MINIX_STATE_FLAGS.VALID_FS);
+    expect(formatted.rawHex).toBe('0x0001');
+    expect(formatted.summary).toBe('Clean/Valid (0x0001)');
+    expect(formatted.unknownBits).toBe(0);
+  });
+
+  it('formats error flag (0x0002)', () => {
+    const formatted = formatStateFlags(MINIX_STATE_FLAGS.ERROR_FS);
+    expect(formatted.rawHex).toBe('0x0002');
+    expect(formatted.summary).toBe('Errors (0x0002)');
+    expect(formatted.unknownBits).toBe(0);
+  });
+
+  it('formats high-bit unsigned flags as unsigned values', () => {
+    // 0x8001: high bit 15 set + valid flag
+    const highBit = formatStateFlags(0x8001);
+    expect(highBit.rawHex).toBe('0x8001');
+    expect(highBit.summary).toContain('Clean/Valid (0x0001)');
+    expect(highBit.summary).toContain('Unknown bits: 0x8000');
+    expect(highBit.unknownBits).toBe(32768);
+
+    // 0xFFFF: all bits set
+    const allBits = formatStateFlags(0xFFFF);
+    expect(allBits.rawHex).toBe('0xFFFF');
+    expect(allBits.summary).toContain('Clean/Valid (0x0001)');
+    expect(allBits.summary).toContain('Errors (0x0002)');
+    expect(allBits.summary).toContain('Unknown bits: 0xFFFC');
+    expect(allBits.unknownBits).toBe(65532);
+  });
+});
+
+describe('parseMinixSuperblock', () => {
+  it('correctly parses Minix v1 (0x137F, 14-byte names)', () => {
+    const buffer = createSampleMinixSuperblock(MINIX_MAGIC.V1_14, {
+      inodeCount: 512,
+      zoneCount: 1440,
+      imapBlocks: 1,
+      zmapBlocks: 1,
+      firstDataZone: 18,
+      logZoneSize: 0,
+      maxFileSize: 268966912,
+      state: 0x0001,
+    });
+    const parsed = parseMinixSuperblock(buffer);
+    expect(parsed.variant).toBe('Minix v1 (14-byte names)');
+    expect(parsed.version).toBe(1);
+    expect(parsed.magic).toBe(0x137F);
+    expect(parsed.magicHex).toBe('0x137F');
+    expect(parsed.inodeCount).toBe(512);
+    expect(parsed.zoneCount).toBe(1440);
+    expect(parsed.imapBlocks).toBe(1);
+    expect(parsed.zmapBlocks).toBe(1);
+    expect(parsed.firstDataZone).toBe(18);
+    expect(parsed.logZoneSize).toBe(0);
+    expect(parsed.maxFileSize).toBe(268966912);
+    expect(parsed.state).toBe(1);
+    expect(parsed.stateHex).toBe('0x0001');
+    expect(parsed.stateDescription).toContain('Clean/Valid');
+    expect(parsed.v3BlockSize).toBeNull();
+  });
+
+  it('correctly parses Minix v1 (0x138F, 30-byte names)', () => {
+    const buffer = createSampleMinixSuperblock(MINIX_MAGIC.V1_30, {
+      inodeCount: 640,
+      zoneCount: 2880,
+    });
+    const parsed = parseMinixSuperblock(buffer);
+    expect(parsed.variant).toBe('Minix v1 (30-byte names)');
+    expect(parsed.version).toBe(1);
+    expect(parsed.magic).toBe(0x138F);
+    expect(parsed.magicHex).toBe('0x138F');
+    expect(parsed.inodeCount).toBe(640);
+    expect(parsed.zoneCount).toBe(2880);
+  });
+
+  it('correctly parses Minix v2 (0x2468, 14-byte names)', () => {
+    const buffer = createSampleMinixSuperblock(MINIX_MAGIC.V2_14, {
+      inodeCount: 1024,
+      zoneCount: 50000,
+      imapBlocks: 2,
+      zmapBlocks: 2,
+      firstDataZone: 34,
+      logZoneSize: 1,
+      maxFileSize: 1073741824,
+      state: 0x0002,
+    });
+    const parsed = parseMinixSuperblock(buffer);
+    expect(parsed.variant).toBe('Minix v2 (14-byte names)');
+    expect(parsed.version).toBe(2);
+    expect(parsed.magic).toBe(0x2468);
+    expect(parsed.magicHex).toBe('0x2468');
+    expect(parsed.inodeCount).toBe(1024);
+    expect(parsed.zoneCount).toBe(50000);
+    expect(parsed.logZoneSize).toBe(1);
+    expect(parsed.maxFileSize).toBe(1073741824);
+    expect(parsed.stateHex).toBe('0x0002');
+    expect(parsed.stateDescription).toContain('Errors');
+  });
+
+  it('correctly parses Minix v2 (0x2478, 30-byte names)', () => {
+    const buffer = createSampleMinixSuperblock(MINIX_MAGIC.V2_30, {
+      inodeCount: 2048,
+      zoneCount: 60000,
+    });
+    const parsed = parseMinixSuperblock(buffer);
+    expect(parsed.variant).toBe('Minix v2 (30-byte names)');
+    expect(parsed.version).toBe(2);
+    expect(parsed.magic).toBe(0x2478);
+    expect(parsed.magicHex).toBe('0x2478');
+    expect(parsed.inodeCount).toBe(2048);
+    expect(parsed.zoneCount).toBe(60000);
+  });
+
+  it('correctly parses Minix v3 (0x4D5A)', () => {
+    const buffer = createSampleMinixSuperblock(MINIX_MAGIC.V3, {
+      inodeCount: 8192,
+      zoneCount: 131072,
+      imapBlocks: 4,
+      zmapBlocks: 8,
+      firstDataZone: 256,
+      logZoneSize: 2,
+      maxFileSize: 2147483647,
+      blockSize: 2048,
+      diskVersion: 1,
+    });
+    const parsed = parseMinixSuperblock(buffer);
+    expect(parsed.variant).toBe('Minix v3');
+    expect(parsed.version).toBe(3);
+    expect(parsed.magic).toBe(0x4D5A);
+    expect(parsed.magicHex).toBe('0x4D5A');
+    expect(parsed.inodeCount).toBe(8192);
+    expect(parsed.zoneCount).toBe(131072);
+    expect(parsed.imapBlocks).toBe(4);
+    expect(parsed.zmapBlocks).toBe(8);
+    expect(parsed.firstDataZone).toBe(256);
+    expect(parsed.logZoneSize).toBe(2);
+    expect(parsed.maxFileSize).toBe(2147483647);
+    expect(parsed.v3BlockSize).toBe(2048);
+    expect(parsed.blockSize).toBe(2048);
+    expect(parsed.diskVersion).toBe(1);
+    expect(parsed.state).toBeNull();
+  });
+
+  it('reports error on empty input (0 bytes)', () => {
+    expect(() => parseMinixSuperblock(new Uint8Array(0))).toThrow(/empty/i);
+    expect(() => parseMinixSuperblock(null)).toThrow(/empty/i);
+  });
+
+  it('reports error on truncated input (< 1056 bytes)', () => {
+    expect(() => parseMinixSuperblock(new Uint8Array(1000))).toThrow(/truncated/i);
+    expect(() => parseMinixSuperblock(new Uint8Array(1055))).toThrow(/truncated/i);
+  });
+
+  it('reports error on unknown magic without returning partial results', () => {
+    const buffer = new Uint8Array(1056);
+    const view = new DataView(buffer.buffer);
+    // Put random unknown magic at offset 1024 + 16
+    view.setUint16(1024 + 16, 0x9999, true);
+    expect(() => parseMinixSuperblock(buffer)).toThrow(/Unknown magic: 0x9999/);
+  });
+
+  it('formats high-bit unsigned flags properly', () => {
+    const buffer = createSampleMinixSuperblock(MINIX_MAGIC.V1_14, {
+      state: 0x8001,
+    });
+    const parsed = parseMinixSuperblock(buffer);
+    expect(parsed.state).toBe(0x8001);
+    expect(parsed.stateHex).toBe('0x8001');
+    expect(parsed.stateDescription).toContain('Unknown bits: 0x8000');
+  });
+});

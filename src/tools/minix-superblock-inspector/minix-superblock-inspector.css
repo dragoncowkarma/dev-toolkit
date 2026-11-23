@@ -1,0 +1,190 @@
+.minix-tool {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.minix-tool .minix-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.minix-tool .sample-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.minix-tool .sample-select {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: 0.85rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius);
+  outline: none;
+  cursor: pointer;
+}
+
+.minix-tool .sample-select:focus {
+  border-color: var(--color-primary);
+}
+
+.minix-tool .toolbar-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.minix-tool .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.minix-tool .btn:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.minix-tool .btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.minix-tool .file-btn {
+  position: relative;
+  overflow: hidden;
+}
+
+.minix-tool .file-btn:focus-within {
+  outline: 2px solid var(--color-primary-light);
+  outline-offset: 3px;
+}
+
+.minix-tool .file-input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  width: 100%;
+}
+
+.minix-tool .source-info-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+}
+
+.minix-tool .source-info-badge {
+  color: var(--color-primary-light);
+  font-weight: 600;
+}
+
+.minix-tool .minix-error {
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius);
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+  font-size: 0.9rem;
+}
+
+.minix-tool .minix-results {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.minix-tool .summary-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.minix-tool .summary-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--color-text);
+  margin: 0;
+}
+
+.minix-tool .summary-subtitle {
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.minix-tool .fields-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.minix-tool .field-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.minix-tool .field-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+}
+
+.minix-tool .field-value {
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text);
+  word-break: break-word;
+}
+
+.minix-tool .field-subvalue {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.minix-tool .empty-placeholder {
+  text-align: center;
+  padding: 3rem 1rem;
+  background: var(--color-surface);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text-muted);
+}
