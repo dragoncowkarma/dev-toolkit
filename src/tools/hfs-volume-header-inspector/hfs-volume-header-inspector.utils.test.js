@@ -6,6 +6,7 @@ import {
   decodeAttributes,
   formatBytes,
   formatHfsDate,
+  formatHfsLocalDate,
   HFS_EPOCH_DIFF_SECONDS,
   HFS_PLUS_SIGNATURE,
   HFSX_SIGNATURE,
@@ -60,11 +61,18 @@ describe('hfs-volume-header-inspector.utils', () => {
     it('returns null and "None (0)" for unset timestamp 0', () => {
       expect(hfsDateToDate(0)).toBeNull();
       expect(formatHfsDate(0)).toBe('None (0)');
+      expect(formatHfsLocalDate(0)).toBe('None (0)');
     });
 
     it('formats valid date with UTC suffix', () => {
       const formatted = formatHfsDate(HFS_EPOCH_DIFF_SECONDS);
       expect(formatted).toBe('1970-01-01T00:00:00 UTC');
+    });
+
+    it('formats local date without asserting UTC', () => {
+      const formatted = formatHfsLocalDate(HFS_EPOCH_DIFF_SECONDS);
+      expect(formatted).toBe('1970-01-01T00:00:00 (Local / Unknown Zone)');
+      expect(formatted).not.toContain('UTC');
     });
   });
 
@@ -202,6 +210,48 @@ describe('hfs-volume-header-inspector.utils', () => {
       expect(result.isValid).toBe(true);
       expect(result.header.signatureType).toBe('HFS+');
       expect(result.header.offset).toBe(0);
+    });
+
+    it('distinguishes local createDate from UTC timestamps', () => {
+      const buffer = createSampleHfsHeader({
+        createDate: 3660681600,
+        modifyDate: 3700000000,
+        checkedDate: 3700000000,
+        backupDate: 3700000000,
+      });
+
+      const result = parseHfsVolumeHeader(buffer);
+      expect(result.isValid).toBe(true);
+      expect(result.header.createDateFormatted).not.toContain('UTC');
+      expect(result.header.createDateFormatted).toContain('Local / Unknown Zone');
+      expect(result.header.modifyDateFormatted).toContain('UTC');
+      expect(result.header.checkedDateFormatted).toContain('UTC');
+      expect(result.header.backupDateFormatted).toContain('UTC');
+    });
+
+    it('supports pre-sliced buffer with isSlice option and preserves truncated diagnostics', () => {
+      const fullBuffer = createSampleHfsHeader({ offset: 1024 });
+      const slice = fullBuffer.subarray(1024, 1536);
+
+      const result = parseHfsVolumeHeader(slice, {
+        offset: 1024,
+        isSlice: true,
+        fileSize: fullBuffer.length,
+      });
+
+      expect(result.isValid).toBe(true);
+      expect(result.header.signatureType).toBe('HFS+');
+      expect(result.header.offset).toBe(1024);
+
+      // Truncated slice / file diagnostics
+      const truncatedResult = parseHfsVolumeHeader(new Uint8Array(200), {
+        offset: 1024,
+        isSlice: true,
+        fileSize: 800,
+      });
+      expect(truncatedResult.isValid).toBe(false);
+      expect(truncatedResult.errors[0]).toContain('Truncated input: expected at least 1536 bytes');
+      expect(truncatedResult.errors[0]).toContain('received 800 bytes');
     });
   });
 });

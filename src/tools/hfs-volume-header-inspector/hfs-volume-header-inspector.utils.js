@@ -93,16 +93,35 @@ export function dateToHfsTimestamp(date) {
 
 /**
  * Formats classic Mac HFS timestamp to human-readable ISO/UTC string.
+ * When isLocal / { isLocal: true } is specified, formats as local/unknown-zone wall time
+ * without asserting UTC.
  *
  * @param {number} timestamp
+ * @param {boolean|object} [options]
  * @returns {string}
  */
-export function formatHfsDate(timestamp) {
+export function formatHfsDate(timestamp, options = false) {
+  const isLocal = typeof options === 'boolean' ? options : Boolean(options?.isLocal);
   const date = hfsDateToDate(timestamp);
   if (!date || isNaN(date.getTime())) {
     return 'None (0)';
   }
-  return date.toISOString().replace('.000Z', ' UTC');
+  const wallTime = date.toISOString().replace('.000Z', '');
+  if (isLocal) {
+    return `${wallTime} (Local / Unknown Zone)`;
+  }
+  return `${wallTime} UTC`;
+}
+
+/**
+ * Formats classic Mac HFS local timestamp (such as volume createDate)
+ * without asserting UTC.
+ *
+ * @param {number} timestamp
+ * @returns {string}
+ */
+export function formatHfsLocalDate(timestamp) {
+  return formatHfsDate(timestamp, { isLocal: true });
 }
 
 /**
@@ -197,15 +216,26 @@ function formatFourCC(value) {
 /**
  * Parses an HFS+ or HFSX Volume Header from byte data.
  *
- * @param {Uint8Array} bytes - Raw byte buffer.
+ * @param {Uint8Array} bytes - Raw byte buffer (full volume buffer or 512-byte header slice).
  * @param {object} [options]
- * @param {number} [options.offset=1024] - Byte offset to the Volume Header.
+ * @param {number} [options.offset=1024] - Byte offset to the Volume Header in the volume.
  * @param {boolean} [options.strict=false] - Whether to throw on error diagnostics.
+ * @param {boolean} [options.isSlice=false] - True if bytes is pre-sliced at offset.
+ * @param {number} [options.fileSize] - Total file/disk image size if known.
+ * @param {number} [options.headerOffset] - Read offset in bytes (defaults to 0 if isSlice).
  * @returns {object} Parsed volume header result.
  */
 export function parseHfsVolumeHeader(bytes, options = {}) {
   const offset = options.offset ?? VOLUME_HEADER_OFFSET;
   const strict = options.strict ?? false;
+  const isSlice = options.isSlice ?? false;
+  const headerOffset = options.headerOffset !== undefined
+    ? options.headerOffset
+    : (isSlice ? 0 : offset);
+
+  const totalLength = options.fileSize !== undefined
+    ? options.fileSize
+    : (isSlice ? offset + (bytes?.length ?? 0) : (bytes?.length ?? 0));
 
   const diagnostics = [];
 
@@ -223,9 +253,9 @@ export function parseHfsVolumeHeader(bytes, options = {}) {
   }
 
   const requiredLength = offset + VOLUME_HEADER_SIZE;
-  if (bytes.length < requiredLength) {
+  if (totalLength < requiredLength || bytes.length < headerOffset + VOLUME_HEADER_SIZE) {
     const errorMsg = `Truncated input: expected at least ${requiredLength} bytes ` +
-      `(header at offset ${offset} requires 512 bytes), but received ${bytes.length} bytes.`;
+      `(header at offset ${offset} requires 512 bytes), but received ${totalLength} bytes.`;
     if (strict) throw new Error(errorMsg);
     return {
       isValid: false,
@@ -237,7 +267,7 @@ export function parseHfsVolumeHeader(bytes, options = {}) {
     };
   }
 
-  const view = new DataView(bytes.buffer, bytes.byteOffset + offset, VOLUME_HEADER_SIZE);
+  const view = new DataView(bytes.buffer, bytes.byteOffset + headerOffset, VOLUME_HEADER_SIZE);
 
   // Read fields
   const signatureRaw = view.getUint16(0, false);
@@ -349,7 +379,7 @@ export function parseHfsVolumeHeader(bytes, options = {}) {
     lastMountedVersionFormatted: formatFourCC(lastMountedVersion),
     journalInfoBlock,
     createDate,
-    createDateFormatted: formatHfsDate(createDate),
+    createDateFormatted: formatHfsLocalDate(createDate),
     modifyDate,
     modifyDateFormatted: formatHfsDate(modifyDate),
     backupDate,

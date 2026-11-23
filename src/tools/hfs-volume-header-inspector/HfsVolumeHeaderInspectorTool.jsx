@@ -1,4 +1,4 @@
-import { useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   bytesToHex,
   createSampleHfsHeader,
@@ -7,6 +7,7 @@ import {
   hexToBytes,
   parseHfsVolumeHeader,
   VOLUME_HEADER_OFFSET,
+  VOLUME_HEADER_SIZE,
 } from './hfs-volume-header-inspector.utils.js';
 import { useCopyFeedback } from '../../hooks/useCopyFeedback.js';
 import './hfs-volume-header-inspector.css';
@@ -24,6 +25,7 @@ const INPUT_MODES = {
 export default function HfsVolumeHeaderInspectorTool() {
   const [inputMode, setInputMode] = useState(INPUT_MODES.HEX);
   const [hexInput, setHexInput] = useState('');
+  const [selectedFile, setSelectedFile] = useState(null);
   const [fileBytes, setFileBytes] = useState(null);
   const [fileName, setFileName] = useState('');
   const [fileError, setFileError] = useState('');
@@ -33,6 +35,66 @@ export default function HfsVolumeHeaderInspectorTool() {
 
   const [copied, showCopied] = useCopyFeedback({ initialValue: false, resetValue: false });
   const fileInputRef = useRef(null);
+  const selectedFileRef = useRef(null);
+  const activeReadIdRef = useRef(0);
+  const activeReaderRef = useRef(null);
+
+  /**
+   * Cancels and invalidates any in-flight file read operations.
+   */
+  function cancelActiveRead() {
+    activeReadIdRef.current += 1;
+    if (activeReaderRef.current) {
+      try {
+        activeReaderRef.current.abort();
+      } catch {
+        // Ignore abort errors
+      }
+      activeReaderRef.current = null;
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      cancelActiveRead();
+    };
+  }, []);
+
+  /**
+   * Reads a bounded 512-byte slice of the selected file at the given offset.
+   *
+   * @param {File} file
+   * @param {number} targetOffset
+   */
+  function readFileSlice(file, targetOffset) {
+    cancelActiveRead();
+    const readId = activeReadIdRef.current;
+    setFileBytes(null);
+    setFileError('');
+
+    const slice = file.slice(targetOffset, targetOffset + VOLUME_HEADER_SIZE);
+    const reader = new FileReader();
+    activeReaderRef.current = reader;
+
+    reader.onload = () => {
+      if (activeReadIdRef.current !== readId) return;
+      activeReaderRef.current = null;
+      setFileBytes(new Uint8Array(/** @type {ArrayBuffer} */ (reader.result)));
+    };
+
+    reader.onerror = () => {
+      if (activeReadIdRef.current !== readId) return;
+      activeReaderRef.current = null;
+      setFileError('Failed to read file. Please try again.');
+    };
+
+    reader.onabort = () => {
+      if (activeReadIdRef.current !== readId) return;
+      activeReaderRef.current = null;
+    };
+
+    reader.readAsArrayBuffer(slice);
+  }
 
   const hexInputId = useId();
   const offsetSelectId = useId();
@@ -58,8 +120,12 @@ export default function HfsVolumeHeaderInspectorTool() {
   // Inspection result
   const inspection = useMemo(() => {
     if (!bytes) return null;
-    return parseHfsVolumeHeader(bytes, { offset });
-  }, [bytes, offset]);
+    return parseHfsVolumeHeader(bytes, {
+      offset,
+      isSlice: inputMode === INPUT_MODES.FILE,
+      fileSize: inputMode === INPUT_MODES.FILE ? selectedFile?.size : undefined,
+    });
+  }, [bytes, offset, inputMode, selectedFile]);
 
   function handleOffsetSelectChange(event) {
     const val = event.target.value;
@@ -67,6 +133,9 @@ export default function HfsVolumeHeaderInspectorTool() {
     const num = parseInt(val, 10);
     setOffset(num);
     setCustomOffsetStr(String(num));
+    if (inputMode === INPUT_MODES.FILE && selectedFileRef.current) {
+      readFileSlice(selectedFileRef.current, num);
+    }
   }
 
   function handleCustomOffsetChange(event) {
@@ -75,27 +144,47 @@ export default function HfsVolumeHeaderInspectorTool() {
     const parsed = parseInt(val, 10);
     if (!isNaN(parsed) && parsed >= 0) {
       setOffset(parsed);
+      if (inputMode === INPUT_MODES.FILE && selectedFileRef.current) {
+        readFileSlice(selectedFileRef.current, parsed);
+      }
     }
   }
 
   function handleFileChange(event) {
     const file = event.target.files?.[0];
     if (!file) return;
+    selectedFileRef.current = file;
+    setSelectedFile(file);
     setFileName(file.name);
-    setFileError('');
+    readFileSlice(file, offset);
+  }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      const arrayBuffer = reader.result;
-      setFileBytes(new Uint8Array(arrayBuffer));
-    };
-    reader.onerror = () => {
-      setFileError('Failed to read file. Please try again.');
-    };
-    reader.readAsArrayBuffer(file);
+  function handleSwitchMode(newMode) {
+    if (newMode === inputMode) return;
+    cancelActiveRead();
+    if (newMode === INPUT_MODES.HEX) {
+      selectedFileRef.current = null;
+      setSelectedFile(null);
+      setFileBytes(null);
+      setFileName('');
+      setFileError('');
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+    setInputMode(newMode);
   }
 
   function handleLoadSample(type) {
+    cancelActiveRead();
+    selectedFileRef.current = null;
+    setSelectedFile(null);
+    setFileBytes(null);
+    setFileName('');
+    setFileError('');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
     let sampleBuffer;
     if (type === 'hfs+') {
       sampleBuffer = createSampleHfsHeader({ signature: HFS_PLUS_SIGNATURE, offset: 1024 });
@@ -123,6 +212,9 @@ export default function HfsVolumeHeaderInspectorTool() {
   }
 
   function handleClear() {
+    cancelActiveRead();
+    selectedFileRef.current = null;
+    setSelectedFile(null);
     setHexInput('');
     setFileBytes(null);
     setFileName('');
@@ -170,14 +262,14 @@ export default function HfsVolumeHeaderInspectorTool() {
           <button
             type="button"
             className={`mode-btn ${inputMode === INPUT_MODES.HEX ? 'active' : ''}`}
-            onClick={() => setInputMode(INPUT_MODES.HEX)}
+            onClick={() => handleSwitchMode(INPUT_MODES.HEX)}
           >
             Hex Input
           </button>
           <button
             type="button"
             className={`mode-btn ${inputMode === INPUT_MODES.FILE ? 'active' : ''}`}
-            onClick={() => setInputMode(INPUT_MODES.FILE)}
+            onClick={() => handleSwitchMode(INPUT_MODES.FILE)}
           >
             File Upload
           </button>
@@ -401,7 +493,7 @@ export default function HfsVolumeHeaderInspectorTool() {
                 <thead>
                   <tr>
                     <th>Event</th>
-                    <th>Formatted Date (UTC)</th>
+                    <th>Formatted Date</th>
                     <th>Raw Seconds</th>
                   </tr>
                 </thead>
