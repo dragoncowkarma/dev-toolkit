@@ -1,0 +1,447 @@
+.hfs-tool {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.hfs-tool .hfs-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.hfs-tool .mode-toggle {
+  display: inline-flex;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.25rem;
+  gap: 0.25rem;
+}
+
+.hfs-tool .mode-btn {
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding: 0.5rem 1.25rem;
+  border-radius: calc(var(--radius) - 4px);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.hfs-tool .mode-btn.active {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.hfs-tool .mode-btn:not(.active):hover {
+  color: var(--color-text);
+}
+
+.hfs-tool .toolbar-samples {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.hfs-tool .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 0.5rem 0.85rem;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.hfs-tool .btn:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.hfs-tool .btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.hfs-tool .hfs-offset-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  padding: 0.6rem 1rem;
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+}
+
+.hfs-tool .offset-label {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.hfs-tool .offset-select {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  padding: 0.35rem 0.6rem;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 0.85rem;
+}
+
+.hfs-tool .custom-offset-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.hfs-tool .custom-offset-input {
+  width: 90px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  padding: 0.35rem 0.5rem;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 0.85rem;
+}
+
+.hfs-tool .offset-unit {
+  color: var(--color-text-muted);
+}
+
+.hfs-tool .panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.hfs-tool .panel-label {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+}
+
+.hfs-tool .panel-textarea {
+  width: 100%;
+  min-height: 120px;
+  background: var(--color-code-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  font-family: monospace;
+  font-size: 0.85rem;
+  padding: 0.75rem 1rem;
+  resize: vertical;
+  line-height: 1.4;
+}
+
+.hfs-tool .panel-textarea:focus {
+  outline: none;
+  border-color: var(--color-primary-light);
+}
+
+.hfs-tool .file-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 2.5rem 1rem;
+  background: var(--color-surface);
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  text-align: center;
+  transition: all var(--transition);
+}
+
+.hfs-tool .file-dropzone:hover {
+  border-color: var(--color-primary);
+  background: var(--color-surface-hover);
+}
+
+.hfs-tool .file-dropzone-icon {
+  font-size: 2rem;
+}
+
+.hfs-tool .file-dropzone-text {
+  font-size: 0.95rem;
+  color: var(--color-text);
+  font-weight: 500;
+}
+
+.hfs-tool .hfs-error-alert {
+  padding: 0.75rem 1rem;
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  color: var(--color-error-light);
+  font-size: 0.9rem;
+}
+
+.hfs-tool .diagnostics-box {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.hfs-tool .diagnostics-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.hfs-tool .diagnostics-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.hfs-tool .diagnostic-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+.hfs-tool .diagnostic-error {
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  color: var(--color-error-light);
+}
+
+.hfs-tool .diagnostic-warning {
+  background: rgba(251, 191, 36, 0.1);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  color: var(--color-warning);
+}
+
+.hfs-tool .diagnostic-badge {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.hfs-tool .inspection-results {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.hfs-tool .results-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.hfs-tool .results-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.hfs-tool .summary-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.hfs-tool .card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.hfs-tool .card-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.hfs-tool .card-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.hfs-tool .card-sub {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.hfs-tool .format-badge {
+  color: var(--color-primary-light);
+}
+
+.hfs-tool .space-bar-wrap {
+  width: 100%;
+  height: 6px;
+  background: var(--color-bg);
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 0.25rem 0;
+}
+
+.hfs-tool .space-bar-fill {
+  height: 100%;
+  background: var(--color-primary);
+  border-radius: 3px;
+}
+
+.hfs-tool .details-section {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.hfs-tool .section-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.hfs-tool .details-table-wrap,
+.hfs-tool .extents-table-wrap {
+  overflow-x: auto;
+}
+
+.hfs-tool .details-table,
+.hfs-tool .extents-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  text-align: left;
+}
+
+.hfs-tool .details-table th,
+.hfs-tool .details-table td,
+.hfs-tool .extents-table th,
+.hfs-tool .extents-table td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.hfs-tool .details-table th {
+  color: var(--color-text-muted);
+  font-weight: 500;
+  width: 25%;
+}
+
+.hfs-tool .details-table td {
+  color: var(--color-text);
+  font-family: monospace;
+}
+
+.hfs-tool .flags-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 0.5rem;
+}
+
+.hfs-tool .flag-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  border: 1px solid var(--color-border);
+}
+
+.hfs-tool .flag-active {
+  background: rgba(52, 211, 153, 0.1);
+  border-color: rgba(52, 211, 153, 0.3);
+  color: var(--color-success);
+}
+
+.hfs-tool .flag-inactive {
+  background: var(--color-bg);
+  color: var(--color-text-muted);
+}
+
+.hfs-tool .fork-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 0.5rem;
+}
+
+.hfs-tool .fork-tab {
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.hfs-tool .fork-tab.active {
+  background: var(--color-surface-hover);
+  color: var(--color-primary-light);
+  font-weight: 600;
+}
+
+.hfs-tool .fork-tab:hover:not(.active) {
+  color: var(--color-text);
+}
+
+.hfs-tool .fork-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  padding: 0.75rem 0;
+  font-size: 0.85rem;
+  color: var(--color-text);
+}
+
+.hfs-tool .metric-label {
+  color: var(--color-text-muted);
+}
+
+.hfs-tool .extent-used td {
+  color: var(--color-text);
+}
+
+.hfs-tool .extent-empty td {
+  color: var(--color-text-muted);
+}
