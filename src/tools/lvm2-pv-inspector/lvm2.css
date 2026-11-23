@@ -1,0 +1,51 @@
+.lvm2-tool {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  color: var(--color-text);
+}
+
+.lvm2-tool textarea {
+  min-height: 12rem;
+  padding: 0.75rem;
+  resize: vertical;
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  font-family: monospace;
+}
+
+.lvm2-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.lvm2-actions button {
+  padding: 0.5rem 1rem;
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.lvm2-alert {
+  padding: 0.75rem;
+  color: var(--color-error-light);
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+}
+
+.lvm2-result dd {
+  margin: 0 0 0.5rem;
+  overflow-wrap: anywhere;
+}
+
+.lvm2-result dt {
+  font-weight: 600;
+}
