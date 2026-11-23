@@ -1,0 +1,14 @@
+.fits-tool { max-width: 1000px; margin: 0 auto; padding: 0 1.25rem 2rem; }
+.fits-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; }
+.fits-actions button { padding: 0.5rem 1rem; border: 1px solid var(--color-border);
+  border-radius: var(--radius); background: var(--color-surface); color: var(--color-text);
+  cursor: pointer; }
+.fits-error { color: var(--color-error-light); background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border); border-radius: var(--radius); padding: 0.75rem; }
+.fits-hdu { margin-top: 1.5rem; }
+.fits-table-wrap { overflow-x: auto; border: 1px solid var(--color-border);
+  border-radius: var(--radius); }
+.fits-tool table { width: 100%; border-collapse: collapse; text-align: left; }
+.fits-tool th, .fits-tool td { padding: 0.5rem; border-bottom: 1px solid var(--color-border);
+  overflow-wrap: anywhere; }
+.fits-tool th { background: var(--color-surface); }
