@@ -1,0 +1,70 @@
+.xar-inspector {
+  display: grid;
+  gap: 1rem;
+}
+
+.xar-inspector > p {
+  color: var(--color-text-muted);
+}
+
+.xar-inspector__controls,
+.xar-inspector__results {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.xar-inspector__controls input {
+  max-width: 100%;
+}
+
+.xar-inspector__controls button {
+  justify-self: start;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius);
+  background: var(--color-primary);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.xar-inspector__controls button:hover {
+  background: var(--color-primary-light);
+}
+
+.xar-inspector [role='alert'] {
+  padding: 0.75rem;
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+}
+
+.xar-inspector__results dl {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.xar-inspector__results dt {
+  font-weight: 600;
+}
+
+.xar-inspector__results dd {
+  min-width: 0;
+  margin-bottom: 0.5rem;
+  overflow-wrap: anywhere;
+}
+
+@media (min-width: 600px) {
+  .xar-inspector__results dl {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+    gap: 0.5rem 1rem;
+  }
+
+  .xar-inspector__results dd {
+    margin-bottom: 0;
+  }
+}

@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { parseXarHeader } from './xar.utils.js';
+import './xar-header.css';
 
 /** @returns {React.JSX.Element} The local XAR header inspector. */
 export default function XarHeaderInspectorTool() {
@@ -38,15 +39,17 @@ export default function XarHeaderInspectorTool() {
   }
 
   return (
-    <section aria-label="XAR Header Inspector">
+    <section className="xar-inspector" aria-label="XAR Header Inspector">
       <p>Inspect a XAR archive header locally. Files stay in your browser.</p>
-      <label htmlFor="xar-file">XAR file</label>{' '}
-      <input id="xar-file" type="file" onChange={selectFile} />{' '}
-      <button className="btn" type="button" onClick={inspect}>Inspect</button>
+      <div className="xar-inspector__controls">
+        <label htmlFor="xar-file">XAR file</label>
+        <input id="xar-file" type="file" onChange={selectFile} />
+        <button type="button" onClick={inspect}>Inspect</button>
+      </div>
       {loading && <p role="status">Reading header…</p>}
       {error && <p role="alert">{error}</p>}
       {header && (
-        <div role="status">
+        <div className="xar-inspector__results" role="status">
           <h2>Header information</h2>
           <dl>
             <dt>Magic</dt><dd>xar!</dd>
