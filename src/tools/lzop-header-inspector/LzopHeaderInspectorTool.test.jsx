@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import LzopHeaderInspectorTool from './LzopHeaderInspectorTool.jsx';
+import * as lzopUtils from './lzop-header-inspector.utils.js';
 import {
   buildLzopHeader,
   bytesToHex,
@@ -8,6 +9,7 @@ import {
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
 });
 
 function selectFile(input, file) {
@@ -150,5 +152,149 @@ describe('LzopHeaderInspectorTool UI', () => {
       expect(screen.getByRole('alert')).toHaveTextContent(/Truncated LZOP header/);
       expect(screen.queryByText('✓ Valid Signature')).not.toBeInTheDocument();
     });
+  });
+
+  it('handles upload of a valid header exceeding the initial slice size', async () => {
+    render(<LzopHeaderInspectorTool />);
+    const extraData = new Uint8Array(65536 + 256);
+    extraData.fill(0x33);
+    const headerBytes = buildLzopHeader({
+      fileName: 'giant_extra.bin',
+      extraFieldData: extraData,
+    });
+    const file = new File([headerBytes], 'giant_extra.lzo', {
+      type: 'application/octet-stream',
+    });
+    const fileInput = screen.getByLabelText('Upload LZOP file');
+
+    await act(async () => selectFile(fileInput, file));
+
+    await waitFor(() => {
+      expect(screen.getByText('giant_extra.lzo')).toBeInTheDocument();
+      expect(screen.getByText('giant_extra.bin')).toBeInTheDocument();
+      expect(screen.getByText('✓ Valid Signature')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Extra Field' })).toBeInTheDocument();
+      expect(screen.getByText(/65792 bytes/)).toBeInTheDocument();
+    });
+  });
+
+  it('ignores stale file-read on newer selection (out of order)', async () => {
+    render(<LzopHeaderInspectorTool />);
+    const fileInput = screen.getByLabelText('Upload LZOP file');
+
+    let resolveFileA;
+    const promiseA = new Promise((resolve) => {
+      resolveFileA = resolve;
+    });
+    let resolveFileB;
+    const promiseB = new Promise((resolve) => {
+      resolveFileB = resolve;
+    });
+
+    const headerA = buildLzopHeader({ fileName: 'file_a.txt' });
+    const headerB = buildLzopHeader({ fileName: 'file_b.txt' });
+
+    const fileA = new File([headerA], 'a.lzo', { type: 'application/octet-stream' });
+    const fileB = new File([headerB], 'b.lzo', { type: 'application/octet-stream' });
+
+    vi.spyOn(lzopUtils, 'readHeaderSlice')
+      .mockReturnValueOnce(promiseA)
+      .mockReturnValueOnce(promiseB);
+
+    // Select file A
+    await act(async () => selectFile(fileInput, fileA));
+    expect(screen.getByText('a.lzo')).toBeInTheDocument();
+    expect(screen.queryByText('file_a.txt')).not.toBeInTheDocument();
+
+    // Select file B before file A resolves
+    await act(async () => selectFile(fileInput, fileB));
+    expect(screen.getByText('b.lzo')).toBeInTheDocument();
+
+    // Now resolve file B first
+    await act(async () => {
+      resolveFileB(headerB);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('file_b.txt')).toBeInTheDocument();
+      expect(screen.getByText('✓ Valid Signature')).toBeInTheDocument();
+    });
+
+    // Now file A completes late (out of order)
+    await act(async () => {
+      resolveFileA(headerA);
+    });
+
+    // Confirm file B is still shown and file A did NOT overwrite it
+    expect(screen.getByText('b.lzo')).toBeInTheDocument();
+    expect(screen.getByText('file_b.txt')).toBeInTheDocument();
+    expect(screen.queryByText('a.lzo')).not.toBeInTheDocument();
+    expect(screen.queryByText('file_a.txt')).not.toBeInTheDocument();
+  });
+
+  it('ignores pending file-read when Clear is clicked', async () => {
+    render(<LzopHeaderInspectorTool />);
+    const fileInput = screen.getByLabelText('Upload LZOP file');
+
+    let resolveFile;
+    const pendingPromise = new Promise((resolve) => {
+      resolveFile = resolve;
+    });
+
+    const header = buildLzopHeader({ fileName: 'cleared_target.txt' });
+    const file = new File([header], 'pending.lzo', { type: 'application/octet-stream' });
+
+    vi.spyOn(lzopUtils, 'readHeaderSlice').mockReturnValueOnce(pendingPromise);
+
+    await act(async () => selectFile(fileInput, file));
+    expect(screen.getByText('pending.lzo')).toBeInTheDocument();
+
+    // User clicks Clear while read is in flight
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
+    expect(screen.queryByText('pending.lzo')).not.toBeInTheDocument();
+    expect(screen.queryByText('✓ Valid Signature')).not.toBeInTheDocument();
+
+    // Now late completion arrives
+    await act(async () => {
+      resolveFile(header);
+    });
+
+    // Tool should remain cleared
+    expect(screen.queryByText('pending.lzo')).not.toBeInTheDocument();
+    expect(screen.queryByText('cleared_target.txt')).not.toBeInTheDocument();
+    expect(screen.queryByText('✓ Valid Signature')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('ignores pending file read when Mode changes or Load Sample is clicked', async () => {
+    render(<LzopHeaderInspectorTool />);
+    const fileInput = screen.getByLabelText('Upload LZOP file');
+
+    let resolveFile;
+    const pendingPromise = new Promise((resolve) => {
+      resolveFile = resolve;
+    });
+
+    const header = buildLzopHeader({ fileName: 'pending_mode.txt' });
+    const file = new File([header], 'pending_mode.lzo', { type: 'application/octet-stream' });
+
+    vi.spyOn(lzopUtils, 'readHeaderSlice').mockReturnValueOnce(pendingPromise);
+
+    await act(async () => selectFile(fileInput, file));
+
+    // User loads sample during read
+    fireEvent.click(screen.getByRole('button', { name: 'Load Sample' }));
+    expect(screen.getByText('sample.lzo')).toBeInTheDocument();
+    expect(screen.getByText('example.tar')).toBeInTheDocument();
+
+    // Late completion resolves
+    await act(async () => {
+      resolveFile(header);
+    });
+
+    // Sample remains displayed
+    expect(screen.getByText('sample.lzo')).toBeInTheDocument();
+    expect(screen.getByText('example.tar')).toBeInTheDocument();
+    expect(screen.queryByText('pending_mode.txt')).not.toBeInTheDocument();
   });
 });

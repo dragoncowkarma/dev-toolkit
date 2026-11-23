@@ -4,12 +4,15 @@ import {
   bytesToHex,
   computeAdler32,
   computeCrc32,
+  DEFAULT_INITIAL_SLICE_SIZE,
+  FLAGS,
   formatFileSize,
   formatMode,
   formatTimestamp,
   formatVersion,
   hexToBytes,
   LZOP_MAGIC,
+  MAX_EXTRA_FIELD_SIZE,
   parseFlags,
   parseLzopHeader,
   readHeaderSlice,
@@ -251,6 +254,21 @@ describe('parseLzopHeader error cases', () => {
     expect(() => parseLzopHeader(corrupted)).toThrow(/Extra field checksum mismatch/);
   });
 
+  it('distinguishes unsupported extra field size from truncated header', () => {
+    // Header declaring extra field size > MAX_EXTRA_FIELD_SIZE
+    const baseHeader = buildLzopHeader({
+      fileName: 'huge_extra.txt',
+      flags: FLAGS.F_H_EXTRA_FIELD,
+    });
+
+    // Append extra field length exceeding MAX_EXTRA_FIELD_SIZE
+    const withLength = new Uint8Array(baseHeader.length + 4);
+    withLength.set(baseHeader, 0);
+    new DataView(withLength.buffer).setUint32(baseHeader.length, MAX_EXTRA_FIELD_SIZE + 100);
+
+    expect(() => parseLzopHeader(withLength)).toThrow(/Unsupported extra field size/);
+  });
+
   it('throws TypeError for invalid input type', () => {
     expect(() => parseLzopHeader(12345)).toThrow(TypeError);
     expect(() => parseLzopHeader(null)).toThrow(TypeError);
@@ -266,6 +284,57 @@ describe('readHeaderSlice', () => {
     const slice = await readHeaderSlice(file, 64);
     expect(slice.length).toBe(64);
     expect(slice.slice(0, 9)).toEqual(LZOP_MAGIC);
+  });
+
+  it('reads the complete extra field when it exceeds the initial slice size', async () => {
+    const extraData = new Uint8Array(DEFAULT_INITIAL_SLICE_SIZE + 256);
+    extraData.fill(0xaa);
+    const headerBytes = buildLzopHeader({
+      fileName: 'large_extra_field.dat',
+      extraFieldData: extraData,
+    });
+    // Ensure header exceeds DEFAULT_INITIAL_SLICE_SIZE
+    expect(headerBytes.length).toBeGreaterThan(DEFAULT_INITIAL_SLICE_SIZE);
+
+    const file = new File([headerBytes], 'large_extra.lzo', { type: 'application/octet-stream' });
+    const slice = await readHeaderSlice(file);
+
+    expect(slice.length).toBe(headerBytes.length);
+    const parsed = parseLzopHeader(slice);
+    expect(parsed.fileName.name).toBe('large_extra_field.dat');
+    expect(parsed.extraField.length).toBe(extraData.length);
+    expect(parsed.extraField.valid).toBe(true);
+  });
+
+  it('handles truncated file when extra field length exceeds file size', async () => {
+    const extraData = new Uint8Array(DEFAULT_INITIAL_SLICE_SIZE + 256);
+    const headerBytes = buildLzopHeader({
+      fileName: 'truncated_extra.dat',
+      extraFieldData: extraData,
+    });
+    // Truncate file so only first DEFAULT_INITIAL_SLICE_SIZE bytes exist
+    const truncatedFile = new File(
+      [headerBytes.slice(0, DEFAULT_INITIAL_SLICE_SIZE)],
+      'truncated.lzo',
+      { type: 'application/octet-stream' }
+    );
+
+    const slice = await readHeaderSlice(truncatedFile);
+    expect(() => parseLzopHeader(slice)).toThrow(/Truncated LZOP header/);
+  });
+
+  it('rejects in readHeaderSlice when extra field exceeds MAX_EXTRA_FIELD_SIZE', async () => {
+    const baseHeader = buildLzopHeader({
+      fileName: 'huge.txt',
+      flags: FLAGS.F_H_EXTRA_FIELD,
+    });
+
+    const withLength = new Uint8Array(baseHeader.length + 4);
+    withLength.set(baseHeader, 0);
+    new DataView(withLength.buffer).setUint32(baseHeader.length, MAX_EXTRA_FIELD_SIZE + 500);
+
+    const file = new File([withLength], 'huge.lzo', { type: 'application/octet-stream' });
+    await expect(readHeaderSlice(file)).rejects.toThrow(/Unsupported extra field size/);
   });
 
   it('rejects if no file is provided', async () => {

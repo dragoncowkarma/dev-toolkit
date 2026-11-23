@@ -283,19 +283,11 @@ export function bytesToHex(bytes, delimiter = ' ') {
     .join(delimiter);
 }
 
-/**
- * Reads only the header slice of an uploaded File using FileReader.
- * @param {File|Blob} file
- * @param {number} [sliceSize=65536]
- * @returns {Promise<Uint8Array>}
- */
-export function readHeaderSlice(file, sliceSize = 65536) {
+export const DEFAULT_INITIAL_SLICE_SIZE = 65536;
+export const MAX_EXTRA_FIELD_SIZE = 16 * 1024 * 1024; // 16 MiB
+
+function readBlobSlice(blob) {
   return new Promise((resolve, reject) => {
-    if (!file) {
-      reject(new Error('No file provided.'));
-      return;
-    }
-    const slice = file.slice(0, sliceSize);
     const reader = new FileReader();
     reader.onload = () => {
       resolve(new Uint8Array(reader.result));
@@ -303,8 +295,103 @@ export function readHeaderSlice(file, sliceSize = 65536) {
     reader.onerror = () => {
       reject(new Error('Failed to read file slice.'));
     };
-    reader.readAsArrayBuffer(slice);
+    reader.readAsArrayBuffer(blob);
   });
+}
+
+/**
+ * Reads the LZOP header bytes of an uploaded File or Blob.
+ * If the header contains an extra field exceeding the initial slice,
+ * reads the additional necessary bytes based on declared length up to maxExtraSize.
+ * @param {File|Blob} file
+ * @param {number} [sliceSize=65536] Initial slice size
+ * @param {number} [maxExtraSize=MAX_EXTRA_FIELD_SIZE] Resource limit for extra field
+ * @returns {Promise<Uint8Array>}
+ */
+export async function readHeaderSlice(
+  file,
+  sliceSize = DEFAULT_INITIAL_SLICE_SIZE,
+  maxExtraSize = MAX_EXTRA_FIELD_SIZE
+) {
+  if (!file) {
+    throw new Error('No file provided.');
+  }
+
+  let bytes = await readBlobSlice(file.slice(0, sliceSize));
+  if (bytes.length < 9) {
+    return bytes;
+  }
+  for (let i = 0; i < 9; i++) {
+    if (bytes[i] !== LZOP_MAGIC[i]) {
+      return bytes;
+    }
+  }
+
+  try {
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    let offset = 9;
+    if (offset + 4 > bytes.length) return bytes;
+    const version = view.getUint16(offset);
+    offset += 4; // version (2) + libVersion (2)
+    if (version >= 0x0940) {
+      if (offset + 2 > bytes.length) return bytes;
+      offset += 2; // versionNeededToExtract (2)
+    }
+    if (offset + 1 > bytes.length) return bytes;
+    offset += 1; // method (1)
+    if (version >= 0x0940) {
+      if (offset + 1 > bytes.length) return bytes;
+      offset += 1; // level (1)
+    }
+    if (offset + 4 > bytes.length) return bytes;
+    const flags = view.getUint32(offset);
+    offset += 4; // flags (4)
+    if (flags & FLAGS.F_H_FILTER) {
+      if (offset + 4 > bytes.length) return bytes;
+      offset += 4; // filter (4)
+    }
+    if (offset + 8 > bytes.length) return bytes;
+    offset += 8; // mode (4) + mtimeLow (4)
+    if (version >= 0x0940) {
+      if (offset + 4 > bytes.length) return bytes;
+      offset += 4; // mtimeHigh (4)
+    }
+    if (offset + 1 > bytes.length) return bytes;
+    const nameLen = view.getUint8(offset);
+    offset += 1; // nameLen (1)
+    offset += nameLen; // fileName
+    offset += 4; // headerChecksum (4)
+
+    if (flags & FLAGS.F_H_EXTRA_FIELD) {
+      if (offset + 4 > bytes.length) {
+        if (typeof file.size === 'number' && file.size < offset + 4) {
+          return bytes;
+        }
+        bytes = await readBlobSlice(file.slice(0, offset + 4 + 4096));
+      }
+      const updatedView = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      if (offset + 4 <= bytes.length) {
+        const extraFieldLen = updatedView.getUint32(offset);
+        if (extraFieldLen > maxExtraSize) {
+          throw new Error(
+            `Unsupported extra field size: ${extraFieldLen} bytes. ` +
+              `Maximum supported size is ${maxExtraSize} bytes.`
+          );
+        }
+        const neededTotal = offset + 4 + extraFieldLen + 4;
+        if (neededTotal > bytes.length) {
+          bytes = await readBlobSlice(file.slice(0, neededTotal));
+        }
+      }
+    }
+  } catch (err) {
+    if (err.message && err.message.startsWith('Unsupported extra field size')) {
+      throw err;
+    }
+    return bytes;
+  }
+
+  return bytes;
 }
 
 /**
@@ -493,6 +580,12 @@ export function parseLzopHeader(input) {
     ensureBytes(4, 'extra field length');
     const extraFieldLen = view.getUint32(offset);
     offset += 4;
+    if (extraFieldLen > MAX_EXTRA_FIELD_SIZE) {
+      throw new Error(
+        `Unsupported extra field size: ${extraFieldLen} bytes. ` +
+          `Maximum supported size is ${MAX_EXTRA_FIELD_SIZE} bytes.`
+      );
+    }
     ensureBytes(extraFieldLen, 'extra field data');
     const extraFieldData = bytes.slice(offset, offset + extraFieldLen);
     offset += extraFieldLen;

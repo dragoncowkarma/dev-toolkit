@@ -27,8 +27,11 @@ export default function LzopHeaderInspectorTool() {
   const [hexInput, setHexInput] = useState('');
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef(null);
+  const readRequestIdRef = useRef(0);
 
   async function inspectFile(file) {
+    const currentRequestId = ++readRequestIdRef.current;
+
     if (!file) {
       setHeader(null);
       setError('');
@@ -41,13 +44,21 @@ export default function LzopHeaderInspectorTool() {
       size: file.size,
       sizeFormatted: formatFileSize(file.size),
     });
+    setHeader(null);
+    setError('');
 
     try {
       const sliceBytes = await readHeaderSlice(file);
+      if (currentRequestId !== readRequestIdRef.current) {
+        return;
+      }
       const parsed = parseLzopHeader(sliceBytes);
       setHeader(parsed);
       setError('');
     } catch (err) {
+      if (currentRequestId !== readRequestIdRef.current) {
+        return;
+      }
       setHeader(null);
       setError(err.message || 'Failed to parse LZOP header.');
     }
@@ -82,6 +93,7 @@ export default function LzopHeaderInspectorTool() {
   }
 
   function handleHexChange(event) {
+    readRequestIdRef.current++;
     const text = event.target.value;
     setHexInput(text);
     setFileInfo(null);
@@ -106,6 +118,7 @@ export default function LzopHeaderInspectorTool() {
 
   function handleModeChange(nextMode) {
     if (nextMode === mode) return;
+    readRequestIdRef.current++;
     setMode(nextMode);
     setHeader(null);
     setError('');
@@ -125,6 +138,7 @@ export default function LzopHeaderInspectorTool() {
   }
 
   function handleLoadSample() {
+    readRequestIdRef.current++;
     setFileInfo({
       name: 'sample.lzo',
       size: SAMPLE_LZOP_BYTES.length,
@@ -144,6 +158,7 @@ export default function LzopHeaderInspectorTool() {
   }
 
   function handleClear() {
+    readRequestIdRef.current++;
     setHeader(null);
     setError('');
     setFileInfo(null);
