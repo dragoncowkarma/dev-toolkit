@@ -183,9 +183,9 @@ describe('parseLzopHeader valid cases', () => {
     expect(parsed.extraField.dataHex.startsWith('12 34')).toBe(true);
 
     // Verify complete checksum validation across all 4 MiB:
-    // corrupting the last byte of the extra field data causes checksum mismatch
+    // Corrupting the last byte of the extra field data (-5, before 4-byte checksum)
     const corrupted = new Uint8Array(sample);
-    corrupted[corrupted.length - 5] ^= 0xff; // -5 is the last byte of extra field data (before 4-byte checksum)
+    corrupted[corrupted.length - 5] ^= 0xff;
     expect(() => parseLzopHeader(corrupted)).toThrow(/Extra field checksum mismatch/);
   });
 
@@ -367,7 +367,9 @@ describe('readHeaderSlice', () => {
       extraFieldData: largeExtra,
     });
 
-    const file = new File([headerBytes], 'read_slice_4mb.lzo', { type: 'application/octet-stream' });
+    const file = new File([headerBytes], 'read_slice_4mb.lzo', {
+      type: 'application/octet-stream',
+    });
     const slice = await readHeaderSlice(file);
 
     expect(slice.length).toBe(headerBytes.length);

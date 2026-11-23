@@ -639,8 +639,8 @@ export function parseLzopHeader(input, options = {}) {
     const previewLimit = typeof options === 'number'
       ? options
       : (options && typeof options.maxExtraPreview === 'number'
-          ? options.maxExtraPreview
-          : DEFAULT_EXTRA_FIELD_PREVIEW_LIMIT);
+        ? options.maxExtraPreview
+        : DEFAULT_EXTRA_FIELD_PREVIEW_LIMIT);
     const previewLen = Number.isFinite(previewLimit)
       ? Math.min(extraFieldLen, Math.max(0, previewLimit))
       : extraFieldLen;
