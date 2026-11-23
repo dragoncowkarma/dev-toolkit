@@ -39,29 +39,21 @@ const SAMPLE_HEADERS = [
  */
 export default function ZlibHeaderInspectorTool() {
   const [hexInput, setHexInput] = useState('78 9C');
+  const [source, setSource] = useState('hex');
   const [parsed, setParsed] = useState(null);
   const [rawBytes, setRawBytes] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [fileName, setFileName] = useState('');
-  const [fileBytes, setFileBytes] = useState(null);
 
   const [copiedDump, showCopiedDump] = useCopyFeedback();
   const fileInputRef = useRef(null);
   const hexInputId = useId();
   const fileInputId = useId();
 
-  // Run parsing whenever hexInput or fileBytes changes
+  // Run parsing whenever hexInput changes in hex input mode
   useEffect(() => {
-    if (fileBytes) {
-      setRawBytes(fileBytes);
-      const result = parseZlibHeader(fileBytes);
-      setParsed(result);
-      if (!result.ok) {
-        setErrorMessage(result.error ?? 'Unknown error parsing file header.');
-      } else {
-        setErrorMessage('');
-      }
+    if (source !== 'hex') {
       return;
     }
 
@@ -87,18 +79,23 @@ export default function ZlibHeaderInspectorTool() {
       setRawBytes(null);
       setErrorMessage(err.message);
     }
-  }, [hexInput, fileBytes]);
+  }, [hexInput, source]);
 
   function handleFileRead(file) {
     if (!file) return;
-    setFileName(file.name);
+    setSource('file');
+    setFileName('');
+    setRawBytes(null);
+    setParsed(null);
+    setErrorMessage('');
+
     const reader = new FileReader();
     reader.onload = () => {
       const arrayBuffer = reader.result;
       const bytes = new Uint8Array(arrayBuffer);
-      setFileBytes(bytes);
+      setFileName(file.name);
       setRawBytes(bytes);
-      // Format first 64 bytes into hexInput for the textarea
+      // Format first 64 bytes into hexInput for the textarea preview
       const previewBytes = bytes.slice(0, 64);
       setHexInput(bytesToHex(previewBytes));
       const result = parseZlibHeader(bytes);
@@ -110,7 +107,9 @@ export default function ZlibHeaderInspectorTool() {
       }
     };
     reader.onerror = () => {
-      setFileBytes(null);
+      setFileName('');
+      setRawBytes(null);
+      setParsed(null);
       setErrorMessage('Failed to read the selected file.');
     };
     reader.readAsArrayBuffer(file);
@@ -144,8 +143,8 @@ export default function ZlibHeaderInspectorTool() {
   }
 
   function handleSampleClick(sampleHex) {
+    setSource('hex');
     setFileName('');
-    setFileBytes(null);
     setHexInput(sampleHex);
   }
 
@@ -193,8 +192,8 @@ export default function ZlibHeaderInspectorTool() {
           className="zlib-inspector__textarea"
           value={hexInput}
           onChange={(e) => {
+            setSource('hex');
             setFileName('');
-            setFileBytes(null);
             setHexInput(e.target.value);
           }}
           placeholder="e.g. 78 9C or paste binary hex stream"

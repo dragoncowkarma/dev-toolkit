@@ -168,4 +168,67 @@ describe('ZlibHeaderInspectorTool component', () => {
       global.FileReader = originalFileReader;
     }
   });
+
+  it('preserves read failure when second file read fails after upload', async () => {
+    const totalBytes = 72;
+    const stream = new Uint8Array(totalBytes);
+    stream[0] = 0x78;
+    stream[1] = 0x9c;
+    for (let i = 2; i < 68; i += 1) {
+      stream[i] = 0xaa;
+    }
+    stream[68] = 0xde;
+    stream[69] = 0xad;
+    stream[70] = 0xbe;
+    stream[71] = 0xef;
+
+    const file1 = new File([stream], 'first-large.zlib', {
+      type: 'application/octet-stream',
+    });
+
+    render(<ZlibHeaderInspectorTool />);
+    const fileInput = screen.getByLabelText(/Upload zlib file/i);
+
+    fireEvent.change(fileInput, { target: { files: [file1] } });
+
+    // Confirm initial upload succeeded with full Adler-32 checksum and file name
+    expect(await screen.findByText('0xDEADBEEF')).toBeInTheDocument();
+    expect(screen.getByText(/Loaded file: first-large\.zlib/i)).toBeInTheDocument();
+    expect(screen.getByText('Raw Hex Dump (72 bytes)')).toBeInTheDocument();
+
+    // Now fail the next file read
+    const originalFileReader = global.FileReader;
+    class FailingFileReader {
+      readAsArrayBuffer() {
+        setTimeout(() => {
+          if (this.onerror) {
+            this.onerror();
+          }
+        }, 0);
+      }
+    }
+    global.FileReader = FailingFileReader;
+
+    try {
+      const file2 = new File([new Uint8Array([0x78, 0x01])], 'second-fail.zlib');
+      fireEvent.change(fileInput, { target: { files: [file2] } });
+
+      // Error alert must remain visible
+      const alert = await screen.findByRole('alert');
+      expect(alert).toHaveTextContent(/Failed to read the selected file/i);
+
+      // Verify no stale preview or previous results are presented as the new file's result
+      expect(screen.queryByText(/Loaded file/i)).not.toBeInTheDocument();
+      expect(screen.queryByText('0xDEADBEEF')).not.toBeInTheDocument();
+      expect(screen.queryByText('0xAAAAAAAA')).not.toBeInTheDocument();
+      expect(screen.queryByRole('article', {
+        name: /Header Summary/i,
+      })).not.toBeInTheDocument();
+      expect(screen.queryByRole('region', {
+        name: /Raw Hex Dump View/i,
+      })).not.toBeInTheDocument();
+    } finally {
+      global.FileReader = originalFileReader;
+    }
+  });
 });
