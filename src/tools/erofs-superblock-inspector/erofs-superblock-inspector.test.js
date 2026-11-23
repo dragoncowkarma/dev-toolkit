@@ -35,7 +35,7 @@ describe('parseErofsSuperblock - valid superblock', () => {
         0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff,
       ],
       volume_name: 'test_volume',
-      feature_incompat: 0x00000005, // ZERO_PADDING | CHUNKED_FILE
+      feature_incompat: 0x00000007, // ZERO_PADDING | COMPR_CFGS | CHUNKED_FILE
       available_compr_algs: 0x0009, // LZ4 | ZSTD
     });
 
@@ -59,8 +59,8 @@ describe('parseErofsSuperblock - valid superblock', () => {
     expect(parsed.xattr_blkaddr).toBe(20);
     expect(parsed.uuid).toBe('00112233-4455-6677-8899-aabbccddeeff');
     expect(parsed.volume_name).toBe('test_volume');
-    expect(parsed.feature_incompat).toBe(0x00000005);
-    expect(parsed.featureIncompatDecoded).toEqual(['ZERO_PADDING', 'CHUNKED_FILE']);
+    expect(parsed.feature_incompat).toBe(0x00000007);
+    expect(parsed.featureIncompatDecoded).toEqual(['ZERO_PADDING', 'COMPR_CFGS', 'CHUNKED_FILE']);
     expect(parsed.availableComprAlgsDecoded).toEqual(['LZ4', 'ZSTD']);
   });
 
@@ -274,5 +274,135 @@ describe('readErofsSuperblockSlice', () => {
     );
 
     global.FileReader = OriginalFileReader;
+  });
+});
+
+describe('48-bit layout decoding', () => {
+  it('decodes 48-bit layout with blocks_hi, blocks_lo, and 64-bit root NID', () => {
+    // Reviewer example: high bits 2, low bits 3, root NID 999
+    // blocks = (2 << 32) + 3 = 8,589,934,595
+    const raw = createSampleSuperblock({
+      feature_incompat: 0x00000080, // 48BIT
+      blocks_hi: 2,
+      blocks_lo: 3,
+      rootnid_8b: 999n,
+    });
+
+    const parsed = parseErofsSuperblock(raw);
+
+    expect(parsed.is_48bit).toBe(true);
+    expect(parsed.blocks_hi).toBe(2);
+    expect(parsed.blocks_lo).toBe(3);
+    expect(parsed.blocks).toBe(8589934595n);
+    expect(parsed.root_nid).toBe(999n);
+    expect(parsed.totalFsBytes).toBe(8589934595n * 4096n);
+    expect(parsed.totalFsSizeFormatted).toBe('32.0 TB');
+  });
+
+  it('supports large 64-bit root NID in 48-bit layout without precision loss', () => {
+    const largeNid = 0x123456789ABCDEFn;
+    const raw = createSampleSuperblock({
+      feature_incompat: 0x00000080, // 48BIT
+      blocks_hi: 10,
+      blocks_lo: 20,
+      rootnid_8b: largeNid,
+    });
+
+    const parsed = parseErofsSuperblock(raw);
+
+    expect(parsed.root_nid).toBe(largeNid);
+    expect(parsed.blocks).toBe((10n << 32n) | 20n);
+  });
+
+  it('falls back to 16-bit root_nid and 32-bit blocks when rootnid_8b is 0 with 48BIT', () => {
+    const raw = createSampleSuperblock({
+      feature_incompat: 0x00000080, // 48BIT
+      root_nid: 45,
+      blocks: 2048,
+      rootnid_8b: 0n,
+    });
+
+    const parsed = parseErofsSuperblock(raw);
+
+    expect(parsed.is_48bit).toBe(false);
+    expect(parsed.root_nid).toBe(45);
+    expect(parsed.blocks).toBe(2048);
+  });
+});
+
+describe('build-time offset and signed epoch calculation', () => {
+  it('computes total build time by adding signed epoch and 32-bit build-time offset', () => {
+    // Reviewer example: epoch 100, offset 60 => 160 seconds
+    const raw = createSampleSuperblock({
+      epoch: 100n,
+      build_time_offset: 60,
+      build_time_nsec: 0,
+    });
+
+    const parsed = parseErofsSuperblock(raw);
+
+    expect(parsed.epoch).toBe(100n);
+    expect(parsed.build_time_offset).toBe(60);
+    expect(parsed.build_time).toBe(160n);
+    expect(parsed.buildTimeFormatted).toBe(new Date(160 * 1000).toISOString());
+  });
+
+  it('handles legacy zero-offset images correctly', () => {
+    const raw = createSampleSuperblock({
+      epoch: 1700000000n,
+      build_time_offset: 0,
+    });
+
+    const parsed = parseErofsSuperblock(raw);
+
+    expect(parsed.epoch).toBe(1700000000n);
+    expect(parsed.build_time_offset).toBe(0);
+    expect(parsed.build_time).toBe(1700000000n);
+  });
+
+  it('handles signed negative epoch timestamps before Unix epoch', () => {
+    const raw = createSampleSuperblock({
+      epoch: -100n,
+      build_time_offset: 60,
+      build_time_nsec: 0,
+    });
+
+    const parsed = parseErofsSuperblock(raw);
+
+    expect(parsed.epoch).toBe(-100n);
+    expect(parsed.build_time_offset).toBe(60);
+    expect(parsed.build_time).toBe(-40n);
+    expect(parsed.buildTimeFormatted).toBe(new Date(-40 * 1000).toISOString());
+  });
+});
+
+describe('compression field union (COMPR_CFGS vs LZ4 max distance)', () => {
+  it('decodes compression algorithm bitmap when COMPR_CFGS feature is enabled', () => {
+    const raw = createSampleSuperblock({
+      feature_incompat: 0x00000002, // COMPR_CFGS
+      available_compr_algs: 0x0008, // ZSTD
+    });
+
+    const parsed = parseErofsSuperblock(raw);
+
+    expect(parsed.has_compr_cfgs).toBe(true);
+    expect(parsed.available_compr_algs).toBe(0x0008);
+    expect(parsed.availableComprAlgsDecoded).toEqual(['ZSTD']);
+    expect(parsed.lz4_max_distance).toBeNull();
+  });
+
+  it('decodes lz4_max_distance instead of algorithm bitmap when COMPR_CFGS is absent', () => {
+    // Distance 8 should NOT be decoded as ZSTD!
+    const raw = createSampleSuperblock({
+      feature_incompat: 0x00000001, // ZERO_PADDING only (no COMPR_CFGS)
+      lz4_max_distance: 8,
+    });
+
+    const parsed = parseErofsSuperblock(raw);
+
+    expect(parsed.has_compr_cfgs).toBe(false);
+    expect(parsed.lz4_max_distance).toBe(8);
+    expect(parsed.availableComprAlgsDecoded).toEqual(['LZ4']);
+    expect(parsed.availableComprAlgsDecoded).not.toContain('ZSTD');
   });
 });

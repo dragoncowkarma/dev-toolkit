@@ -168,7 +168,7 @@ export function formatFileSize(bytes) {
   const num = typeof bytes === 'bigint' ? Number(bytes) : bytes;
   if (!Number.isFinite(num) || num < 0) return '0 B';
   if (num < 1024) return `${num} B`;
-  const units = ['KB', 'MB', 'GB', 'TB'];
+  const units = ['KB', 'MB', 'GB', 'TB', 'PB', 'EB'];
   let value = num / 1024;
   let unitIndex = 0;
   while (value >= 1024 && unitIndex < units.length - 1) {
@@ -239,11 +239,11 @@ export function parseErofsSuperblock(input, options = {}) {
   const featureCompat = view.getUint32(offset + 8, true);
   const blkszbits = view.getUint8(offset + 12);
   const sbExtslots = view.getUint8(offset + 13);
-  const rootNid = view.getUint16(offset + 14, true);
+  const raw14 = view.getUint16(offset + 14, true);
   const inos = view.getBigUint64(offset + 16, true);
-  const buildTime = view.getBigUint64(offset + 24, true);
+  const epoch = view.getBigInt64(offset + 24, true);
   const buildTimeNsec = view.getUint32(offset + 32, true);
-  const blocks = view.getUint32(offset + 36, true);
+  const raw36 = view.getUint32(offset + 36, true);
   const metaBlkaddr = view.getUint32(offset + 40, true);
   const xattrBlkaddr = view.getUint32(offset + 44, true);
 
@@ -254,7 +254,43 @@ export function parseErofsSuperblock(input, options = {}) {
   const volumeName = parseVolumeName(volBytes);
 
   const featureIncompat = view.getUint32(offset + 80, true);
-  const availableComprAlgs = view.getUint16(offset + 84, true);
+  const u1 = view.getUint16(offset + 84, true);
+  const extraDevices = view.getUint16(offset + 86, true);
+
+  const buildTimeOffset = view.getUint32(offset + 108, true);
+  const rootnid8b = view.getBigUint64(offset + 112, true);
+
+  const has48Bit = (featureIncompat & 0x00000080) !== 0;
+  const is48BitLayout = has48Bit && rootnid8b !== 0n;
+
+  let rootNid;
+  let blocks;
+  let blocksHi = 0;
+  const blocksLo = raw36;
+
+  if (is48BitLayout) {
+    blocksHi = raw14;
+    blocks = (BigInt(blocksHi) << 32n) | BigInt(blocksLo);
+    rootNid = rootnid8b;
+  } else {
+    rootNid = raw14;
+    blocks = raw36;
+  }
+
+  const buildTime = epoch + BigInt(buildTimeOffset);
+
+  const hasComprCfgs = (featureIncompat & 0x00000002) !== 0;
+  let availableComprAlgs = null;
+  let availableComprAlgsDecoded = [];
+  let lz4MaxDistance = null;
+
+  if (hasComprCfgs) {
+    availableComprAlgs = u1;
+    availableComprAlgsDecoded = decodeCompressionAlgorithms(u1);
+  } else {
+    lz4MaxDistance = u1;
+    availableComprAlgsDecoded = ['LZ4'];
+  }
 
   const blockSize = 1 << blkszbits;
   const totalFsBytes = BigInt(blocks) * BigInt(blockSize);
@@ -271,12 +307,18 @@ export function parseErofsSuperblock(input, options = {}) {
     blockSize,
     sb_extslots: sbExtslots,
     root_nid: rootNid,
+    rootnid_8b: rootnid8b,
+    is_48bit: is48BitLayout,
     inos,
     inosFormatted: inos.toString(),
+    epoch,
+    build_time_offset: buildTimeOffset,
     build_time: buildTime,
     build_time_nsec: buildTimeNsec,
     buildTimeFormatted: formatBuildTime(buildTime, buildTimeNsec),
     blocks,
+    blocks_hi: blocksHi,
+    blocks_lo: blocksLo,
     meta_blkaddr: metaBlkaddr,
     xattr_blkaddr: xattrBlkaddr,
     uuid,
@@ -285,8 +327,11 @@ export function parseErofsSuperblock(input, options = {}) {
     feature_incompat: featureIncompat,
     featureIncompatHex: '0x' + featureIncompat.toString(16).padStart(8, '0').toUpperCase(),
     featureIncompatDecoded: decodeFeatureIncompat(featureIncompat),
+    has_compr_cfgs: hasComprCfgs,
     available_compr_algs: availableComprAlgs,
-    availableComprAlgsDecoded: decodeCompressionAlgorithms(availableComprAlgs),
+    availableComprAlgsDecoded,
+    lz4_max_distance: lz4MaxDistance,
+    extra_devices: extraDevices,
     totalFsBytes,
     totalFsSizeFormatted: formatFileSize(totalFsBytes),
   };
@@ -348,16 +393,55 @@ export function createSampleSuperblock(overrides = {}) {
   view.setUint8(12, overrides.blkszbits ?? 12);
   // sb_extslots
   view.setUint8(13, overrides.sb_extslots ?? 0);
-  // root_nid
-  view.setUint16(14, overrides.root_nid ?? 36, true);
+
+  const featureIncompat = overrides.feature_incompat ?? 0x00000003;
+  const is48BitFeature = (featureIncompat & 0x00000080) !== 0;
+
+  let rootnid8b = 0n;
+  if (overrides.rootnid_8b !== undefined) {
+    rootnid8b = BigInt(overrides.rootnid_8b);
+  } else if (
+    is48BitFeature &&
+    overrides.root_nid !== undefined &&
+    BigInt(overrides.root_nid) > 0xffffn
+  ) {
+    rootnid8b = BigInt(overrides.root_nid);
+  }
+
+  if (is48BitFeature && rootnid8b !== 0n) {
+    let blocksHi = 0;
+    let blocksLo = 0;
+    if (overrides.blocks_hi !== undefined) {
+      blocksHi = Number(overrides.blocks_hi);
+      blocksLo = Number(overrides.blocks_lo ?? overrides.blocks ?? 0);
+    } else if (overrides.blocks !== undefined) {
+      const b = BigInt(overrides.blocks);
+      blocksHi = Number((b >> 32n) & 0xffffn);
+      blocksLo = Number(b & 0xffffffffn);
+    }
+    view.setUint16(14, blocksHi, true);
+    view.setUint32(36, blocksLo, true);
+    view.setBigUint64(112, rootnid8b, true);
+  } else {
+    view.setUint16(14, Number(overrides.root_nid ?? 36), true);
+    view.setUint32(36, Number(overrides.blocks ?? 65536), true);
+    if (overrides.rootnid_8b !== undefined) {
+      view.setBigUint64(112, BigInt(overrides.rootnid_8b), true);
+    }
+  }
+
   // inos (preserve 64-bit precision)
-  view.setBigUint64(16, overrides.inos ?? 1048576n, true);
-  // build_time (seconds since epoch)
-  view.setBigUint64(24, overrides.build_time ?? 1700000000n, true);
+  view.setBigUint64(16, BigInt(overrides.inos ?? 1048576n), true);
+
+  // epoch and build_time_offset
+  const epoch = overrides.epoch !== undefined
+    ? BigInt(overrides.epoch)
+    : (overrides.build_time !== undefined ? BigInt(overrides.build_time) : 1700000000n);
+  view.setBigInt64(24, epoch, true);
+
   // build_time_nsec
   view.setUint32(32, overrides.build_time_nsec ?? 123456789, true);
-  // blocks
-  view.setUint32(36, overrides.blocks ?? 65536, true);
+
   // meta_blkaddr
   view.setUint32(40, overrides.meta_blkaddr ?? 1, true);
   // xattr_blkaddr
@@ -380,11 +464,23 @@ export function createSampleSuperblock(overrides = {}) {
     u8[64 + i] = i < encodedName.length ? encodedName[i] : 0;
   }
 
-  // feature_incompat (0x03 = ZERO_PADDING | COMPR_CFGS)
-  view.setUint32(80, overrides.feature_incompat ?? 0x00000003, true);
+  // feature_incompat
+  view.setUint32(80, featureIncompat, true);
 
-  // available_compr_algs (0x01 = LZ4)
-  view.setUint16(84, overrides.available_compr_algs ?? 0x0001, true);
+  // u1: available_compr_algs or lz4_max_distance
+  const hasComprCfgs = (featureIncompat & 0x00000002) !== 0;
+  if (hasComprCfgs) {
+    view.setUint16(84, overrides.available_compr_algs ?? 0x0001, true);
+  } else {
+    view.setUint16(84, overrides.lz4_max_distance ?? overrides.available_compr_algs ?? 0, true);
+  }
+
+  // extra_devices (bytes 86-87)
+  view.setUint16(86, overrides.extra_devices ?? 0, true);
+
+  // build_time_offset (bytes 108-111)
+  const buildTimeOffset = overrides.build_time_offset ?? 0;
+  view.setUint32(108, buildTimeOffset, true);
 
   return u8;
 }

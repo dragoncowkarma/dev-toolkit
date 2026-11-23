@@ -231,4 +231,75 @@ describe('ErofsSuperblockInspectorTool', () => {
     expect(copiedJson.volume_name).toBe('erofs_root');
     expect(screen.getByText('✓ JSON Copied')).toBeInTheDocument();
   });
+
+  it('clears file info and parsed data when selecting invalid file after valid load', async () => {
+    render(<ErofsSuperblockInspectorTool />);
+
+    // 1. Load valid sample first
+    fireEvent.click(screen.getByRole('button', { name: 'Load Sample' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('erofs-details')).toBeInTheDocument();
+    });
+    expect(screen.getByText(/sample-image\.erofs/)).toBeInTheDocument();
+
+    // 2. Select an invalid (truncated) image file
+    const invalidFile = new File([new Uint8Array(500)], 'bad-image.erofs', {
+      type: 'application/octet-stream',
+    });
+    const fileInput = screen.getByLabelText('Upload EROFS Image');
+    await act(async () => selectFile(fileInput, invalidFile));
+
+    // 3. Error alert should be displayed
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Truncated EROFS image');
+
+    // 4. Old file name and old details must be cleared
+    expect(screen.queryByText(/sample-image\.erofs/)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('erofs-details')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Uploaded file details')).not.toBeInTheDocument();
+  });
+
+  it('displays 48-bit layout geometry and 64-bit root NID accurately', async () => {
+    const fullImage = utils.createSampleImage({
+      feature_incompat: 0x00000080, // 48BIT
+      blocks_hi: 2,
+      blocks_lo: 3,
+      rootnid_8b: 999n,
+      volume_name: 'huge_48bit_fs',
+    });
+    const file = new File([fullImage], 'huge.erofs', { type: 'application/octet-stream' });
+
+    render(<ErofsSuperblockInspectorTool />);
+
+    const fileInput = screen.getByLabelText('Upload EROFS Image');
+    await act(async () => selectFile(fileInput, file));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('erofs-details')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('8,589,934,595 (32.0 TB)')).toBeInTheDocument();
+    expect(screen.getByText('999')).toBeInTheDocument();
+    expect(screen.getByText('huge_48bit_fs')).toBeInTheDocument();
+  });
+
+  it('displays legacy LZ4 compression details when COMPR_CFGS is absent', async () => {
+    const legacyImage = utils.createSampleImage({
+      feature_incompat: 0x00000001, // ZERO_PADDING only (no COMPR_CFGS)
+      lz4_max_distance: 8192,
+      volume_name: 'legacy_lz4_fs',
+    });
+    const file = new File([legacyImage], 'legacy.erofs', { type: 'application/octet-stream' });
+
+    render(<ErofsSuperblockInspectorTool />);
+
+    const fileInput = screen.getByLabelText('Upload EROFS Image');
+    await act(async () => selectFile(fileInput, file));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('erofs-details')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText(/LZ4 \(legacy, max distance: 8,192 B\)/)).toBeInTheDocument();
+  });
 });

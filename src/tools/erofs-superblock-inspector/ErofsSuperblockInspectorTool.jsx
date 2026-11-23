@@ -40,6 +40,8 @@ export default function ErofsSuperblockInspectorTool() {
     }
 
     const currentRequestId = (fileRequestRef.current += 1);
+    setParsedData(null);
+    setFileInfo(null);
     setError('');
 
     try {
@@ -59,12 +61,16 @@ export default function ErofsSuperblockInspectorTool() {
         return;
       }
       setParsedData(null);
+      setFileInfo(null);
       setError(err.message);
     }
   }
 
   function handleLoadSample() {
     fileRequestRef.current += 1;
+    setParsedData(null);
+    setFileInfo(null);
+    setError('');
     try {
       const sampleBuffer = createSampleSuperblock();
       const parsed = parseErofsSuperblock(sampleBuffer);
@@ -76,6 +82,7 @@ export default function ErofsSuperblockInspectorTool() {
       setError('');
     } catch (err) {
       setParsedData(null);
+      setFileInfo(null);
       setError(err.message);
     }
   }
@@ -234,7 +241,7 @@ export default function ErofsSuperblockInspectorTool() {
                 </tr>
                 <tr>
                   <th>Root Inode NID</th>
-                  <td>{parsedData.root_nid}</td>
+                  <td>{parsedData.root_nid != null ? parsedData.root_nid.toString() : ''}</td>
                 </tr>
               </tbody>
             </table>
@@ -264,10 +271,20 @@ export default function ErofsSuperblockInspectorTool() {
                 <tr>
                   <th>Compr Algorithms</th>
                   <td>
-                    {parsedData.availableComprAlgsDecoded.length > 0 ? (
-                      parsedData.availableComprAlgsDecoded.join(', ')
+                    {parsedData.has_compr_cfgs ? (
+                      parsedData.availableComprAlgsDecoded.length > 0 ? (
+                        parsedData.availableComprAlgsDecoded.join(', ')
+                      ) : (
+                        <span className="erofs-inspector__file-meta">Default / None</span>
+                      )
                     ) : (
-                      <span className="erofs-inspector__file-meta">Default / None</span>
+                      <span>
+                        LZ4 (legacy, max distance:{' '}
+                        {parsedData.lz4_max_distance
+                          ? `${parsedData.lz4_max_distance.toLocaleString()} B`
+                          : '64 KB default'}
+                        )
+                      </span>
                     )}
                   </td>
                 </tr>
@@ -286,6 +303,12 @@ export default function ErofsSuperblockInspectorTool() {
                     <div>{parsedData.buildTimeFormatted}</div>
                     <div className="erofs-inspector__file-meta">
                       Raw: {parsedData.build_time.toString()} s
+                      {parsedData.build_time_offset ? (
+                        <span>
+                          {` (Epoch: ${parsedData.epoch.toString()} s, ` +
+                            `Offset: ${parsedData.build_time_offset.toString()} s)`}
+                        </span>
+                      ) : null}
                     </div>
                   </td>
                 </tr>
