@@ -19,16 +19,17 @@ export const SUPPORTED_RADIANCE_FORMATS = Object.freeze([
 
 /**
  * Descriptions for the 8 possible Radiance orientation combinations.
+ * For X-major orientations (+X/-X first), scanlines run along Y.
  */
 export const ORIENTATION_DESCRIPTIONS = Object.freeze({
   '-Y +X': 'Standard (top-to-bottom, left-to-right)',
   '-Y -X': 'Flipped horizontally (top-to-bottom, right-to-left)',
   '+Y +X': 'Flipped vertically (bottom-to-top, left-to-right)',
   '+Y -X': 'Rotated 180° (bottom-to-top, right-to-left)',
-  '+X -Y': 'Transposed (left-to-right, top-to-bottom)',
-  '-X -Y': 'Rotated 90° CW (right-to-left, top-to-bottom)',
-  '+X +Y': 'Rotated 90° CCW (left-to-right, bottom-to-top)',
-  '-X +Y': 'Transposed & flipped (right-to-left, bottom-to-top)',
+  '+X -Y': 'X-major transposed (left-to-right, top-to-bottom)',
+  '-X -Y': 'X-major rotated 90° CW (right-to-left, top-to-bottom)',
+  '+X +Y': 'X-major rotated 90° CCW (left-to-right, bottom-to-top)',
+  '-X +Y': 'X-major transposed & flipped (right-to-left, bottom-to-top)',
 });
 
 /**
@@ -140,15 +141,17 @@ export function parseResolutionLine(resolutionLine) {
     .match(/^([+-])([XY])\s+(\d+)\s+([+-])([XY])\s+(\d+)$/);
 
   if (!match) {
+    const trimmed = resolutionLine.trim();
     throw new Error(
-      `Invalid Radiance HDR resolution line: "${resolutionLine.trim()}". Expected format like "-Y 512 +X 768".`,
+      `Invalid Radiance HDR resolution line: "${trimmed}". Expected format like "-Y 512 +X 768".`,
     );
   }
 
   const [, sign1, axis1, dim1Str, sign2, axis2, dim2Str] = match;
   if (axis1 === axis2) {
+    const trimmed = resolutionLine.trim();
     throw new Error(
-      `Invalid Radiance HDR resolution line: "${resolutionLine.trim()}". Axes must include both X and Y.`,
+      `Invalid Radiance HDR resolution line: "${trimmed}". Axes must include both X and Y.`,
     );
   }
 
@@ -156,7 +159,7 @@ export function parseResolutionLine(resolutionLine) {
   const dim2 = Number.parseInt(dim2Str, 10);
   if (dim1 <= 0 || dim2 <= 0) {
     throw new Error(
-      `Invalid Radiance HDR resolution dimensions: width and height must be positive integers.`,
+      'Invalid Radiance HDR resolution dimensions: width and height must be positive integers.',
     );
   }
 
@@ -201,20 +204,18 @@ function isUint8Array(value) {
  * Detects whether Radiance scanlines use new RLE, old RLE, or flat encoding
  * based on the leading scanline bytes and scanline length.
  *
- * @param {Uint8Array} scanlineBytes - Leading bytes of the pixel data right after the resolution line.
- * @param {number} scanlineLength - Length of each scanline (minor axis dimension, typically width).
+ * Note: Old RLE detection is a heuristic that scans 4-byte records starting at
+ * the second record (offset 4, up to 64 bytes) for the consecutive repeat marker
+ * R=1, G=1, B=1, E>0. The first pixel (offset 0) cannot be a repeat marker
+ * because there is no preceding pixel to repeat, though a flat file with a
+ * very dark pixel (1,1,1,E) after the first pixel can still match the heuristic.
+ *
+ * @param {Uint8Array} scanlineBytes - Leading pixel bytes right after the resolution line.
+ * @param {number} scanlineLength - Length of each scanline (minor axis dimension).
  * @returns {'new RLE' | 'old RLE' | 'flat'}
  */
 export function detectScanlineEncoding(scanlineBytes, scanlineLength) {
   if (!isUint8Array(scanlineBytes) || scanlineBytes.length < 4) {
-    if (
-      scanlineLength >= 8 &&
-      scanlineLength <= 0x7fff &&
-      isUint8Array(scanlineBytes) &&
-      scanlineBytes.length === 0
-    ) {
-      return 'new RLE';
-    }
     return 'flat';
   }
 
@@ -238,13 +239,14 @@ export function detectScanlineEncoding(scanlineBytes, scanlineLength) {
   }
 
   // Old RLE: uses consecutive pixel repeat markers where R=1, G=1, B=1 and E=repeat count.
-  // Check the first few 4-byte records in the scanline prefix for the 1, 1, 1 marker.
+  // The first pixel (offset 0) cannot be a repeat marker since it needs a preceding pixel.
   const maxCheckOffset = Math.min(scanlineBytes.length - (scanlineBytes.length % 4), 64);
-  for (let offset = 0; offset < maxCheckOffset; offset += 4) {
+  for (let offset = 4; offset < maxCheckOffset; offset += 4) {
     if (
       scanlineBytes[offset] === 1 &&
       scanlineBytes[offset + 1] === 1 &&
-      scanlineBytes[offset + 2] === 1
+      scanlineBytes[offset + 2] === 1 &&
+      scanlineBytes[offset + 3] > 0
     ) {
       return 'old RLE';
     }
@@ -318,7 +320,7 @@ export function parseRadianceHdrHeader(input) {
     const partial = new TextDecoder('ascii').decode(bytes.subarray(0, 32)).trim();
     if (!partial.startsWith('#?')) {
       throw new Error(
-        'Missing Radiance HDR magic line: expected "#?RADIANCE" or "#?RGBE" at the start of the file.',
+        'Missing Radiance HDR magic line: expected "#?RADIANCE" or "#?RGBE" at start of file.',
       );
     }
     throw new Error('Truncated Radiance HDR header: magic line is incomplete.');
@@ -326,8 +328,9 @@ export function parseRadianceHdrHeader(input) {
 
   const magic = firstLineResult.line.trim();
   if (!RADIANCE_MAGIC_SIGNATURES.includes(magic)) {
+    const foundMagic = magic || '(empty)';
     throw new Error(
-      `Missing Radiance HDR magic line: expected "#?RADIANCE" or "#?RGBE", found "${magic || '(empty)'}".`,
+      `Missing Radiance HDR magic line: expected "#?RADIANCE" or "#?RGBE", found "${foundMagic}".`,
     );
   }
 
@@ -348,7 +351,7 @@ export function parseRadianceHdrHeader(input) {
     const lineResult = readAsciiLine(bytes, offset);
     if (!lineResult) {
       throw new Error(
-        'Truncated Radiance HDR header: reached end of data before the blank line separating header variables from resolution.',
+        'Truncated Radiance HDR header: reached end of data before the blank line delimiter.',
       );
     }
     offset = lineResult.nextOffset;
@@ -415,12 +418,13 @@ export function parseRadianceHdrHeader(input) {
   // 3. Validate FORMAT variable
   if (!format) {
     throw new Error(
-      'Unsupported or missing Radiance HDR FORMAT: expected "32-bit_rle_rgbe" or "32-bit_rle_xyze".',
+      'Unsupported or missing Radiance HDR FORMAT: expected 32-bit_rle_rgbe or 32-bit_rle_xyze.',
     );
   }
   if (!SUPPORTED_RADIANCE_FORMATS.includes(format)) {
+    const supportedList = '"32-bit_rle_rgbe" and "32-bit_rle_xyze"';
     throw new Error(
-      `Unsupported Radiance HDR format "${format}": only "32-bit_rle_rgbe" and "32-bit_rle_xyze" are supported.`,
+      `Unsupported Radiance HDR format "${format}": only ${supportedList} are supported.`,
     );
   }
 

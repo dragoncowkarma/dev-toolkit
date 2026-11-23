@@ -9,6 +9,12 @@ import {
 import { useCopyFeedback } from '../../hooks/useCopyFeedback.js';
 import './radianceHdrHeaderInspector.css';
 
+const DEDICATED_VARIABLE_KEYS = new Set(['SOFTWARE', 'COLORCORR', 'PRIMARIES', 'VIEW']);
+
+function formatMetricFloat(value) {
+  return Number.isFinite(value) ? Number(value.toPrecision(6)).toString() : String(value);
+}
+
 /**
  * Renders the Radiance HDR Header Inspector tool for parsing and inspecting
  * Radiance .hdr / .pic image headers client-side.
@@ -235,10 +241,10 @@ export default function RadianceHdrHeaderInspectorTool() {
             <div className="summary-card">
               <span className="summary-label">Exposure / Aspect</span>
               <strong className="summary-value" data-testid="hdr-exposure">
-                {parsedHeader.exposure}
+                {formatMetricFloat(parsedHeader.exposure)}
               </strong>
               <span className="summary-sub">
-                Pixel Aspect: {parsedHeader.pixelAspect}
+                Pixel Aspect: {formatMetricFloat(parsedHeader.pixelAspect)}
               </span>
             </div>
           </div>
@@ -279,12 +285,14 @@ export default function RadianceHdrHeaderInspectorTool() {
                     <dd>{parsedHeader.view}</dd>
                   </div>
                 )}
-                {parsedHeader.variables.map((variable, index) => (
-                  <div className="metadata-item" key={`${variable.key}-${index}`}>
-                    <dt>{variable.key}</dt>
-                    <dd>{variable.value}</dd>
-                  </div>
-                ))}
+                {parsedHeader.variables
+                  .filter((variable) => !DEDICATED_VARIABLE_KEYS.has(variable.key))
+                  .map((variable, index) => (
+                    <div className="metadata-item" key={`${variable.key}-${index}`}>
+                      <dt>{variable.key}</dt>
+                      <dd>{variable.value}</dd>
+                    </div>
+                  ))}
               </dl>
             </div>
 

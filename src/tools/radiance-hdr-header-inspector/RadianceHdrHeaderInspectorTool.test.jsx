@@ -52,10 +52,13 @@ describe('RadianceHdrHeaderInspectorTool', () => {
     expect(screen.getByTestId('hdr-dimensions')).toHaveTextContent('768 × 512');
     expect(screen.getByTestId('hdr-orientation')).toHaveTextContent('-Y +X');
     expect(screen.getByTestId('hdr-scanline-encoding')).toHaveTextContent('new RLE');
+    expect(screen.getAllByText('SOFTWARE')).toHaveLength(1);
+    expect(screen.getAllByText('COLORCORR')).toHaveLength(1);
+    expect(screen.getAllByText('PRIMARIES')).toHaveLength(1);
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
-  it('displays clear errors for invalid magic lines, unsupported formats, and truncated headers', async () => {
+  it('shows errors for invalid magic, unsupported format, and truncated header', async () => {
     render(<RadianceHdrHeaderInspectorTool />);
     const fileInput = screen.getByLabelText('Upload a Radiance HDR file');
 
@@ -118,7 +121,7 @@ describe('RadianceHdrHeaderInspectorTool', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
-  it('ignores stale out-of-order file reads when an older read resolves after a newer read', async () => {
+  it('ignores stale out-of-order reads when older read resolves after newer read', async () => {
     const deferredOld = createDeferred();
     const deferredNew = createDeferred();
     hdrUtils.readLeadingHeaderBytes

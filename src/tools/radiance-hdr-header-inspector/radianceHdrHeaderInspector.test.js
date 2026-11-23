@@ -20,7 +20,7 @@ function makeHdrBytes(lines, scanlineBytes = []) {
 }
 
 describe('parseRadianceHdrHeader - valid RGBE and XYZE headers', () => {
-  it('parses a valid #?RADIANCE 32-bit_rle_rgbe header with variables, comments, and new RLE scanlines', () => {
+  it('parses a valid #?RADIANCE 32-bit_rle_rgbe header with variables and new RLE', () => {
     // Width = 768 (0x0300) -> new RLE prefix is [2, 2, 0x03, 0x00]
     const bytes = makeHdrBytes(
       [
@@ -221,12 +221,25 @@ describe('detectScanlineEncoding - flat, old RLE, and new RLE', () => {
     expect(detectScanlineEncoding(prefix, 512)).toBe('new RLE');
   });
 
-  it('detects old RLE when a pixel entry has R=1, G=1, B=1 repeat marker', () => {
+  it('returns flat when scanlineBytes is empty or shorter than 4 bytes', () => {
+    expect(detectScanlineEncoding(new Uint8Array(0), 512)).toBe('flat');
+    expect(detectScanlineEncoding(new Uint8Array([0x02, 0x02, 0x02]), 512)).toBe('flat');
+  });
+
+  it('detects old RLE when a subsequent pixel entry has R=1, G=1, B=1 repeat marker', () => {
     const prefix = new Uint8Array([
       120, 80, 40, 128,
       1, 1, 1, 15,
     ]);
     expect(detectScanlineEncoding(prefix, 64)).toBe('old RLE');
+  });
+
+  it('does not treat a first-record 1,1,1 dark pixel as an old RLE repeat marker', () => {
+    const prefix = new Uint8Array([
+      1, 1, 1, 120,
+      130, 90, 50, 129,
+    ]);
+    expect(detectScanlineEncoding(prefix, 64)).toBe('flat');
   });
 
   it('detects flat scanlines when bytes are uncompressed RGBE pixels', () => {
