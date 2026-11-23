@@ -1,0 +1,40 @@
+.sunraster-tool {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.sunraster-tool .sunraster-drop {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius);
+}
+
+.sunraster-tool textarea, .sunraster-tool select, .sunraster-tool button {
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+  font: inherit;
+}
+
+.sunraster-tool textarea { min-height: 10rem; resize: vertical; }
+.sunraster-tool button { align-self: flex-start; cursor: pointer; }
+.sunraster-tool dl { margin: 0; }
+.sunraster-tool dl div { display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0.3rem 0; }
+.sunraster-tool dt { font-weight: 600; }
+.sunraster-tool dd { margin: 0; overflow-wrap: anywhere; }
+.sunraster-tool .sunraster-error {
+  color: var(--color-error-light);
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+}
