@@ -248,6 +248,11 @@ describe('formatBytes & formatFileSize', () => {
     expect(formatBytes(10737418240n)).toBe('10.00 GB (10,737,418,240 bytes)');
     expect(formatFileSize(10737418240n)).toBe('10.0 GB');
   });
+
+  it('preserves exact byte count for BigInt above Number.MAX_SAFE_INTEGER', () => {
+    const hugeBytes = 9007199254740993n;
+    expect(formatBytes(hugeBytes)).toBe('8.00 PB (9,007,199,254,740,993 bytes)');
+  });
 });
 
 describe('formatUuid', () => {

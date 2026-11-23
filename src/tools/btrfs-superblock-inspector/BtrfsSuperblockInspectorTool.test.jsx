@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import BtrfsSuperblockInspectorTool from './BtrfsSuperblockInspectorTool.jsx';
+import * as btrfsUtils from './btrfs-superblock-inspector.utils.js';
 import {
   SUPERBLOCK_OFFSET,
   SUPERBLOCK_SIZE,
@@ -10,6 +11,20 @@ import {
 function selectFile(input, file) {
   Object.defineProperty(input, 'files', { value: [file], configurable: true });
   fireEvent.change(input);
+}
+
+function createFakeParsed(label, fileName) {
+  const buf = createSampleBtrfsSuperblock({ label });
+  const parsed = btrfsUtils.parseBtrfsSuperblock(buf);
+  return {
+    ...parsed,
+    fileInfo: {
+      name: fileName,
+      size: 1048576,
+      sliceOffset: SUPERBLOCK_OFFSET,
+      sliceSize: SUPERBLOCK_SIZE,
+    },
+  };
 }
 
 afterEach(() => {
@@ -163,5 +178,254 @@ describe('BtrfsSuperblockInspectorTool', () => {
 
     expect(writeText).toHaveBeenCalledWith('4a7f19b8-2341-4f92-89ac-56ef78901234');
     expect(copyFsidBtn).toHaveTextContent('✓ Copied');
+  });
+
+  it('ignores obsolete file read when a newer file read succeeds earlier (out-of-order success)', async () => {
+    let resolveFirst;
+    const firstPromise = new Promise((resolve) => {
+      resolveFirst = resolve;
+    });
+
+    let resolveSecond;
+    const secondPromise = new Promise((resolve) => {
+      resolveSecond = resolve;
+    });
+
+    vi.spyOn(btrfsUtils, 'readSuperblockFromImage')
+      .mockReturnValueOnce(firstPromise)
+      .mockReturnValueOnce(secondPromise);
+
+    render(<BtrfsSuperblockInspectorTool />);
+
+    const fileInput = screen.getByLabelText('Upload Btrfs filesystem image');
+    const firstFile = new File(['first'], 'first.img');
+    const secondFile = new File(['second'], 'second.img');
+
+    selectFile(fileInput, firstFile);
+    selectFile(fileInput, secondFile);
+
+    await act(async () => {
+      resolveSecond(createFakeParsed('second-volume', 'second.img'));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('second-volume')).toBeInTheDocument();
+      expect(screen.getByText('📁 second.img')).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      resolveFirst(createFakeParsed('first-volume', 'first.img'));
+    });
+
+    expect(screen.getByText('second-volume')).toBeInTheDocument();
+    expect(screen.getByText('📁 second.img')).toBeInTheDocument();
+    expect(screen.queryByText('first-volume')).not.toBeInTheDocument();
+    expect(screen.queryByText('📁 first.img')).not.toBeInTheDocument();
+  });
+
+  it('ignores obsolete file read error when a newer file read succeeds earlier (out-of-order failure)', async () => {
+    let rejectFirst;
+    const firstPromise = new Promise((_, reject) => {
+      rejectFirst = reject;
+    });
+
+    let resolveSecond;
+    const secondPromise = new Promise((resolve) => {
+      resolveSecond = resolve;
+    });
+
+    vi.spyOn(btrfsUtils, 'readSuperblockFromImage')
+      .mockReturnValueOnce(firstPromise)
+      .mockReturnValueOnce(secondPromise);
+
+    render(<BtrfsSuperblockInspectorTool />);
+
+    const fileInput = screen.getByLabelText('Upload Btrfs filesystem image');
+    const firstFile = new File(['first'], 'first.img');
+    const secondFile = new File(['second'], 'second.img');
+
+    selectFile(fileInput, firstFile);
+    selectFile(fileInput, secondFile);
+
+    await act(async () => {
+      resolveSecond(createFakeParsed('second-volume', 'second.img'));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('second-volume')).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      rejectFirst(new Error('First read disk error'));
+    });
+
+    expect(screen.getByText('second-volume')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('ignores obsolete file read success when a newer file read fails', async () => {
+    let resolveFirst;
+    const firstPromise = new Promise((resolve) => {
+      resolveFirst = resolve;
+    });
+
+    let rejectSecond;
+    const secondPromise = new Promise((_, reject) => {
+      rejectSecond = reject;
+    });
+
+    vi.spyOn(btrfsUtils, 'readSuperblockFromImage')
+      .mockReturnValueOnce(firstPromise)
+      .mockReturnValueOnce(secondPromise);
+
+    render(<BtrfsSuperblockInspectorTool />);
+
+    const fileInput = screen.getByLabelText('Upload Btrfs filesystem image');
+    const firstFile = new File(['first'], 'first.img');
+    const secondFile = new File(['second'], 'second.img');
+
+    selectFile(fileInput, firstFile);
+    selectFile(fileInput, secondFile);
+
+    await act(async () => {
+      rejectSecond(new Error('Corrupt second image'));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('Corrupt second image');
+    });
+
+    await act(async () => {
+      resolveFirst(createFakeParsed('first-volume', 'first.img'));
+    });
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Corrupt second image');
+    expect(screen.queryByText('first-volume')).not.toBeInTheDocument();
+  });
+
+  it('ignores pending file read when Clear is clicked', async () => {
+    let resolveFirst;
+    const firstPromise = new Promise((resolve) => {
+      resolveFirst = resolve;
+    });
+
+    vi.spyOn(btrfsUtils, 'readSuperblockFromImage').mockReturnValueOnce(firstPromise);
+
+    render(<BtrfsSuperblockInspectorTool />);
+
+    const fileInput = screen.getByLabelText('Upload Btrfs filesystem image');
+    const file = new File(['first'], 'delayed.img');
+
+    selectFile(fileInput, file);
+
+    const clearBtn = screen.getByRole('button', { name: 'Clear' });
+    fireEvent.click(clearBtn);
+
+    await act(async () => {
+      resolveFirst(createFakeParsed('delayed-volume', 'delayed.img'));
+    });
+
+    expect(screen.queryByText('delayed-volume')).not.toBeInTheDocument();
+    expect(screen.queryByText('📁 delayed.img')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Clear' })).toBeDisabled();
+    expect(
+      screen.getByText(/Select a Btrfs filesystem image file or click “Load Sample” to inspect./i)
+    ).toBeInTheDocument();
+  });
+
+  it('ignores pending file read when Load Sample is clicked', async () => {
+    let resolveFirst;
+    const firstPromise = new Promise((resolve) => {
+      resolveFirst = resolve;
+    });
+
+    vi.spyOn(btrfsUtils, 'readSuperblockFromImage').mockReturnValueOnce(firstPromise);
+
+    render(<BtrfsSuperblockInspectorTool />);
+
+    const fileInput = screen.getByLabelText('Upload Btrfs filesystem image');
+    const file = new File(['first'], 'delayed.img');
+
+    selectFile(fileInput, file);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Load Sample' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('btrfs-data-volume')).toBeInTheDocument();
+      expect(screen.getByText('📁 sample-btrfs.img')).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      resolveFirst(createFakeParsed('delayed-volume', 'delayed.img'));
+    });
+
+    expect(screen.getByText('btrfs-data-volume')).toBeInTheDocument();
+    expect(screen.getByText('📁 sample-btrfs.img')).toBeInTheDocument();
+    expect(screen.queryByText('delayed-volume')).not.toBeInTheDocument();
+  });
+
+  it('ignores pending file read when file selection is cleared/cancelled', async () => {
+    let resolveFirst;
+    const firstPromise = new Promise((resolve) => {
+      resolveFirst = resolve;
+    });
+
+    vi.spyOn(btrfsUtils, 'readSuperblockFromImage').mockReturnValueOnce(firstPromise);
+
+    render(<BtrfsSuperblockInspectorTool />);
+
+    const fileInput = screen.getByLabelText('Upload Btrfs filesystem image');
+    const file = new File(['first'], 'delayed.img');
+
+    selectFile(fileInput, file);
+
+    Object.defineProperty(fileInput, 'files', { value: [], configurable: true });
+    fireEvent.change(fileInput);
+
+    await act(async () => {
+      resolveFirst(createFakeParsed('delayed-volume', 'delayed.img'));
+    });
+
+    expect(screen.queryByText('delayed-volume')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('ignores replacement read resolving after clearing already displayed result', async () => {
+    render(<BtrfsSuperblockInspectorTool />);
+
+    // Load sample first
+    fireEvent.click(screen.getByRole('button', { name: 'Load Sample' }));
+    await waitFor(() => {
+      expect(screen.getByText('btrfs-data-volume')).toBeInTheDocument();
+    });
+
+    let resolveReplacement;
+    const replacementPromise = new Promise((resolve) => {
+      resolveReplacement = resolve;
+    });
+
+    vi.spyOn(btrfsUtils, 'readSuperblockFromImage').mockReturnValueOnce(replacementPromise);
+
+    const fileInput = screen.getByLabelText('Upload Btrfs filesystem image');
+    const replacementFile = new File(['replacement'], 'replacement.img');
+    selectFile(fileInput, replacementFile);
+
+    // Clear while replacement read is pending
+    const clearBtn = screen.getByRole('button', { name: 'Clear' });
+    fireEvent.click(clearBtn);
+
+    // Now resolve replacement read
+    await act(async () => {
+      resolveReplacement(createFakeParsed('replacement-volume', 'replacement.img'));
+    });
+
+    // Should remain cleared
+    expect(screen.queryByText('btrfs-data-volume')).not.toBeInTheDocument();
+    expect(screen.queryByText('replacement-volume')).not.toBeInTheDocument();
+    expect(screen.queryByText('📁 replacement.img')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Clear' })).toBeDisabled();
+    expect(
+      screen.getByText(/Select a Btrfs filesystem image file or click “Load Sample” to inspect./i)
+    ).toBeInTheDocument();
   });
 });

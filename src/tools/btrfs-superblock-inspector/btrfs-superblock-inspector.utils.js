@@ -77,16 +77,18 @@ export const SUPER_FLAG_DEFINITIONS = [
  * @returns {string}
  */
 export function formatBytes(bytes) {
-  const b = typeof bytes === 'bigint' ? Number(bytes) : Number(bytes || 0);
-  if (b < 1024) return `${b} B`;
-  const units = ['KB', 'MB', 'GB', 'TB', 'PB'];
+  const isBigInt = typeof bytes === 'bigint';
+  const exactCount = isBigInt ? bytes.toLocaleString() : Number(bytes || 0).toLocaleString();
+  const b = isBigInt ? Number(bytes) : Number(bytes || 0);
+  if (b < 1024) return `${exactCount} B`;
+  const units = ['KB', 'MB', 'GB', 'TB', 'PB', 'EB'];
   let val = b / 1024;
   let unitIndex = 0;
   while (val >= 1024 && unitIndex < units.length - 1) {
     val /= 1024;
     unitIndex += 1;
   }
-  return `${val.toFixed(2)} ${units[unitIndex]} (${b.toLocaleString()} bytes)`;
+  return `${val.toFixed(2)} ${units[unitIndex]} (${exactCount} bytes)`;
 }
 
 /**

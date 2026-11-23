@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   createSampleBtrfsSuperblock,
   formatBytes,
@@ -20,33 +20,57 @@ export default function BtrfsSuperblockInspectorTool() {
   const [data, setData] = useState(null);
   const [fileInfo, setFileInfo] = useState(null);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const [copiedField, showCopied] = useCopyFeedback({ initialValue: null, resetValue: null });
   const fileInputRef = useRef(null);
+  const activeRequestIdRef = useRef(0);
+
+  useEffect(() => {
+    return () => {
+      activeRequestIdRef.current += 1;
+    };
+  }, []);
 
   async function handleFileChange(event) {
     const file = event.target.files?.[0];
+    const requestId = ++activeRequestIdRef.current;
+
     if (!file) {
       // Selection was cancelled or cleared; reset state
+      setLoading(false);
       setData(null);
       setFileInfo(null);
       setError('');
       return;
     }
 
+    setLoading(true);
     try {
       const parsed = await readSuperblockFromImage(file);
+      if (activeRequestIdRef.current !== requestId) {
+        return;
+      }
       setData(parsed);
       setFileInfo(parsed.fileInfo);
       setError('');
     } catch (err) {
+      if (activeRequestIdRef.current !== requestId) {
+        return;
+      }
       // Reset state on failed selection
       setData(null);
       setFileInfo(null);
       setError(err.message || 'Failed to inspect Btrfs superblock.');
+    } finally {
+      if (activeRequestIdRef.current === requestId) {
+        setLoading(false);
+      }
     }
   }
 
   function handleLoadSample() {
+    activeRequestIdRef.current += 1;
+    setLoading(false);
     try {
       const sampleBuffer = createSampleBtrfsSuperblock();
       const parsed = parseBtrfsSuperblock(sampleBuffer);
@@ -69,6 +93,8 @@ export default function BtrfsSuperblockInspectorTool() {
   }
 
   function handleClear() {
+    activeRequestIdRef.current += 1;
+    setLoading(false);
     setData(null);
     setFileInfo(null);
     setError('');
@@ -131,7 +157,7 @@ export default function BtrfsSuperblockInspectorTool() {
             type="button"
             className="btn"
             onClick={handleClear}
-            disabled={!data && !fileInfo && !error}
+            disabled={!data && !fileInfo && !error && !loading}
           >
             Clear
           </button>
