@@ -1,0 +1,48 @@
+.apfs-tool {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.apfs-tool textarea {
+  min-height: 12rem;
+  resize: vertical;
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: monospace;
+}
+
+.apfs-error {
+  padding: 0.75rem;
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  background: var(--color-error-bg);
+  color: var(--color-error-light);
+}
+
+.apfs-results dl > div {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.apfs-results dt {
+  color: var(--color-text-muted);
+}
+
+.apfs-results dd {
+  overflow-wrap: anywhere;
+}
+
+@media (min-width: 768px) {
+  .apfs-results dl > div {
+    grid-template-columns: 1fr 2fr;
+  }
+}
