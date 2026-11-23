@@ -1,0 +1,46 @@
+.zfs-label-tool {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.zfs-label-tool textarea {
+  min-height: 12rem;
+  resize: vertical;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  padding: 1rem;
+  font-family: monospace;
+}
+
+.zfs-label-tool button {
+  align-self: flex-start;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+}
+
+.zfs-label-tool dl > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+}
+
+.zfs-label-tool dt { font-weight: 600; }
+.zfs-label-tool dd { margin: 0; overflow-wrap: anywhere; }
+.zfs-label-tool .zfs-error {
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  color: var(--color-error-light);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+}
