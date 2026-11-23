@@ -1,0 +1,33 @@
+.f2fs-tool {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.f2fs-results {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1rem;
+}
+
+.f2fs-results div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+}
+
+.f2fs-results dt { color: var(--color-text-muted); }
+.f2fs-results dd { margin: 0; overflow-wrap: anywhere; }
+.f2fs-error {
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  color: var(--color-error-light);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+}
