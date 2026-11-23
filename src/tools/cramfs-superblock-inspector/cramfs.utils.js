@@ -54,12 +54,12 @@ export function decodeCramfsFlags(flags) {
   const decoded = [];
   let knownMask = 0;
   for (const flag of CRAMFS_FLAGS) {
-    if ((flags & flag.bit) !== 0) {
+    if (((flags >>> 0) & flag.bit) !== 0) {
       decoded.push(flag.name);
       knownMask |= flag.bit;
     }
   }
-  const unknownBits = (flags >>> 0) & ~knownMask;
+  const unknownBits = ((flags >>> 0) & ~knownMask) >>> 0;
   if (unknownBits !== 0) {
     decoded.push(`Unknown (0x${unknownBits.toString(16).padStart(8, '0')})`);
   }

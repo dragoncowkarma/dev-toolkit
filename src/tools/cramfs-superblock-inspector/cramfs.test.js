@@ -128,6 +128,27 @@ describe('cramfs.utils', () => {
         'Unknown (0x00000010)',
       ]);
     });
+
+    it('formats unknown flag high bit (0x80000000) as unsigned', () => {
+      expect(decodeCramfsFlags(0x80000000)).toEqual(['Unknown (0x80000000)']);
+    });
+
+    it('formats unknown flag high bit combined with known flags as unsigned', () => {
+      expect(decodeCramfsFlags(0x80000001)).toEqual([
+        'FSID Version 2',
+        'Unknown (0x80000000)',
+      ]);
+      expect(decodeCramfsFlags(0x80000003)).toEqual([
+        'FSID Version 2',
+        'Sorted Directories',
+        'Unknown (0x80000000)',
+      ]);
+      expect(decodeCramfsFlags(0x80000102)).toEqual([
+        'Sorted Directories',
+        'Holes Support',
+        'Unknown (0x80000000)',
+      ]);
+    });
   });
 
   describe('getCramfsFlagDetails', () => {

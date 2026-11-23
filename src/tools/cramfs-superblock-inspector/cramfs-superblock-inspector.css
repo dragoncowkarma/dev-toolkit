@@ -85,6 +85,15 @@
   font-size: 0.875rem;
 }
 
+.cramfs-inspector .cramfs-loading {
+  background: var(--color-surface);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius);
+  padding: 2rem 1.5rem;
+  text-align: center;
+  color: var(--color-text-muted);
+}
+
 .cramfs-inspector .cramfs-empty {
   background: var(--color-surface);
   border: 1px dashed var(--color-border);

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   CRAMFS_SUPERBLOCK_SIZE,
   createSampleSuperblock,
@@ -18,17 +18,37 @@ export default function CramfsSuperblockInspectorTool() {
   const [error, setError] = useState('');
   const [fileName, setFileName] = useState('');
   const [actualFileSize, setActualFileSize] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
   const fileInputRef = useRef(null);
+  const activeRequestIdRef = useRef(0);
 
   function resetState() {
+    activeRequestIdRef.current += 1;
     setData(null);
     setError('');
     setFileName('');
     setActualFileSize(0);
+    setIsLoading(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
   }
+
+  useEffect(() => {
+    const input = fileInputRef.current;
+    const handleCancel = () => {
+      resetState();
+    };
+    if (input) {
+      input.addEventListener('cancel', handleCancel);
+    }
+    return () => {
+      activeRequestIdRef.current += 1;
+      if (input) {
+        input.removeEventListener('cancel', handleCancel);
+      }
+    };
+  }, []);
 
   async function handleFileChange(event) {
     const file = event.target.files?.[0];
@@ -37,11 +57,15 @@ export default function CramfsSuperblockInspectorTool() {
       return;
     }
 
+    const requestId = ++activeRequestIdRef.current;
+    // Immediately clear old details and display new file name
+    setData(null);
+    setError('');
     setFileName(file.name);
     setActualFileSize(file.size);
 
     if (file.size < CRAMFS_SUPERBLOCK_SIZE) {
-      setData(null);
+      setIsLoading(false);
       setError(
         `Truncated CramFS image: expected at least ${CRAMFS_SUPERBLOCK_SIZE} bytes, ` +
         `received ${file.size} byte(s).`
@@ -49,15 +73,30 @@ export default function CramfsSuperblockInspectorTool() {
       return;
     }
 
+    setIsLoading(true);
+
     try {
       const slice = file.slice(0, CRAMFS_SUPERBLOCK_SIZE);
       const buffer = await readBlobAsArrayBuffer(slice);
+      if (requestId !== activeRequestIdRef.current) {
+        return;
+      }
       const parsed = parseCramfsSuperblock(buffer);
+      if (requestId !== activeRequestIdRef.current) {
+        return;
+      }
       setData(parsed);
       setError('');
     } catch (err) {
+      if (requestId !== activeRequestIdRef.current) {
+        return;
+      }
       setData(null);
       setError(err.message || 'Failed to inspect CramFS image.');
+    } finally {
+      if (requestId === activeRequestIdRef.current) {
+        setIsLoading(false);
+      }
     }
   }
 
@@ -99,6 +138,7 @@ export default function CramfsSuperblockInspectorTool() {
               className="file-input"
               aria-label="Upload CramFS image"
               onChange={handleFileChange}
+              onCancel={resetState}
             />
           </label>
           <button
@@ -119,7 +159,7 @@ export default function CramfsSuperblockInspectorTool() {
             type="button"
             className="btn"
             onClick={resetState}
-            disabled={!data && !error && !fileName}
+            disabled={!data && !error && !fileName && !isLoading}
           >
             Clear
           </button>
@@ -144,7 +184,13 @@ export default function CramfsSuperblockInspectorTool() {
         </div>
       )}
 
-      {!data && !error && (
+      {isLoading && (
+        <div className="cramfs-loading" role="status">
+          Loading and inspecting superblock...
+        </div>
+      )}
+
+      {!data && !error && !isLoading && (
         <div className="cramfs-empty">
           <p>No CramFS image loaded.</p>
           <p style={{ fontSize: '0.85rem', marginTop: '0.5rem' }}>
