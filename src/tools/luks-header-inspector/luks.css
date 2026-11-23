@@ -1,0 +1,49 @@
+.luks-tool {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  color: var(--color-text);
+}
+
+.luks-drop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px dashed var(--color-primary);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.luks-drop button {
+  padding: 0.5rem 1rem;
+  color: var(--color-text);
+  background: var(--color-surface-hover);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.luks-fields > div {
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.luks-fields dt {
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
+.luks-fields dd {
+  margin: 0.25rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+.luks-error {
+  color: var(--color-error-light);
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+}
