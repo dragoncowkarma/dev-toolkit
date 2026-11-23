@@ -1,0 +1,28 @@
+.genesis-inspector {
+  display: grid;
+  gap: 1rem;
+  color: var(--color-text);
+}
+.genesis-inspector input {
+  max-width: 100%;
+  color: var(--color-text);
+}
+.genesis-fields {
+  display: grid;
+  gap: 0.5rem;
+}
+.genesis-fields > div {
+  padding: 0.75rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  overflow-wrap: anywhere;
+}
+.genesis-fields dt { color: var(--color-text-muted); }
+.genesis-fields dd { margin: 0.25rem 0 0; }
+.genesis-error { color: var(--color-error-light); }
+.genesis-match { color: var(--color-success); }
+.genesis-mismatch { color: var(--color-warning); }
+@media (min-width: 600px) {
+  .genesis-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
