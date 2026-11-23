@@ -68,6 +68,55 @@ export const MAKER_CODES = Object.freeze({
 });
 
 /**
+ * Minimum supported Nintendo DS ROM device capacity exponent (0x00 = 128 KiB).
+ * Reference: GBATEK NDS Cartridge Header (014h - Devicecapacity: Chipsize = 128KB SHL nn).
+ */
+export const MIN_DEVICE_CAPACITY = 0;
+
+/**
+ * Maximum supported Nintendo DS ROM device capacity exponent (0x0F = 4 GB).
+ * Reference: GBATEK NDS Cartridge Header (014h - Devicecapacity: Chipsize = 128KB SHL nn).
+ * Retail Nintendo DS cartridges ranged up to 512 MB (0x0C, e.g. Pokémon Black 2/White 2).
+ * The Nintendo DS 32-bit cartridge bus addressing space permits up to 4 GB (0x0F = 128 KiB * 2^15).
+ * Values greater than 0x0F exceed 32-bit hardware bus addressing, and values >= 31
+ * cause 32-bit signed shift overflow in JavaScript bitwise operations (1 << 31 yields
+ * a negative number, and 1 << 32 wraps modulo 32).
+ */
+export const MAX_DEVICE_CAPACITY = 0x0f;
+
+/**
+ * Calculates ROM chip capacity in bytes from the device capacity exponent (header offset 0x014).
+ * Uses exponential scaling (2 ** capacity) instead of bitwise left shifts to prevent 32-bit
+ * signed integer overflow on capacity >= 31 and wrap-around on capacity >= 32.
+ *
+ * Reference: GBATEK NDS Cartridge Header (014h - Devicecapacity: Chipsize = 128KB SHL nn).
+ *
+ * @param {number} capacity - The device capacity exponent byte from offset 0x014.
+ * @returns {{ bytes: number|null, formatted: string, valid: boolean }} Capacity result details.
+ */
+export function calculateDeviceCapacity(capacity) {
+  if (
+    typeof capacity !== 'number' ||
+    !Number.isInteger(capacity) ||
+    capacity < MIN_DEVICE_CAPACITY ||
+    capacity > MAX_DEVICE_CAPACITY
+  ) {
+    return {
+      bytes: null,
+      formatted: 'Unknown',
+      valid: false,
+    };
+  }
+
+  const bytes = 128 * 1024 * (2 ** capacity);
+  return {
+    bytes,
+    formatted: formatBytes(bytes),
+    valid: true,
+  };
+}
+
+/**
  * Calculates a 16-bit CRC checksum using the Nintendo DS BIOS CRC-16 algorithm
  * (CRC-16/MODBUS: reflected poly 0xA001, seed 0xFFFF, byte XOR into low byte).
  *
@@ -424,7 +473,9 @@ export function parseNdsHeader(input) {
     const unitCodeName = UNIT_CODES[unitCode] || `Unknown (${formatHex(unitCode, 2)})`;
 
     const deviceCapacity = view.getUint8(0x014);
-    const chipSizeBytes = deviceCapacity > 0 ? (128 * 1024) * (1 << deviceCapacity) : 0;
+    const capacityInfo = calculateDeviceCapacity(deviceCapacity);
+    const chipSizeBytes = capacityInfo.bytes;
+    const chipSizeFormatted = capacityInfo.formatted;
 
     const romVersion = view.getUint8(0x01e);
 
@@ -474,8 +525,9 @@ export function parseNdsHeader(input) {
       unitCode,
       unitCodeName,
       deviceCapacity,
+      deviceCapacityValid: capacityInfo.valid,
       chipSizeBytes,
-      chipSizeFormatted: chipSizeBytes > 0 ? formatBytes(chipSizeBytes) : 'N/A',
+      chipSizeFormatted,
       romVersion,
       arm9: {
         romOffset: arm9RomOffset,
