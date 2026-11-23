@@ -139,6 +139,14 @@ describe('inspectCompressZHeader', () => {
     huge[2] = 0x90;
     expect(() => inspectCompressZHeader(huge)).toThrow(/maximum size limit/);
   });
+
+  it('supports custom totalBytes option when inspecting a bounded stream slice', () => {
+    const slice = new Uint8Array([0x1f, 0x9d, 0x90, 0xaa, 0xbb]);
+    const result = inspectCompressZHeader(slice, { totalBytes: 100 * 1024 });
+
+    expect(result.totalBytes).toBe(102400);
+    expect(result.payloadBytes).toBe(102400 - 3);
+  });
 });
 
 describe('parseHexString', () => {
@@ -199,6 +207,28 @@ describe('parseBase64String', () => {
   it('throws Error for invalid Base64 characters or padding', () => {
     expect(() => parseBase64String('invalid!base64')).toThrow(/Invalid Base64/);
     expect(() => parseBase64String('H52')).toThrow(/Invalid Base64/);
+  });
+
+  it('rejects oversized Base64 input without decoding it', () => {
+    const atobSpy = vi.spyOn(globalThis, 'atob');
+    // 87,384 chars decodes to 65,538 bytes (> MAX_INPUT_BYTES = 65,536)
+    const oversizedBase64 = 'AAAA'.repeat(21846);
+
+    expect(() => parseBase64String(oversizedBase64)).toThrow(
+      `Input exceeds maximum size limit of ${MAX_INPUT_BYTES} bytes.`
+    );
+    expect(atobSpy).not.toHaveBeenCalled();
+    atobSpy.mockRestore();
+  });
+
+  it('correctly accounts for padding when checking Base64 length limit', () => {
+    const atobSpy = vi.spyOn(globalThis, 'atob');
+    // (87384 / 4) * 3 - 2 = 65,536 bytes (exactly MAX_INPUT_BYTES)
+    const exactMaxBase64 = `${'AAAA'.repeat(21845)}AA==`;
+    const parsed = parseBase64String(exactMaxBase64);
+    expect(parsed.length).toBe(MAX_INPUT_BYTES);
+    expect(atobSpy).toHaveBeenCalled();
+    atobSpy.mockRestore();
   });
 });
 

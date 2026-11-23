@@ -60,20 +60,24 @@ export function parseBase64String(base64) {
   if (cleaned.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(cleaned)) {
     throw new Error('Invalid Base64 input. Please check for typos or missing characters.');
   }
+  let padding = 0;
+  if (cleaned.endsWith('==')) {
+    padding = 2;
+  } else if (cleaned.endsWith('=')) {
+    padding = 1;
+  }
+  const decodedLength = (cleaned.length / 4) * 3 - padding;
+  if (decodedLength > MAX_INPUT_BYTES) {
+    throw new Error(`Input exceeds maximum size limit of ${MAX_INPUT_BYTES} bytes.`);
+  }
   try {
     const binary = atob(cleaned);
-    if (binary.length > MAX_INPUT_BYTES) {
-      throw new Error(`Input exceeds maximum size limit of ${MAX_INPUT_BYTES} bytes.`);
-    }
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) {
       bytes[i] = binary.charCodeAt(i);
     }
     return bytes;
-  } catch (err) {
-    if (err.message.includes('maximum size limit')) {
-      throw err;
-    }
+  } catch {
     throw new Error('Invalid Base64 input. Please check for typos or missing characters.');
   }
 }
@@ -118,10 +122,12 @@ export function toHexByte(byte) {
  *   - Bits 4-0: Maximum code bits (valid range: 9 to 16)
  *
  * @param {Uint8Array|number[]} bytes - Raw stream bytes.
+ * @param {object|number} [options={}] - Options object or total stream size in bytes.
+ * @param {number} [options.totalBytes] - Total stream size in bytes if inspecting a prefix/slice.
  * @returns {object} The inspected header details.
  * @throws {Error} If truncated, magic is wrong, reserved bits are non-zero, or max bits invalid.
  */
-export function inspectCompressZHeader(bytes) {
+export function inspectCompressZHeader(bytes, options = {}) {
   if (!bytes || bytes.length < 3) {
     const received = bytes ? bytes.length : 0;
     throw new Error(
@@ -158,6 +164,15 @@ export function inspectCompressZHeader(bytes) {
   const blockMode = (byte3 & 0x80) !== 0;
   const maxCodes = 1 << maxBits;
 
+  const rawTotal =
+    typeof options === 'object' && options !== null && typeof options.totalBytes === 'number'
+      ? options.totalBytes
+      : typeof options === 'number'
+        ? options
+        : bytes.length;
+  const totalBytes = Math.max(bytes.length, rawTotal);
+  const payloadBytes = Math.max(0, totalBytes - 3);
+
   return {
     magic: '1F 9D',
     magicBytes: [0x1f, 0x9d],
@@ -168,8 +183,8 @@ export function inspectCompressZHeader(bytes) {
     maxCodes,
     blockMode,
     reservedBits,
-    totalBytes: bytes.length,
-    payloadBytes: bytes.length - 3,
+    totalBytes,
+    payloadBytes,
   };
 }
 

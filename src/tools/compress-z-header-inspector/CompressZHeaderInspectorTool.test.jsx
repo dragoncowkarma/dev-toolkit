@@ -196,4 +196,107 @@ describe('CompressZHeaderInspectorTool file upload and copy', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Failed to copy to clipboard.');
   });
+
+  it('reports actual stream size for files larger than MAX_INPUT_BYTES', async () => {
+    const largeSize = 100 * 1024; // 100 KiB
+    const largeBuffer = new Uint8Array(largeSize);
+    largeBuffer[0] = 0x1f;
+    largeBuffer[1] = 0x9d;
+    largeBuffer[2] = 0x90; // 16 bits, block mode
+    const file = new File([largeBuffer], 'large.Z', { type: 'application/x-compress' });
+
+    render(<CompressZHeaderInspectorTool />);
+
+    const fileInput = screen.getByLabelText('Upload .Z file');
+    await act(async () => selectFile(fileInput, file));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Selected File')).toHaveValue('📁 large.Z (100.0 KB)');
+      expect(screen.getByText('102,400 B')).toBeInTheDocument();
+      expect(screen.getByText('102,397 B')).toBeInTheDocument();
+    });
+  });
+
+  it('resets file selection state on failed upload and allows recovery', async () => {
+    const validBytes = new Uint8Array([0x1f, 0x9d, 0x90]);
+    const validFile = new File([validBytes], 'valid.Z', { type: 'application/x-compress' });
+
+    const invalidBytes = new Uint8Array([0x1f, 0x8b, 0x08]); // Gzip magic
+    const invalidFile = new File([invalidBytes], 'invalid.Z', { type: 'application/x-compress' });
+
+    render(<CompressZHeaderInspectorTool />);
+
+    const fileInput = screen.getByLabelText('Upload .Z file');
+
+    // Step 1: Upload valid file
+    await act(async () => selectFile(fileInput, validFile));
+    await waitFor(() => {
+      expect(screen.getByLabelText('Selected File')).toHaveValue('📁 valid.Z (3 B)');
+      expect(screen.getByText('16 bits')).toBeInTheDocument();
+    });
+    expect(screen.getByLabelText('Selected File')).toHaveAttribute('readonly');
+
+    // Step 2: Upload invalid file -> should reset file state and clear readOnly
+    await act(async () => selectFile(fileInput, invalidFile));
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('Invalid magic bytes');
+    });
+
+    const textarea = screen.getByLabelText('Hex Input');
+    expect(textarea).not.toHaveAttribute('readonly');
+    expect(textarea).toHaveValue('');
+    expect(screen.queryByText('16 bits')).not.toBeInTheDocument();
+
+    // Step 3: Recovery via typing hex text
+    fireEvent.change(textarea, { target: { value: '1F 9D 8C' } });
+    await waitFor(() => {
+      expect(screen.getByText('12 bits')).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+    // Step 4: Upload an invalid file that fails reading
+    utils.readFileHeaderBytes.mockRejectedValueOnce(new Error('Failed to read file.'));
+    await act(async () => selectFile(fileInput, invalidFile));
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('Failed to read file.');
+    });
+    expect(screen.getByLabelText('Hex Input')).not.toHaveAttribute('readonly');
+    expect(screen.getByLabelText('Hex Input')).toHaveValue('');
+
+    // Step 5: Recovery via Load Sample
+    fireEvent.click(screen.getByRole('button', { name: 'Load Sample' }));
+    await waitFor(() => {
+      expect(screen.getByText('16 bits')).toBeInTheDocument();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+  });
+
+  it('resets native file input so selecting the same file triggers change', async () => {
+    const fileBytes = new Uint8Array([0x1f, 0x9d, 0x90]);
+    const file = new File([fileBytes], 'test.Z', { type: 'application/x-compress' });
+
+    render(<CompressZHeaderInspectorTool />);
+
+    const fileInput = screen.getByLabelText('Upload .Z file');
+    await act(async () => selectFile(fileInput, file));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Selected File')).toHaveValue('📁 test.Z (3 B)');
+    });
+
+    // Native file input value is cleared
+    expect(fileInput.value).toBe('');
+
+    // Selecting the same file again works
+    await act(async () => selectFile(fileInput, file));
+    await waitFor(() => {
+      expect(screen.getByLabelText('Selected File')).toHaveValue('📁 test.Z (3 B)');
+      expect(screen.getByText('16 bits')).toBeInTheDocument();
+    });
+
+    // Switching to sample clears file input
+    fireEvent.click(screen.getByRole('button', { name: 'Load Sample' }));
+    expect(fileInput.value).toBe('');
+    expect(screen.getByLabelText('Hex Input')).toHaveValue('1F 9D 90');
+  });
 });

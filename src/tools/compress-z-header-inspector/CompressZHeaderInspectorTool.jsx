@@ -38,7 +38,6 @@ export default function CompressZHeaderInspectorTool() {
     if (file) return;
     if (input.trim() === '') {
       setInspected(null);
-      setError('');
       return;
     }
 
@@ -62,12 +61,23 @@ export default function CompressZHeaderInspectorTool() {
     setInput('');
     setInspected(null);
     setError('');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   }
 
   function handleInputChange(event) {
     fileRequestRef.current += 1;
     setFile(null);
-    setInput(event.target.value);
+    const value = event.target.value;
+    setInput(value);
+    if (value.trim() === '') {
+      setError('');
+      setInspected(null);
+    }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   }
 
   function handleClear() {
@@ -85,7 +95,11 @@ export default function CompressZHeaderInspectorTool() {
   function handleLoadSample() {
     fileRequestRef.current += 1;
     setFile(null);
+    setError('');
     setInput(mode === MODES.HEX ? SAMPLE_HEX : SAMPLE_BASE64);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   }
 
   async function handleCopy() {
@@ -102,18 +116,29 @@ export default function CompressZHeaderInspectorTool() {
 
   async function handleFileChange(event) {
     const selected = event.target.files?.[0];
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
     if (!selected) return;
+
     const requestId = (fileRequestRef.current += 1);
+    setFile(null);
+    setInput('');
+    setInspected(null);
+    setError('');
+
     try {
       const bytes = await readFileHeaderBytes(selected);
       if (fileRequestRef.current !== requestId) return;
-      const result = inspectCompressZHeader(bytes);
+      const result = inspectCompressZHeader(bytes, { totalBytes: selected.size });
       setFile(selected);
       setInput(`📁 ${selected.name} (${formatFileSize(selected.size)})`);
       setInspected(result);
       setError('');
     } catch (err) {
       if (fileRequestRef.current !== requestId) return;
+      setFile(null);
+      setInput('');
       setInspected(null);
       setError(err.message);
     }
@@ -247,11 +272,11 @@ export default function CompressZHeaderInspectorTool() {
                   </tr>
                   <tr>
                     <th scope="row">Total Stream Bytes</th>
-                    <td>{inspected.totalBytes} B</td>
+                    <td>{inspected.totalBytes.toLocaleString()} B</td>
                   </tr>
                   <tr>
                     <th scope="row">Extra Payload Data</th>
-                    <td>{inspected.payloadBytes} B</td>
+                    <td>{inspected.payloadBytes.toLocaleString()} B</td>
                   </tr>
                 </tbody>
               </table>
