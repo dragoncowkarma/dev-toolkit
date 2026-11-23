@@ -91,9 +91,16 @@ export function computeAdler32(bytes) {
   let s1 = 1;
   let s2 = 0;
   const MOD = 65521;
-  for (let i = 0; i < bytes.length; i++) {
-    s1 = (s1 + bytes[i]) % MOD;
-    s2 = (s2 + s1) % MOD;
+  const len = bytes.length;
+  let i = 0;
+  while (i < len) {
+    const blockEnd = Math.min(i + 5552, len);
+    for (; i < blockEnd; i++) {
+      s1 += bytes[i];
+      s2 += s1;
+    }
+    s1 %= MOD;
+    s2 %= MOD;
   }
   return (((s2 << 16) | s1) >>> 0);
 }
@@ -270,21 +277,39 @@ export function hexToBytes(hex) {
   return bytes;
 }
 
+const HEX_LOOKUP = Array.from({ length: 256 }, (_, i) =>
+  i.toString(16).padStart(2, '0').toUpperCase()
+);
+
 /**
  * Converts a Uint8Array into a hex string.
  * @param {Uint8Array} bytes
  * @param {string} [delimiter=' ']
+ * @param {number} [limit=Infinity]
  * @returns {string}
  */
-export function bytesToHex(bytes, delimiter = ' ') {
-  if (!bytes) return '';
-  return Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, '0').toUpperCase())
-    .join(delimiter);
+export function bytesToHex(bytes, delimiter = ' ', limit = Infinity) {
+  if (!bytes || bytes.length === 0) return '';
+  const target = (limit < bytes.length && limit >= 0) ? bytes.subarray(0, limit) : bytes;
+  const len = target.length;
+  if (len === 0) return '';
+  if (!delimiter) {
+    let out = '';
+    for (let i = 0; i < len; i++) {
+      out += HEX_LOOKUP[target[i]];
+    }
+    return out;
+  }
+  let out = HEX_LOOKUP[target[0]];
+  for (let i = 1; i < len; i++) {
+    out += delimiter + HEX_LOOKUP[target[i]];
+  }
+  return out;
 }
 
 export const DEFAULT_INITIAL_SLICE_SIZE = 65536;
 export const MAX_EXTRA_FIELD_SIZE = 16 * 1024 * 1024; // 16 MiB
+export const DEFAULT_EXTRA_FIELD_PREVIEW_LIMIT = 512;
 
 function readBlobSlice(blob) {
   return new Promise((resolve, reject) => {
@@ -397,9 +422,11 @@ export async function readHeaderSlice(
 /**
  * Parses and validates an LZOP container header.
  * @param {Uint8Array|ArrayBuffer|string} input
+ * @param {object|number} [options] Parsing options or preview limit
+ * @param {number} [options.maxExtraPreview=DEFAULT_EXTRA_FIELD_PREVIEW_LIMIT]
  * @returns {object} Parsed header structure
  */
-export function parseLzopHeader(input) {
+export function parseLzopHeader(input, options = {}) {
   let bytes;
   if (input instanceof Uint8Array) {
     bytes = input;
@@ -559,7 +586,7 @@ export function parseLzopHeader(input) {
   const headerChecksum = view.getUint32(offset);
   offset += 4;
 
-  const headerContentBytes = bytes.slice(9, headerContentEnd);
+  const headerContentBytes = bytes.subarray(9, headerContentEnd);
   const isCrc32 = parsedFlags.booleanFlags.headerCrc32;
   const computedChecksum = isCrc32
     ? computeCrc32(headerContentBytes)
@@ -578,6 +605,7 @@ export function parseLzopHeader(input) {
   let extraField = null;
   if (parsedFlags.booleanFlags.extraField) {
     ensureBytes(4, 'extra field length');
+    const extraFieldLenOffset = offset;
     const extraFieldLen = view.getUint32(offset);
     offset += 4;
     if (extraFieldLen > MAX_EXTRA_FIELD_SIZE) {
@@ -587,18 +615,14 @@ export function parseLzopHeader(input) {
       );
     }
     ensureBytes(extraFieldLen, 'extra field data');
-    const extraFieldData = bytes.slice(offset, offset + extraFieldLen);
+    const extraFieldDataOffset = offset;
+    const extraFieldData = bytes.subarray(offset, offset + extraFieldLen);
     offset += extraFieldLen;
     ensureBytes(4, 'extra field checksum');
     const extraFieldChecksum = view.getUint32(offset);
     offset += 4;
 
-    const extraLenBytes = new Uint8Array(4);
-    new DataView(extraLenBytes.buffer).setUint32(0, extraFieldLen);
-    const extraContent = new Uint8Array(4 + extraFieldLen);
-    extraContent.set(extraLenBytes, 0);
-    extraContent.set(extraFieldData, 4);
-
+    const extraContent = bytes.subarray(extraFieldLenOffset, extraFieldDataOffset + extraFieldLen);
     const computedExtraChecksum = isCrc32
       ? computeCrc32(extraContent)
       : computeAdler32(extraContent);
@@ -612,11 +636,25 @@ export function parseLzopHeader(input) {
       );
     }
 
+    const previewLimit = typeof options === 'number'
+      ? options
+      : (options && typeof options.maxExtraPreview === 'number'
+          ? options.maxExtraPreview
+          : DEFAULT_EXTRA_FIELD_PREVIEW_LIMIT);
+    const previewLen = Number.isFinite(previewLimit)
+      ? Math.min(extraFieldLen, Math.max(0, previewLimit))
+      : extraFieldLen;
+    const isTruncated = extraFieldLen > previewLen;
+    const previewData = extraFieldData.subarray(0, previewLen);
+    const dataHex = bytesToHex(previewData);
+
     extraField = {
       length: extraFieldLen,
-      dataHex: bytesToHex(extraFieldData),
+      dataHex,
       checksum: '0x' + extraFieldChecksum.toString(16).padStart(8, '0'),
       valid: true,
+      isTruncated,
+      previewLength: previewLen,
     };
   }
 
@@ -787,20 +825,14 @@ export function buildLzopHeader(options = {}) {
   let extraPart = new Uint8Array(0);
   if (extraFieldData !== null) {
     const extraLen = extraFieldData.length;
-    const lenB = new Uint8Array(4);
-    new DataView(lenB.buffer).setUint32(0, extraLen);
-    const content = new Uint8Array(4 + extraLen);
-    content.set(lenB, 0);
-    content.set(extraFieldData, 4);
-    const extraChk = (finalFlags & FLAGS.F_H_CRC32)
-      ? computeCrc32(content)
-      : computeAdler32(content);
-    const chkB = new Uint8Array(4);
-    new DataView(chkB.buffer).setUint32(0, extraChk);
     extraPart = new Uint8Array(4 + extraLen + 4);
-    extraPart.set(lenB, 0);
+    const extraView = new DataView(extraPart.buffer, extraPart.byteOffset, extraPart.byteLength);
+    extraView.setUint32(0, extraLen);
     extraPart.set(extraFieldData, 4);
-    extraPart.set(chkB, 4 + extraLen);
+    const extraChk = (finalFlags & FLAGS.F_H_CRC32)
+      ? computeCrc32(extraPart.subarray(0, 4 + extraLen))
+      : computeAdler32(extraPart.subarray(0, 4 + extraLen));
+    extraView.setUint32(4 + extraLen, extraChk);
   }
 
   const fullHeader = new Uint8Array(9 + headerContent.length + 4 + extraPart.length);

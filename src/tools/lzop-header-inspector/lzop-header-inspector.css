@@ -296,3 +296,9 @@
   font-size: 0.75rem;
   color: var(--color-text-muted);
 }
+
+.lzop-tool .hex-preview-note {
+  color: var(--color-text-muted);
+  font-family: inherit;
+  font-size: 0.8rem;
+}

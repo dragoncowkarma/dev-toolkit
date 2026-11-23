@@ -370,7 +370,20 @@ export default function LzopHeaderInspectorTool() {
                   <dt>Checksum</dt>
                   <dd>{header.extraField.checksum}</dd>
                   <dt>Data Hex</dt>
-                  <dd>{header.extraField.dataHex || 'None'}</dd>
+                  <dd>
+                    {header.extraField.isTruncated ? (
+                      <span className="hex-preview">
+                        <span className="hex-preview-data">{header.extraField.dataHex}</span>
+                        <span className="hex-preview-note">
+                          {' '}
+                          … (preview limited to first {header.extraField.previewLength} of{' '}
+                          {header.extraField.length.toLocaleString()} bytes)
+                        </span>
+                      </span>
+                    ) : (
+                      header.extraField.dataHex || 'None'
+                    )}
+                  </dd>
                 </dl>
               </section>
             )}

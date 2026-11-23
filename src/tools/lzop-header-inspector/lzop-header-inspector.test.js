@@ -5,6 +5,7 @@ import {
   computeAdler32,
   computeCrc32,
   DEFAULT_INITIAL_SLICE_SIZE,
+  DEFAULT_EXTRA_FIELD_PREVIEW_LIMIT,
   FLAGS,
   formatFileSize,
   formatMode,
@@ -156,6 +157,57 @@ describe('parseLzopHeader valid cases', () => {
     expect(parsed.extraField.valid).toBe(true);
   });
 
+  it('parses a large supported extra field (4 MiB) efficiently and validates full checksum', () => {
+    const largeSize = 4 * 1024 * 1024; // 4 MiB
+    const largeExtra = new Uint8Array(largeSize);
+    largeExtra[0] = 0x12;
+    largeExtra[1] = 0x34;
+    largeExtra[largeSize - 1] = 0x78;
+
+    const sample = buildLzopHeader({
+      extraFieldData: largeExtra,
+      fileName: 'large_4mb.tar',
+    });
+
+    const start = performance.now();
+    const parsed = parseLzopHeader(sample);
+    const duration = performance.now() - start;
+
+    expect(duration).toBeLessThan(1000);
+    expect(parsed.flags.booleanFlags.extraField).toBe(true);
+    expect(parsed.extraField).not.toBeNull();
+    expect(parsed.extraField.length).toBe(largeSize);
+    expect(parsed.extraField.valid).toBe(true);
+    expect(parsed.extraField.isTruncated).toBe(true);
+    expect(parsed.extraField.previewLength).toBe(DEFAULT_EXTRA_FIELD_PREVIEW_LIMIT);
+    expect(parsed.extraField.dataHex.startsWith('12 34')).toBe(true);
+
+    // Verify complete checksum validation across all 4 MiB:
+    // corrupting the last byte of the extra field data causes checksum mismatch
+    const corrupted = new Uint8Array(sample);
+    corrupted[corrupted.length - 5] ^= 0xff; // -5 is the last byte of extra field data (before 4-byte checksum)
+    expect(() => parseLzopHeader(corrupted)).toThrow(/Extra field checksum mismatch/);
+  });
+
+  it('validates CRC32 checksum for a large extra field', () => {
+    const largeSize = 1024 * 1024; // 1 MiB
+    const largeExtra = new Uint8Array(largeSize);
+    largeExtra[largeSize - 1] = 0xaa;
+
+    const sample = buildLzopHeader({
+      extraFieldData: largeExtra,
+      flags: FLAGS.F_H_CRC32,
+    });
+
+    const parsed = parseLzopHeader(sample);
+    expect(parsed.extraField.valid).toBe(true);
+    expect(parsed.extraField.isTruncated).toBe(true);
+
+    const corrupted = new Uint8Array(sample);
+    corrupted[corrupted.length - 5] ^= 0xff;
+    expect(() => parseLzopHeader(corrupted)).toThrow(/Extra field checksum mismatch.*CRC32/);
+  });
+
   it('parses an older LZOP header (version < 0x0940)', () => {
     const sample = buildLzopHeader({
       version: 0x0930,
@@ -304,6 +356,26 @@ describe('readHeaderSlice', () => {
     expect(parsed.fileName.name).toBe('large_extra_field.dat');
     expect(parsed.extraField.length).toBe(extraData.length);
     expect(parsed.extraField.valid).toBe(true);
+  });
+
+  it('reads and parses a 4 MiB extra field from a file', async () => {
+    const largeSize = 4 * 1024 * 1024;
+    const largeExtra = new Uint8Array(largeSize);
+    largeExtra[0] = 0xfe;
+    const headerBytes = buildLzopHeader({
+      fileName: 'read_slice_4mb.bin',
+      extraFieldData: largeExtra,
+    });
+
+    const file = new File([headerBytes], 'read_slice_4mb.lzo', { type: 'application/octet-stream' });
+    const slice = await readHeaderSlice(file);
+
+    expect(slice.length).toBe(headerBytes.length);
+    const parsed = parseLzopHeader(slice);
+    expect(parsed.extraField.length).toBe(largeSize);
+    expect(parsed.extraField.valid).toBe(true);
+    expect(parsed.extraField.isTruncated).toBe(true);
+    expect(parsed.extraField.previewLength).toBe(DEFAULT_EXTRA_FIELD_PREVIEW_LIMIT);
   });
 
   it('handles truncated file when extra field length exceeds file size', async () => {

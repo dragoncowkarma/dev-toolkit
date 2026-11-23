@@ -174,7 +174,8 @@ describe('LzopHeaderInspectorTool UI', () => {
       expect(screen.getByText('giant_extra.bin')).toBeInTheDocument();
       expect(screen.getByText('✓ Valid Signature')).toBeInTheDocument();
       expect(screen.getByRole('heading', { name: 'Extra Field' })).toBeInTheDocument();
-      expect(screen.getByText(/65792 bytes/)).toBeInTheDocument();
+      expect(screen.getByText('65792 bytes')).toBeInTheDocument();
+      expect(screen.getByText(/preview limited to first 512 of 65,792 bytes/)).toBeInTheDocument();
     });
   });
 
