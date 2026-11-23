@@ -39,7 +39,8 @@ export function parseSnesHeader(bytes) {
   if (!(bytes instanceof Uint8Array)) throw new Error('Expected ROM bytes.');
   const copierHeader = bytes.length % 0x8000 === 512;
   const prefix = copierHeader ? 512 : 0;
-  const candidates = CANDIDATES.filter(({ offset }) => bytes.length >= prefix + offset + HEADER_SIZE)
+  const candidates = CANDIDATES
+    .filter(({ offset }) => bytes.length >= prefix + offset + HEADER_SIZE)
     .map((candidate) => ({
       ...candidate,
       score: scoreHeader(bytes, prefix + candidate.offset, candidate.modes),
