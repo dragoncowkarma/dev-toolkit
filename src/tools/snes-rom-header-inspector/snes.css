@@ -1,0 +1,40 @@
+.snes-tool {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  color: var(--color-text);
+}
+
+.snes-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.snes-actions button, .snes-actions input {
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.5rem;
+  max-width: 100%;
+}
+
+.snes-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 0.75rem;
+}
+
+.snes-fields div {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.snes-fields dt { color: var(--color-text-muted); }
+.snes-fields dd { margin: 0.25rem 0 0; }
+.snes-error { color: var(--color-error-light); }
