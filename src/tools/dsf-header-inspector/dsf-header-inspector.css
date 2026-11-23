@@ -1,0 +1,110 @@
+.dsf-inspector {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+}
+
+.dsf-inspector__drop-zone {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1.25rem;
+  background: var(--color-surface);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius);
+}
+
+.dsf-inspector__drop-zone p {
+  width: 100%;
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.dsf-inspector__button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  padding: 0.5rem 1rem;
+}
+
+.dsf-inspector__button:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.dsf-inspector__button:focus-within,
+.dsf-inspector__button:focus-visible {
+  outline: 2px solid var(--color-primary-light);
+  outline-offset: 3px;
+}
+
+.dsf-inspector__file-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.dsf-inspector__file-name,
+.dsf-inspector__duration {
+  color: var(--color-text-muted);
+}
+
+.dsf-inspector__error {
+  padding: 0.75rem 1rem;
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  color: var(--color-error-light);
+}
+
+.dsf-inspector__result {
+  margin-top: 1rem;
+}
+
+.dsf-inspector__fields {
+  display: grid;
+  grid-template-columns: 1fr;
+  margin: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.dsf-inspector__field {
+  display: grid;
+  grid-template-columns: minmax(10rem, 1fr) 2fr;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.dsf-inspector__field:last-child {
+  border-bottom: none;
+}
+
+.dsf-inspector__field dt {
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
+.dsf-inspector__field dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 480px) {
+  .dsf-inspector__field {
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
+  }
+}
