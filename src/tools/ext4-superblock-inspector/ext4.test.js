@@ -230,6 +230,40 @@ describe('ext4.utils - parseExt4Superblock', () => {
     expect(result.data.lastCheckTimeFormatted).toBe('2106-02-07T06:29:06.000Z');
   });
 
+  it('correctly decodes raw byte offsets 0x274 (s_wtime_hi) and 0x275 (s_mtime_hi)', () => {
+    // Construct a raw 2048-byte buffer without createSampleSuperblock
+    const buffer = new Uint8Array(2048);
+    const view = new DataView(buffer.buffer, 1024, 1024);
+
+    // Set magic 0xEF53 at 0x38
+    view.setUint16(0x38, 0xef53, true);
+    // Set rev level 1 at 0x4C
+    view.setUint32(0x4C, 1, true);
+    // Set extents feature (0x0040) at 0x60
+    view.setUint32(0x60, 0x0040, true);
+
+    // Set mount time low word 100 at 0x2C
+    view.setUint32(0x2C, 100, true);
+    // Set write time low word 1 at 0x30
+    view.setUint32(0x30, 1, true);
+
+    // Raw byte offsets in superblock (0x274 = s_wtime_hi, 0x275 = s_mtime_hi):
+    // 0x274 set to 1 (write time high byte), 0x275 set to 0 (mount time high byte)
+    buffer[1024 + 0x274] = 1;
+    buffer[1024 + 0x275] = 0;
+
+    const result = parseExt4Superblock(buffer);
+    expect(result.ok).toBe(true);
+
+    // Mount time: low word 100, high byte 0 -> 100
+    expect(result.data.mountTime).toBe(100);
+    expect(result.data.mountTimeHi).toBe(0);
+
+    // Write time: low word 1, high byte 1 -> (1 << 32) + 1 = 4294967297
+    expect(result.data.writeTime).toBe(4294967297);
+    expect(result.data.writeTimeHi).toBe(1);
+  });
+
   it('combines ext4 timestamp helper with lo and hi fields', () => {
     expect(combineExt4Timestamp(0, 0)).toBe(0);
     expect(combineExt4Timestamp(1, 1)).toBe(4294967297);

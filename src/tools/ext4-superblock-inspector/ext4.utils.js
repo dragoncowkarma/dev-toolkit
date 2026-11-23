@@ -393,9 +393,10 @@ export function parseExt4Superblock(input, options = {}) {
     const volumeName = decodeNullTerminatedString(sbBytes.slice(0x78, 0x88));
     const lastMountedPath = decodeNullTerminatedString(sbBytes.slice(0x88, 0xC8));
 
-    // Upper 8 bits of timestamps at offsets 0x274, 0x275, 0x277
-    const mountTimeHi = view.getUint8(0x274);
-    const writeTimeHi = view.getUint8(0x275);
+    // Upper 8 bits of timestamps:
+    // 0x274 is s_wtime_hi, 0x275 is s_mtime_hi, 0x277 is s_lastcheck_hi
+    const writeTimeHi = view.getUint8(0x274);
+    const mountTimeHi = view.getUint8(0x275);
     const lastCheckTimeHi = view.getUint8(0x277);
 
     const mountTime = combineExt4Timestamp(mountTimeLo, mountTimeHi);
@@ -591,11 +592,11 @@ export function createSampleSuperblock(variant = 'ext4', customOverrides = {}) {
   if (customOverrides.lastCheckTime !== undefined) {
     view.setUint32(0x40, customOverrides.lastCheckTime, true);
   }
-  if (customOverrides.mountTimeHi !== undefined) {
-    view.setUint8(0x274, customOverrides.mountTimeHi);
-  }
   if (customOverrides.writeTimeHi !== undefined) {
-    view.setUint8(0x275, customOverrides.writeTimeHi);
+    view.setUint8(0x274, customOverrides.writeTimeHi);
+  }
+  if (customOverrides.mountTimeHi !== undefined) {
+    view.setUint8(0x275, customOverrides.mountTimeHi);
   }
   if (customOverrides.lastCheckTimeHi !== undefined) {
     view.setUint8(0x277, customOverrides.lastCheckTimeHi);
