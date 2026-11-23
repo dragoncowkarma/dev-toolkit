@@ -1,0 +1,33 @@
+.chm-tool {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.chm-tool .chm-results {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1rem;
+}
+
+.chm-tool dl { margin: 0; }
+.chm-tool dl > div { padding: 0.5rem 0; border-bottom: 1px solid var(--color-border); }
+.chm-tool dt { color: var(--color-text-muted); font-weight: 600; }
+.chm-tool dd { margin: 0.25rem 0 0; overflow-wrap: anywhere; }
+.chm-tool .chm-error {
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  color: var(--color-error-light);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+}
+
+@media (min-width: 768px) {
+  .chm-tool { padding: 0 2rem 3rem; }
+  .chm-tool dl > div { display: grid; grid-template-columns: 1fr 2fr; gap: 1rem; }
+  .chm-tool dd { margin: 0; }
+}
