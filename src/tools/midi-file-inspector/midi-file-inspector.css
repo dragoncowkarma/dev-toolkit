@@ -116,9 +116,9 @@
 }
 
 .midi-tool .midi-warning {
-  background: var(--color-warning-bg, var(--color-error-bg));
-  border: 1px solid var(--color-warning-border, var(--color-error-border));
-  color: var(--color-warning-light, var(--color-error-light));
+  background: var(--color-surface);
+  border: 1px solid var(--color-warning);
+  color: var(--color-warning);
 }
 
 .midi-tool .midi-result {
