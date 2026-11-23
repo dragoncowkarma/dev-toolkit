@@ -1,0 +1,36 @@
+.emf-tool {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.emf-tool textarea, .emf-tool select {
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+  font: inherit;
+}
+
+.emf-tool textarea { min-height: 12rem; resize: vertical; }
+.emf-tool label, .emf-tool dt { color: var(--color-text-muted); }
+.emf-tool dl { display: grid; gap: 0.5rem; }
+.emf-tool dl div { border-bottom: 1px solid var(--color-border); padding: 0.5rem 0; }
+.emf-tool dd { margin: 0.25rem 0 0; overflow-wrap: anywhere; }
+.emf-tool .emf-error {
+  color: var(--color-error-light);
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+}
+
+@media (min-width: 768px) {
+  .emf-tool { padding: 0 2rem 3rem; }
+  .emf-tool dl div { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  .emf-tool dd { margin: 0; }
+}
