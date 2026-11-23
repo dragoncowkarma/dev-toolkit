@@ -1,0 +1,224 @@
+.cramfs-inspector {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.cramfs-inspector .cramfs-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.cramfs-inspector .cramfs-toolbar-title {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.cramfs-inspector .toolbar-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.cramfs-inspector .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.cramfs-inspector .btn:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.cramfs-inspector .btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cramfs-inspector .file-btn {
+  position: relative;
+  overflow: hidden;
+}
+
+.cramfs-inspector .file-btn:focus-within {
+  outline: 2px solid var(--color-primary-light);
+  outline-offset: 3px;
+}
+
+.cramfs-inspector .file-input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  width: 100%;
+}
+
+.cramfs-inspector .cramfs-error {
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  color: var(--color-error-light);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+}
+
+.cramfs-inspector .cramfs-file-meta {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.cramfs-inspector .cramfs-empty {
+  background: var(--color-surface);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius);
+  padding: 3rem 1.5rem;
+  text-align: center;
+  color: var(--color-text-muted);
+}
+
+.cramfs-inspector .cramfs-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.25rem;
+}
+
+@media (min-width: 768px) {
+  .cramfs-inspector .cramfs-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.cramfs-inspector .cramfs-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.cramfs-inspector .cramfs-card-full {
+  grid-column: 1 / -1;
+}
+
+.cramfs-inspector .cramfs-card-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.25rem;
+}
+
+.cramfs-inspector .cramfs-prop-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.cramfs-inspector .cramfs-prop-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  font-size: 0.875rem;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 0.4rem;
+}
+
+.cramfs-inspector .cramfs-prop-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.cramfs-inspector .cramfs-prop-label {
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.cramfs-inspector .cramfs-prop-value {
+  color: var(--color-text);
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+  word-break: break-all;
+  text-align: right;
+}
+
+.cramfs-inspector .badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.5rem;
+  border-radius: calc(var(--radius) - 6px);
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-family: var(--font-family);
+}
+
+.cramfs-inspector .badge-success {
+  background: var(--color-surface-hover);
+  color: var(--color-success);
+  border: 1px solid var(--color-border);
+}
+
+.cramfs-inspector .badge-info {
+  background: var(--color-surface-hover);
+  color: var(--color-info);
+  border: 1px solid var(--color-border);
+}
+
+.cramfs-inspector .badge-muted {
+  background: var(--color-bg);
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
+}
+
+.cramfs-inspector .flag-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  justify-content: flex-end;
+}
+
+.cramfs-inspector .cramfs-table-container {
+  overflow-x: auto;
+}
+
+.cramfs-inspector .cramfs-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  text-align: left;
+}
+
+.cramfs-inspector .cramfs-table th,
+.cramfs-inspector .cramfs-table td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.cramfs-inspector .cramfs-table th {
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
+.cramfs-inspector .cramfs-table tr:last-child td {
+  border-bottom: none;
+}
