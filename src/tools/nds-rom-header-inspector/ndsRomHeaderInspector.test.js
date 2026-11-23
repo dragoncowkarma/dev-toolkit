@@ -9,18 +9,24 @@ import {
   hexToBytes,
   parseInputToBytes,
   parseNdsHeader,
+  STANDARD_NINTENDO_LOGO,
   validateArmOffsets,
 } from './ndsRomHeaderInspector.utils.js';
 
 describe('CRC-16 calculation', () => {
-  it('calculates CCITT CRC-16 correctly', () => {
+  it('calculates BIOS CRC-16 (MODBUS reflected) correctly for check string 123456789', () => {
     const testData = new Uint8Array([0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39]);
-    expect(calculateCrc16(testData)).toBe(0x29b1);
+    expect(calculateCrc16(testData)).toBe(0x4b37);
   });
 
   it('calculates with offset and length slices', () => {
     const full = new Uint8Array([0x00, 0x31, 0x32, 0x33, 0x00]);
     expect(calculateCrc16(full, 1, 3)).toBe(calculateCrc16(full.subarray(1, 4)));
+  });
+
+  it('calculates 0xCF56 for the standard Nintendo logo (0x0C0-0x15B)', () => {
+    expect(STANDARD_NINTENDO_LOGO.length).toBe(156);
+    expect(calculateCrc16(STANDARD_NINTENDO_LOGO)).toBe(0xcf56);
   });
 });
 
@@ -72,6 +78,17 @@ describe('Input conversion utilities', () => {
     expect(parseInputToBytes('01 02 03')).toEqual(raw);
     expect(parseInputToBytes('AQID')).toEqual(raw);
     expect(parseInputToBytes('')).toBeNull();
+  });
+
+  it('supports explicit format hints in parseInputToBytes', () => {
+    const hexResult = parseInputToBytes('4D 41 52', 'hex');
+    expect(hexResult).toEqual(new Uint8Array([0x4d, 0x41, 0x52]));
+
+    const b64Result = parseInputToBytes('TUFS', 'base64');
+    expect(b64Result).toEqual(new Uint8Array([0x4d, 0x41, 0x52]));
+
+    expect(parseInputToBytes('invalid-hex-chars!', 'hex')).toBeNull();
+    expect(parseInputToBytes('???invalid-base64???', 'base64')).toBeNull();
   });
 
   it('formats bytes to hex string', () => {
@@ -173,6 +190,8 @@ describe('parseNdsHeader', () => {
     expect(result.arm7.size).toBe(0x00028000);
     expect(result.arm7.valid).toBe(true);
     expect(result.logoCrc.valid).toBe(true);
+    expect(result.logoCrc.actual).toBe(0xcf56);
+    expect(result.logoCrc.expected).toBe(0xcf56);
     expect(result.headerCrc.valid).toBe(true);
     expect(result.armOffsetsValid).toBe(true);
   });

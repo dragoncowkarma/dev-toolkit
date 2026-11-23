@@ -42,6 +42,7 @@ describe('NdsRomHeaderInspectorTool UI', () => {
     expect(screen.getByText('MARIO KART')).toBeInTheDocument();
     expect(screen.getByText('AMKE')).toBeInTheDocument();
     expect(screen.getByText(/Nintendo \(01\)/)).toBeInTheDocument();
+    expect(screen.getByText('0 (0x00)')).toBeInTheDocument();
     expect(screen.getByText('✓ Valid Header')).toBeInTheDocument();
     expect(
       screen.getByRole('table', { name: 'ARM Processors Memory and Binary Layout' })
@@ -131,6 +132,7 @@ describe('NdsRomHeaderInspectorTool UI', () => {
       expect(writeTextMock).toHaveBeenCalledTimes(1);
     });
     expect(writeTextMock.mock.calls[0][0]).toContain('Nintendo DS ROM Header Summary');
+    expect(writeTextMock.mock.calls[0][0]).toContain('Total ROM Size: ');
     expect(screen.getByText('Copied!')).toBeInTheDocument();
   });
 });

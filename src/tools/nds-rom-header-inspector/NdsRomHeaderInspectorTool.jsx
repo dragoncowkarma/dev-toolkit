@@ -5,6 +5,7 @@ import {
   fileToArrayBuffer,
   formatBytes,
   formatHex,
+  MIN_HEADER_SIZE,
   parseNdsHeader,
 } from './ndsRomHeaderInspector.utils.js';
 import { useCopyFeedback } from '../../hooks/useCopyFeedback.js';
@@ -55,7 +56,8 @@ export default function NdsRomHeaderInspectorTool() {
     if (!file) return;
     const requestId = (fileRequestRef.current += 1);
     try {
-      const buffer = await fileToArrayBuffer(file);
+      const headerBlob = typeof file.slice === 'function' ? file.slice(0, MIN_HEADER_SIZE) : file;
+      const buffer = await fileToArrayBuffer(headerBlob);
       if (fileRequestRef.current !== requestId) return;
 
       const result = parseNdsHeader(buffer);
@@ -136,7 +138,7 @@ export default function NdsRomHeaderInspectorTool() {
       `Maker Code:    ${headerData.makerCode} (${headerData.makerName})`,
       `Unit Code:     ${headerData.unitCodeName}`,
       `ROM Version:   ${headerData.romVersion}`,
-      `Total ROM Size:${headerData.totalRomSizeFormatted} (${headerData.totalRomSize} bytes)`,
+      `Total ROM Size: ${headerData.totalRomSizeFormatted} (${headerData.totalRomSize} bytes)`,
       `Device Size:   ${headerData.chipSizeFormatted}`,
       ``,
       `ARM9 Binary:`,
@@ -329,7 +331,7 @@ export default function NdsRomHeaderInspectorTool() {
             <div className="field-item">
               <span className="field-label">ROM Version</span>
               <span className="field-value">
-                v1.{headerData.romVersion} ({formatHex(headerData.romVersion, 2)})
+                {headerData.romVersion} ({formatHex(headerData.romVersion, 2)})
               </span>
             </div>
             <div className="field-item">
