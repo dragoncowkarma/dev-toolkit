@@ -1,0 +1,237 @@
+.radiance-hdr-tool {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.radiance-hdr-tool .radiance-hdr-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.radiance-hdr-tool .toolbar-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.radiance-hdr-tool .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.radiance-hdr-tool .btn:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.radiance-hdr-tool .btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.radiance-hdr-tool .file-btn {
+  position: relative;
+  overflow: hidden;
+}
+
+.radiance-hdr-tool .file-btn:focus-within {
+  outline: 2px solid var(--color-primary-light);
+  outline-offset: 3px;
+}
+
+.radiance-hdr-tool .file-input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  width: 100%;
+}
+
+.radiance-hdr-tool .radiance-hdr-file-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+}
+
+.radiance-hdr-tool .file-banner-name {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.radiance-hdr-tool .file-banner-meta {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
+.radiance-hdr-tool .radiance-hdr-error {
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  color: var(--color-error-light);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+}
+
+.radiance-hdr-tool .radiance-hdr-empty {
+  background: var(--color-surface);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius);
+  padding: 2rem 1.5rem;
+  color: var(--color-text-muted);
+  text-align: center;
+  font-size: 0.9rem;
+}
+
+.radiance-hdr-tool .radiance-hdr-results {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.radiance-hdr-tool .radiance-hdr-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.radiance-hdr-tool .summary-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.radiance-hdr-tool .summary-label {
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.radiance-hdr-tool .summary-value {
+  color: var(--color-text);
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+  font-size: 1.05rem;
+}
+
+.radiance-hdr-tool .summary-sub {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
+.radiance-hdr-tool .radiance-hdr-panels {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+}
+
+.radiance-hdr-tool .panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.radiance-hdr-tool .panel-title {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.radiance-hdr-tool .metadata-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.radiance-hdr-tool .metadata-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.radiance-hdr-tool .metadata-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.radiance-hdr-tool .metadata-item dt {
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.radiance-hdr-tool .metadata-item dd {
+  color: var(--color-text);
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+  font-size: 0.85rem;
+  word-break: break-word;
+}
+
+.radiance-hdr-tool .comments-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.radiance-hdr-tool .comment-item {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: calc(var(--radius) - 4px);
+  padding: 0.5rem 0.75rem;
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+  font-size: 0.82rem;
+  color: var(--color-text);
+}
+
+.radiance-hdr-tool .muted-note {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+@media (min-width: 768px) {
+  .radiance-hdr-tool {
+    padding: 0 2rem 3rem;
+  }
+
+  .radiance-hdr-tool .radiance-hdr-panels {
+    grid-template-columns: 1fr 1fr;
+  }
+}
