@@ -19,7 +19,9 @@ export default function Ktx2HeaderInspectorTool() {
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
   const [isDragging, setIsDragging] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const fileInputRef = useRef(null);
+  const requestIdRef = useRef(0);
 
   /**
    * Processes a File or Blob, parses the header and updates state.
@@ -27,13 +29,24 @@ export default function Ktx2HeaderInspectorTool() {
    * @param {string} [customName]
    */
   async function inspectFile(file, customName) {
+    const requestId = ++requestIdRef.current;
+
     if (!file) {
+      setData(null);
+      setFileInfo(null);
       setError('Missing file: no file selected.');
+      setStatus('');
+      setIsLoading(false);
       return;
     }
 
+    setIsLoading(true);
+
     try {
       const buffer = await readFileAsArrayBuffer(file);
+      if (requestId !== requestIdRef.current) {
+        return;
+      }
       const parsed = parseKtx2Header(buffer);
       const name = customName || file.name || 'texture.ktx2';
       const sizeStr = formatFileSize(file.size ?? buffer.byteLength);
@@ -43,10 +56,17 @@ export default function Ktx2HeaderInspectorTool() {
       setError('');
       setStatus(`Loaded and parsed ${name} (${sizeStr}) successfully.`);
     } catch (err) {
+      if (requestId !== requestIdRef.current) {
+        return;
+      }
       setData(null);
       setFileInfo(null);
       setError(err.message);
       setStatus('');
+    } finally {
+      if (requestId === requestIdRef.current) {
+        setIsLoading(false);
+      }
     }
   }
 
@@ -99,14 +119,18 @@ export default function Ktx2HeaderInspectorTool() {
   }
 
   function handleClear() {
+    requestIdRef.current += 1;
     setData(null);
     setFileInfo(null);
     setError('');
     setStatus('');
+    setIsLoading(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
   }
+
+  const hasContent = Boolean(data || error || fileInfo || status || isLoading);
 
   return (
     <div className="ktx2-inspector" aria-label="KTX2 Header Inspector">
@@ -133,7 +157,7 @@ export default function Ktx2HeaderInspectorTool() {
             type="button"
             className="ktx2-btn"
             onClick={handleClear}
-            disabled={!data && !error && !fileInfo}
+            disabled={!hasContent}
           >
             Clear
           </button>
