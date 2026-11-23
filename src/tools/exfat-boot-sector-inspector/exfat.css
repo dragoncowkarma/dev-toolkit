@@ -1,0 +1,31 @@
+.exfat-tool {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.exfat-tool textarea {
+  min-height: 12rem;
+  resize: vertical;
+  padding: 1rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  font-family: monospace;
+}
+
+.exfat-tool dl { margin: 0; }
+.exfat-tool dl div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--color-border);
+}
+.exfat-tool dd { margin: 0; overflow-wrap: anywhere; }
+.exfat-tool [role='alert'] { color: var(--color-error-light); }
