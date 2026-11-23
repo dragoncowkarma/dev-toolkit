@@ -162,6 +162,14 @@ export default function NdsRomHeaderInspectorTool() {
         `(${headerData.headerCrc.valid ? 'VALID' : 'MISMATCH'})`,
     ];
 
+    if (headerData.validationErrors?.length > 0) {
+      lines.push(
+        ``,
+        `Validation Warnings:`,
+        ...headerData.validationErrors.map((errMsg) => `  - ${errMsg}`)
+      );
+    }
+
     try {
       await navigator.clipboard.writeText(lines.join('\n'));
       showCopied(true);

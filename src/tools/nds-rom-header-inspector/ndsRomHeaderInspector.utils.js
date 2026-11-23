@@ -149,16 +149,20 @@ export function calculateCrc16(
 
 /**
  * Formats a number as a hexadecimal string with uppercase letters and optional zero-padding.
+ * Preserves full values exceeding 32 bits (0xFFFFFFFF) without 32-bit truncation wrapping.
  *
  * @param {number} value - The numeric value.
  * @param {number} [digits=4] - Minimum number of hex characters.
  * @returns {string} Hex representation prefixed with '0x'.
  */
 export function formatHex(value, digits = 4) {
-  if (typeof value !== 'number' || Number.isNaN(value)) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
     return '0x0000';
   }
-  return `0x${(value >>> 0).toString(16).toUpperCase().padStart(digits, '0')}`;
+  if (value < 0) {
+    return `0x${(value >>> 0).toString(16).toUpperCase().padStart(digits, '0')}`;
+  }
+  return `0x${Math.floor(value).toString(16).toUpperCase().padStart(digits, '0')}`;
 }
 
 /**
