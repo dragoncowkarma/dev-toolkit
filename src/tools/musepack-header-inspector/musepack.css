@@ -1,5 +1,7 @@
 .musepack { display: grid; gap: 0.75rem; }
-.musepack-drop { display: grid; gap: 0.5rem; border: 1px dashed var(--border-color); padding: 1rem; }
+.musepack-drop {
+  display: grid; gap: 0.5rem; border: 1px dashed var(--color-border); padding: 1rem;
+}
 .musepack textarea, .musepack select { max-width: 100%; }
 .musepack dt { font-weight: bold; }
 .musepack dd { margin: 0 0 0.5rem; }
