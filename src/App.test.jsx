@@ -45,6 +45,7 @@ describe('App tool catalog wiring', () => {
         'jwt',
         'password',
         'regex',
+        'ufs-superblock-inspector',
         'url',
         'uuid',
       ]),

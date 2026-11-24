@@ -1,0 +1,23 @@
+.ufs-tool {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.ufs-drop, .ufs-tool textarea, .ufs-tool dl {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  color: var(--color-text);
+}
+
+.ufs-drop label, .ufs-drop input { display: block; }
+.ufs-tool textarea { min-height: 12rem; resize: vertical; font-family: monospace; }
+.ufs-tool dl > div { display: flex; flex-wrap: wrap; gap: 1rem; }
+.ufs-tool dt { font-weight: bold; min-width: 10rem; }
+.ufs-tool dd { margin: 0; overflow-wrap: anywhere; }
+.ufs-error { color: var(--color-error-light); }
