@@ -329,3 +329,26 @@ describe('readFileAsBytes', () => {
     }
   });
 });
+
+describe('tail-only parsing', () => {
+  it('matches full-ROM parsing with absolute offsets for min and max sizes', () => {
+    for (const size of [MIN_ROM_SIZE, 16 * 1024 * 1024]) {
+      const rom = buildMockRom({ size, title: 'TAIL TEST' });
+      const full = parseVirtualBoyRomHeader(rom);
+      const tail = parseVirtualBoyRomHeader(rom.slice(size - 0x220), size);
+      expect(tail).toEqual(full);
+      expect(tail.headerOffset).toBe(size - 0x220);
+      expect(tail.vectorTable.offset).toBe(size - 0x200);
+    }
+  });
+
+  it('rejects an incomplete tail and invalid original sizes', () => {
+    expect(() => parseVirtualBoyRomHeader(new Uint8Array(0x21f), MIN_ROM_SIZE)).toThrow(
+      /incomplete ROM tail/i,
+    );
+    expect(() => parseVirtualBoyRomHeader(new Uint8Array(0x220), 20000)).toThrow(/power of two/i);
+    expect(() => parseVirtualBoyRomHeader(new Uint8Array(MIN_ROM_SIZE * 2), MIN_ROM_SIZE)).toThrow(
+      /incomplete ROM tail/i,
+    );
+  });
+});

@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import {
+  HEADER_OFFSET_FROM_END,
   parseVirtualBoyRomHeader,
   readFileAsBytes,
   validateRomSize,
@@ -26,9 +27,11 @@ export default function VirtualBoyRomHeaderInspectorTool() {
     const requestId = (fileRequestRef.current += 1);
     try {
       validateRomSize(selected.size);
-      const bytes = await readFileAsBytes(selected);
+      const bytes = await readFileAsBytes(
+        selected.slice(selected.size - HEADER_OFFSET_FROM_END, selected.size),
+      );
       if (fileRequestRef.current !== requestId) return;
-      const parsed = parseVirtualBoyRomHeader(bytes);
+      const parsed = parseVirtualBoyRomHeader(bytes, selected.size);
       setFileName(selected.name);
       setHeaderInfo(parsed);
       setError('');
