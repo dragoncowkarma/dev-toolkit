@@ -49,7 +49,7 @@ describe('Jffs2NodeHeaderInspectorTool', () => {
     expect(screen.getByText('Big-endian (0x8519)')).toBeInTheDocument();
   });
 
-  it('inspects an uploaded file with CRC mismatch, truncation, and erased flags', async () => {
+  it('inspects an uploaded file with a CRC mismatch and stops traversal there', async () => {
     const bytes = jffs2Utils.concatBytes([
       jffs2Utils.buildJffs2Node({
         nodetype: 0x2003,
@@ -79,10 +79,10 @@ describe('Jffs2NodeHeaderInspectorTool', () => {
 
     expect(sliceSpy).toHaveBeenCalledWith(0, 4096);
     expect(screen.getByText('CRC Mismatch')).toBeInTheDocument();
-    expect(screen.getByText('Truncated')).toBeInTheDocument();
     expect(screen.getByText('crc-mismatch')).toBeInTheDocument();
-    expect(screen.getByText('erased-region')).toBeInTheDocument();
-    expect(screen.getByText('truncated-node')).toBeInTheDocument();
+    expect(screen.getByText('traversal-stopped')).toBeInTheDocument();
+    expect(screen.queryByText('erased-region')).not.toBeInTheDocument();
+    expect(screen.queryByText('truncated-node')).not.toBeInTheDocument();
   });
 
   it('ignores stale file reads that resolve after Clear', async () => {

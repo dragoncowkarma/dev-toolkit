@@ -122,7 +122,7 @@ describe('parseJffs2Nodes', () => {
     expect(result.nodes.every((n) => n.crcValid)).toBe(true);
   });
 
-  it('flags a CRC mismatch while reporting stored and expected hdr_crc', () => {
+  it('stops traversal after a CRC-invalid header and reports why', () => {
     const image = concatBytes([
       buildJffs2Node({
         nodetype: 0x2003,
@@ -135,15 +135,73 @@ describe('parseJffs2Nodes', () => {
 
     const result = parseJffs2Nodes(image);
 
-    expect(result.nodes).toHaveLength(2);
+    expect(result.nodes).toHaveLength(1);
     expect(result.nodes[0].crcValid).toBe(false);
     expect(result.nodes[0].hdrCrc).toBe(0xdeadbeef);
     expect(result.nodes[0].expectedCrc).toBe(0xe41eb0b1);
-    expect(result.nodes[0].flags).toContain('crc-mismatch');
-    expect(result.nodes[1].crcValid).toBe(true);
+    expect(result.nodes[0].flags).toEqual(['crc-mismatch', 'traversal-stopped']);
     expect(result.summary.invalidCrcCount).toBe(1);
-    expect(result.summary.validCrcCount).toBe(1);
-    expect(result.flags.some((f) => f.code === 'crc-mismatch')).toBe(true);
+    expect(result.summary.validCrcCount).toBe(0);
+    expect(result.summary.nodeCount).toBe(1);
+    expect(result.flags.map((f) => f.code)).toEqual(['crc-mismatch', 'traversal-stopped']);
+    expect(result.flags[1]).toMatchObject({ severity: 'error', offset: 0, nodeIndex: 0 });
+  });
+
+  it('does not use a forged totlen from a CRC-invalid header to skip or invent nodes', () => {
+    const forgedHeader = buildJffs2Node({
+      nodetype: 0xe002,
+      totlen: 32,
+      littleEndian: true,
+      hdrCrc: 0x01020304,
+      bufferLength: 12,
+    });
+    // A valid node sits at offset 12 (inside the forged span) and another at offset 32.
+    const image = concatBytes([
+      forgedHeader,
+      buildJffs2Node({ nodetype: 0x2003, totlen: 12, littleEndian: true }),
+      buildJffs2Node({ nodetype: 0x2004, totlen: 8, littleEndian: true, bufferLength: 8 }),
+      buildJffs2Node({ nodetype: 0xe001, totlen: 16, littleEndian: true }),
+    ]);
+
+    const result = parseJffs2Nodes(image);
+
+    expect(result.nodes).toHaveLength(1);
+    expect(result.nodes[0]).toMatchObject({ offset: 0, totlen: 32, crcValid: false });
+    expect(result.summary.invalidCrcCount).toBe(1);
+    expect(result.summary.validCrcCount).toBe(0);
+    expect(result.flags.some((f) => f.code === 'traversal-stopped')).toBe(true);
+  });
+
+  it('does not report totlen-derived truncation for a CRC-invalid header', () => {
+    const image = buildJffs2Node({
+      nodetype: 0xe002,
+      totlen: 4096,
+      littleEndian: true,
+      hdrCrc: 0x0badf00d,
+      bufferLength: 12,
+    });
+
+    const result = parseJffs2Nodes(image);
+
+    expect(result.nodes).toHaveLength(1);
+    expect(result.nodes[0].truncated).toBe(false);
+    expect(result.summary.truncatedCount).toBe(0);
+    expect(result.flags.map((f) => f.code)).toEqual(['crc-mismatch', 'traversal-stopped']);
+  });
+
+  it('continues past consecutive CRC-valid nodes without a traversal-stopped flag', () => {
+    const image = concatBytes([
+      buildJffs2Node({ nodetype: 0x2003, totlen: 12, littleEndian: true }),
+      buildJffs2Node({ nodetype: 0xe002, totlen: 30, littleEndian: true }),
+      buildJffs2Node({ nodetype: 0xe001, totlen: 16, littleEndian: true }),
+    ]);
+
+    const result = parseJffs2Nodes(image);
+
+    expect(result.nodes.map((n) => n.offset)).toEqual([0, 12, 44]);
+    expect(result.summary.validCrcCount).toBe(3);
+    expect(result.summary.invalidCrcCount).toBe(0);
+    expect(result.flags).toHaveLength(0);
   });
 
   it('flags a truncated node when totlen exceeds the remaining buffer', () => {

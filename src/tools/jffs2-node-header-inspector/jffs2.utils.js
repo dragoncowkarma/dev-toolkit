@@ -303,12 +303,14 @@ export function parseJffs2Nodes(input, options = {}) {
     const hdrCrc = view.getUint32(offset + 8, littleEndian);
     const expectedCrc = jffs2Crc32(bytes, offset, 8);
     const crcValid = hdrCrc === expectedCrc;
-    const totlenTooSmall = totlen < JFFS2_HEADER_SIZE;
-    const extendsPastBuffer = !totlenTooSmall && offset + totlen > bytes.length;
+    // totlen is only trustworthy when hdr_crc matches; otherwise skip totlen-derived checks.
+    const totlenTooSmall = crcValid && totlen < JFFS2_HEADER_SIZE;
+    const extendsPastBuffer = crcValid && !totlenTooSmall && offset + totlen > bytes.length;
     const windowLimited =
       extendsPastBuffer && totalBytes > bytes.length && offset + totlen <= totalBytes;
     const truncated = extendsPastBuffer && !windowLimited;
-    const alignedLength = totlenTooSmall ? JFFS2_HEADER_SIZE : align4(totlen);
+    const alignedLength = totlen < JFFS2_HEADER_SIZE
+      ? JFFS2_HEADER_SIZE : align4(totlen);
     const nodeIndex = nodes.length;
     const nodeFlags = [];
 
@@ -389,6 +391,21 @@ export function parseJffs2Nodes(input, options = {}) {
       flags: nodeFlags,
     });
     summary.nodeCount += 1;
+
+    if (!crcValid) {
+      nodeFlags.push('traversal-stopped');
+      flags.push({
+        code: 'traversal-stopped',
+        severity: 'error',
+        offset,
+        nodeIndex,
+        message:
+          `Traversal stopped at node #${nodeIndex} at ${formatHex(offset)}: hdr_crc ` +
+          `mismatch makes totlen (${totlen}) untrusted, so bytes after this header ` +
+          `were not parsed.`,
+      });
+      break;
+    }
 
     if (totlenTooSmall || truncated || windowLimited) {
       break;
