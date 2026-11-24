@@ -1,0 +1,51 @@
+.nilfs2-tool {
+  display: grid;
+  gap: 1rem;
+}
+
+.nilfs2-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+}
+
+.nilfs2-sample-button {
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.nilfs2-sample-button:hover {
+  background: var(--color-surface-hover);
+}
+
+.nilfs2-result {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1rem;
+}
+
+.nilfs2-result dl {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.nilfs2-result dl > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.nilfs2-result dt {
+  font-weight: 600;
+}
+
+.nilfs2-result dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
