@@ -1,0 +1,38 @@
+.coleco-tool {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+}
+
+.coleco-tool input {
+  display: block;
+  margin-top: 0.5rem;
+  max-width: 100%;
+}
+
+.coleco-details {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.5rem 1rem;
+  overflow-wrap: anywhere;
+}
+
+.coleco-details div {
+  display: contents;
+}
+
+.coleco-details dt {
+  color: var(--color-text-muted);
+}
+
+.coleco-details dd {
+  margin: 0;
+}
+
+.coleco-error {
+  color: var(--color-error-light);
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+}
