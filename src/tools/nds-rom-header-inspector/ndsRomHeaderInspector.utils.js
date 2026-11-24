@@ -4,6 +4,45 @@
 export const MIN_HEADER_SIZE = 0x160;
 
 /**
+ * Total standard cartridge header byte length (0x000 - 0x1FF).
+ * Offsets below this boundary reside within the cartridge header area.
+ */
+export const HEADER_SIZE = 0x200;
+
+/**
+ * Minimum byte length required for a version 1 Nintendo DS icon/title banner block.
+ */
+export const MIN_BANNER_SIZE = 0x840;
+
+/**
+ * Maximum byte length required for an icon/title banner block (covers v103h 0x23C0 bytes).
+ */
+export const MAX_BANNER_SIZE = 0x2400;
+
+/**
+ * Standard NDS banner versions and human-readable names.
+ * @type {Record<number, string>}
+ */
+export const BANNER_VERSIONS = Object.freeze({
+  0x0001: 'Version 1 (Original NDS)',
+  0x0002: 'Version 2 (+ Chinese)',
+  0x0003: 'Version 3 (+ Korean)',
+  0x0103: 'Version 103h (DSi Animated)',
+});
+
+/**
+ * Supported language title slots in NDS banners (0x100 bytes each).
+ */
+export const BANNER_LANGUAGES = Object.freeze([
+  { id: 'japanese', label: 'Japanese', offset: 0x240 },
+  { id: 'english', label: 'English', offset: 0x340 },
+  { id: 'french', label: 'French', offset: 0x440 },
+  { id: 'german', label: 'German', offset: 0x540 },
+  { id: 'italian', label: 'Italian', offset: 0x640 },
+  { id: 'spanish', label: 'Spanish', offset: 0x740 },
+]);
+
+/**
  * Standard BIOS CRC-16 (CRC-16/MODBUS) reflected polynomial: 0xA001.
  */
 export const CRC16_POLYNOMIAL = 0xa001;
@@ -366,13 +405,417 @@ export function validateArmOffsets({
 }
 
 /**
+ * Decodes a UTF-16LE string from byte data up to a null terminator (0x0000) or max length,
+ * and splits it on newlines into lines.
+ *
+ * @param {Uint8Array} bytes - Raw byte array.
+ * @param {number} start - Offset to start reading.
+ * @param {number} [length=0x100] - Number of bytes to read (default 256 / 0x100).
+ * @returns {{ raw: string, lines: string[] }} Decoded raw string and lines.
+ */
+export function decodeUtf16LeTitle(bytes, start, length = 0x100) {
+  if (!bytes || start >= bytes.length) {
+    return { raw: '', lines: [] };
+  }
+  const end = Math.min(bytes.length, start + length);
+  const slice = bytes.subarray(start, end);
+  const rawDecoded = new TextDecoder('utf-16le').decode(slice);
+  const nullIdx = rawDecoded.indexOf('\0');
+  const clean = (nullIdx !== -1 ? rawDecoded.slice(0, nullIdx) : rawDecoded).trim();
+  const lines = clean.length > 0 ? clean.split(/\r?\n/) : [];
+  return {
+    raw: clean,
+    lines,
+  };
+}
+
+/**
+ * Encodes a string into UTF-16LE bytes, zero-padded up to maxLength.
+ *
+ * @param {string} str - Input text string.
+ * @param {number} [maxLength=0x100] - Total buffer size in bytes.
+ * @returns {Uint8Array} Byte buffer with encoded UTF-16LE characters.
+ */
+export function encodeUtf16Le(str, maxLength = 0x100) {
+  const bytes = new Uint8Array(maxLength);
+  const view = new DataView(bytes.buffer);
+  const maxChars = Math.min(str.length, Math.floor(maxLength / 2) - 1);
+  for (let i = 0; i < maxChars; i++) {
+    view.setUint16(i * 2, str.charCodeAt(i), true);
+  }
+  return bytes;
+}
+
+/**
+ * Creates a synthetic NDS ROM icon/title banner block for testing or preview.
+ *
+ * @param {object} [overrides={}] - Optional field overrides.
+ * @returns {Uint8Array} Synthetic banner buffer.
+ */
+export function createSyntheticBanner(overrides = {}) {
+  const version = overrides.version ?? 0x0001;
+  const defaultSize =
+    version >= 0x0103
+      ? 0x23c0
+      : version >= 0x0003
+        ? 0x0a40
+        : version >= 0x0002
+          ? 0x0940
+          : MIN_BANNER_SIZE;
+  const size = overrides.size ?? defaultSize;
+  const bytes = new Uint8Array(size);
+  const view = new DataView(bytes.buffer);
+
+  view.setUint16(0x000, version, true);
+
+  const titles = overrides.titles ?? {
+    japanese: 'マリオカートDS\n任天堂',
+    english: 'Mario Kart DS\nNintendo',
+    french: 'Mario Kart DS\nNintendo',
+    german: 'Mario Kart DS\nNintendo',
+    italian: 'Mario Kart DS\nNintendo',
+    spanish: 'Mario Kart DS\nNintendo',
+  };
+
+  for (const lang of BANNER_LANGUAGES) {
+    const text = titles[lang.id] ?? '';
+    const encoded = encodeUtf16Le(text, 0x100);
+    bytes.set(encoded, lang.offset);
+  }
+
+  // v1 CRC covers 0x020..0x83F (0x820 bytes = 2080 bytes)
+  let v1Crc = calculateCrc16(bytes, 0x020, 0x820);
+  if (overrides.badV1Crc) {
+    v1Crc = (v1Crc ^ 0xffff) & 0xffff;
+  }
+  view.setUint16(0x002, overrides.v1Crc ?? v1Crc, true);
+
+  // v2 CRC covers 0x020..0x93F (0x920 bytes = 2336 bytes)
+  if (bytes.length >= 0x940) {
+    let v2Crc = calculateCrc16(bytes, 0x020, 0x920);
+    if (overrides.badV2Crc) {
+      v2Crc = (v2Crc ^ 0xffff) & 0xffff;
+    }
+    view.setUint16(0x004, overrides.v2Crc ?? v2Crc, true);
+  }
+
+  // v3 CRC covers 0x020..0xA3F (0xA20 bytes = 2592 bytes)
+  if (bytes.length >= 0x0a40) {
+    let v3Crc = calculateCrc16(bytes, 0x020, 0x0a20);
+    if (overrides.badV3Crc) {
+      v3Crc = (v3Crc ^ 0xffff) & 0xffff;
+    }
+    view.setUint16(0x006, overrides.v3Crc ?? v3Crc, true);
+  }
+
+  // v103 CRC covers 0x1240..0x23BF (0x1180 bytes = 4480 bytes)
+  if (bytes.length >= 0x23c0) {
+    let v103Crc = calculateCrc16(bytes, 0x1240, 0x1180);
+    if (overrides.badV103Crc) {
+      v103Crc = (v103Crc ^ 0xffff) & 0xffff;
+    }
+    view.setUint16(0x008, overrides.v103Crc ?? v103Crc, true);
+  }
+
+  return bytes;
+}
+
+/**
+ * Parses and verifies an NDS icon/title banner block from ROM bytes or a separate banner slice.
+ *
+ * @param {Uint8Array} bytes - Header bytes or full ROM byte buffer.
+ * @param {number} bannerOffset - Header offset pointing to the banner.
+ * @param {object} [options={}] - Optional parsing options.
+ * @param {Uint8Array|ArrayBuffer|string} [options.bannerBytes] - Separate bounded banner slice
+ *     at bannerOffset.
+ * @param {number} [options.fileSize] - Total file size in bytes for bounds checking.
+ * @returns {object} Banner parsing result.
+ */
+export function parseNdsBanner(bytes, bannerOffset, options = {}) {
+  const offsetHex = formatHex(bannerOffset, 8);
+  const effectiveFileSize =
+    typeof options?.fileSize === 'number'
+      ? options.fileSize
+      : bytes?.length ?? 0;
+
+  if (bannerOffset === 0) {
+    return {
+      present: false,
+      offset: 0,
+      offsetHex,
+      version: null,
+      versionHex: null,
+      versionName: null,
+      valid: true,
+      diagnostic: 'Banner offset is 0x00000000 (no icon/title banner present).',
+      crc: null,
+      titles: null,
+      titlesList: [],
+    };
+  }
+
+  if (bannerOffset < HEADER_SIZE) {
+    const minHex = formatHex(HEADER_SIZE, 4);
+    return {
+      present: false,
+      offset: bannerOffset,
+      offsetHex,
+      version: null,
+      versionHex: null,
+      versionName: null,
+      valid: false,
+      diagnostic: `Banner offset (${offsetHex}) is within header (< ${minHex}).`,
+      crc: null,
+      titles: null,
+      titlesList: [],
+    };
+  }
+
+  if (bannerOffset >= effectiveFileSize) {
+    const sizeHex = formatHex(effectiveFileSize, 8);
+    return {
+      present: false,
+      offset: bannerOffset,
+      offsetHex,
+      version: null,
+      versionHex: null,
+      versionName: null,
+      valid: false,
+      diagnostic: `Banner offset (${offsetHex}) is beyond end of file (size: ${sizeHex}).`,
+      crc: null,
+      titles: null,
+      titlesList: [],
+    };
+  }
+
+  const availableInFile = effectiveFileSize - bannerOffset;
+  if (availableInFile < MIN_BANNER_SIZE) {
+    const reqHex = `0x${MIN_BANNER_SIZE.toString(16)}`;
+    return {
+      present: false,
+      offset: bannerOffset,
+      offsetHex,
+      version: null,
+      versionHex: null,
+      versionName: null,
+      valid: false,
+      diagnostic:
+        `Truncated banner block: requires at least ${reqHex} bytes at offset ${offsetHex}, ` +
+        `but only ${availableInFile} bytes available.`,
+      crc: null,
+      titles: null,
+      titlesList: [],
+    };
+  }
+
+  let data;
+  let baseOffset;
+
+  if (options?.bannerBytes) {
+    data = parseInputToBytes(options.bannerBytes);
+    baseOffset = 0;
+  } else {
+    data = bytes;
+    baseOffset = bannerOffset;
+  }
+
+  if (!data || data.length - baseOffset < MIN_BANNER_SIZE) {
+    const available = data ? Math.max(0, data.length - baseOffset) : 0;
+    const reqHex = `0x${MIN_BANNER_SIZE.toString(16)}`;
+    return {
+      present: false,
+      offset: bannerOffset,
+      offsetHex,
+      version: null,
+      versionHex: null,
+      versionName: null,
+      valid: false,
+      diagnostic:
+        `Truncated banner block: requires at least ${reqHex} bytes at offset ${offsetHex}, ` +
+        `but only ${available} bytes available.`,
+      crc: null,
+      titles: null,
+      titlesList: [],
+    };
+  }
+
+  const available = data.length - baseOffset;
+  const view = new DataView(data.buffer, data.byteOffset + baseOffset, available);
+  const version = view.getUint16(0x000, true);
+  const versionHex = formatHex(version, 4);
+  const versionName = BANNER_VERSIONS[version] || null;
+
+  if (!versionName) {
+    return {
+      present: true,
+      offset: bannerOffset,
+      offsetHex,
+      version,
+      versionHex,
+      versionName: 'Unknown Version',
+      valid: false,
+      diagnostic:
+        `Unknown banner version: ${versionHex} ` +
+        `(expected 0x0001, 0x0002, 0x0003, or 0x0103).`,
+      crc: null,
+      titles: null,
+      titlesList: [],
+    };
+  }
+
+  // Stored CRC-16 fields
+  const storedV1 = view.getUint16(0x002, true);
+  const storedV2 = view.getUint16(0x004, true);
+  const storedV3 = view.getUint16(0x006, true);
+  const storedV103 = view.getUint16(0x008, true);
+
+  // v1 CRC-16 check: 0x020..0x83F (0x820 = 2080 bytes)
+  const actualV1 = calculateCrc16(data, baseOffset + 0x020, 0x820);
+  const v1Valid = storedV1 === actualV1;
+
+  // v2 CRC-16 check: 0x020..0x93F (0x920 = 2336 bytes)
+  let actualV2 = null;
+  let v2Valid = null;
+  const v2Applicable = version >= 0x0002 || (storedV2 !== 0 && available >= 0x940);
+  if (available >= 0x940) {
+    actualV2 = calculateCrc16(data, baseOffset + 0x020, 0x920);
+    if (v2Applicable) {
+      v2Valid = storedV2 === actualV2;
+    }
+  } else if (v2Applicable) {
+    v2Valid = false;
+  }
+
+  // v3 CRC-16 check: 0x020..0xA3F (0xA20 = 2592 bytes)
+  let actualV3 = null;
+  let v3Valid = null;
+  const v3Applicable = version >= 0x0003 || (storedV3 !== 0 && available >= 0x0a40);
+  if (available >= 0x0a40) {
+    actualV3 = calculateCrc16(data, baseOffset + 0x020, 0x0a20);
+    if (v3Applicable) {
+      v3Valid = storedV3 === actualV3;
+    }
+  } else if (v3Applicable) {
+    v3Valid = false;
+  }
+
+  // v103 CRC-16 check: 0x1240..0x23BF (0x1180 = 4480 bytes)
+  let actualV103 = null;
+  let v103Valid = null;
+  const v103Applicable = version >= 0x0103 || (storedV103 !== 0 && available >= 0x23c0);
+  if (available >= 0x23c0) {
+    actualV103 = calculateCrc16(data, baseOffset + 0x1240, 0x1180);
+    if (v103Applicable) {
+      v103Valid = storedV103 === actualV103;
+    }
+  } else if (v103Applicable) {
+    v103Valid = false;
+  }
+
+  const crcValid =
+    v1Valid &&
+    (!v2Applicable || v2Valid === true) &&
+    (!v3Applicable || v3Valid === true) &&
+    (!v103Applicable || v103Valid === true);
+
+  // Decode multilingual titles
+  const titles = {};
+  const titlesList = [];
+  for (const lang of BANNER_LANGUAGES) {
+    const decoded = decodeUtf16LeTitle(data, baseOffset + lang.offset, 0x100);
+    const entry = {
+      id: lang.id,
+      label: lang.label,
+      offset: lang.offset,
+      offsetHex: formatHex(lang.offset, 4),
+      raw: decoded.raw,
+      lines: decoded.lines,
+    };
+    titles[lang.id] = entry;
+    titlesList.push(entry);
+  }
+
+  return {
+    present: true,
+    offset: bannerOffset,
+    offsetHex,
+    version,
+    versionHex,
+    versionName,
+    valid: crcValid,
+    diagnostic: null,
+    crc: {
+      v1: {
+        expected: storedV1,
+        actual: actualV1,
+        expectedHex: formatHex(storedV1, 4),
+        actualHex: formatHex(actualV1, 4),
+        valid: v1Valid,
+        applicable: true,
+        byteRange: '0x020 - 0x83F (2,080 B)',
+      },
+      v2: {
+        expected: storedV2,
+        actual: actualV2,
+        expectedHex: formatHex(storedV2, 4),
+        actualHex: actualV2 !== null ? formatHex(actualV2, 4) : 'N/A',
+        valid: v2Valid,
+        applicable: v2Applicable,
+        byteRange: '0x020 - 0x93F (2,336 B)',
+      },
+      v3: {
+        expected: storedV3,
+        actual: actualV3,
+        expectedHex: formatHex(storedV3, 4),
+        actualHex: actualV3 !== null ? formatHex(actualV3, 4) : 'N/A',
+        valid: v3Valid,
+        applicable: v3Applicable,
+        byteRange: '0x020 - 0xA3F (2,592 B)',
+      },
+      v103: {
+        expected: storedV103,
+        actual: actualV103,
+        expectedHex: formatHex(storedV103, 4),
+        actualHex: actualV103 !== null ? formatHex(actualV103, 4) : 'N/A',
+        valid: v103Valid,
+        applicable: v103Applicable,
+        byteRange: '0x1240 - 0x23BF (4,480 B)',
+      },
+    },
+    titles,
+    titlesList,
+  };
+}
+
+/**
  * Creates a synthetic 352-byte (0x160) Nintendo DS ROM header for testing or preview.
+ * Optionally includes an icon/title banner block.
  *
  * @param {object} [overrides={}] - Optional field overrides.
  * @returns {Uint8Array} The synthetic header byte buffer.
  */
 export function createSyntheticHeader(overrides = {}) {
-  const bytes = new Uint8Array(MIN_HEADER_SIZE);
+  const includeBanner =
+    overrides.includeBanner ??
+    (Boolean(overrides.bannerOffset) || overrides.bannerTitles !== undefined);
+  const bannerOffset = overrides.bannerOffset ?? (includeBanner ? HEADER_SIZE : 0);
+
+  let bannerBytes = null;
+  if (includeBanner) {
+    bannerBytes = createSyntheticBanner({
+      version: overrides.bannerVersion,
+      titles: overrides.bannerTitles,
+      badV1Crc: overrides.badBannerV1Crc || overrides.badBannerCrc,
+      badV2Crc: overrides.badBannerV2Crc,
+      badV3Crc: overrides.badBannerV3Crc,
+      badV103Crc: overrides.badBannerV103Crc,
+    });
+  }
+
+  const defaultTotal = bannerBytes ? bannerOffset + bannerBytes.length : MIN_HEADER_SIZE;
+  const totalLength = Math.max(MIN_HEADER_SIZE, overrides.totalSize ?? defaultTotal);
+
+  const bytes = new Uint8Array(totalLength);
   const view = new DataView(bytes.buffer);
 
   const title = (overrides.gameTitle ?? 'MARIO KART').padEnd(12, '\0').slice(0, 12);
@@ -398,7 +841,15 @@ export function createSyntheticHeader(overrides = {}) {
   view.setUint32(0x038, overrides.arm7RamAddress ?? 0x02380000, true);
   view.setUint32(0x03c, overrides.arm7Size ?? 0x00028000, true);
 
+  // Icon/Title Banner offset at 0x068
+  view.setUint32(0x068, bannerOffset, true);
+
   view.setUint32(0x080, overrides.totalRomSize ?? 0x02000000, true);
+
+  // Copy banner bytes if provided
+  if (bannerBytes && bannerOffset < bytes.length) {
+    bytes.set(bannerBytes.subarray(0, bytes.length - bannerOffset), bannerOffset);
+  }
 
   // Nintendo Logo (0x0C0 - 0x15B, 156 bytes)
   if (overrides.logoData) {
@@ -440,12 +891,16 @@ export function bytesToHexString(bytes) {
 }
 
 /**
- * Parses and verifies a Nintendo DS ROM header (0x000 - 0x15F).
+ * Parses and verifies a Nintendo DS ROM header (0x000 - 0x15F) and optional banner block.
  *
  * @param {Uint8Array|ArrayBuffer|string} input - ROM header bytes or Base64/Hex string.
+ * @param {object} [options={}] - Optional parsing options.
+ * @param {Uint8Array|ArrayBuffer|string} [options.bannerBytes] - Separate bounded banner slice
+ *     at bannerOffset.
+ * @param {number} [options.fileSize] - Total file size in bytes for bounds checking.
  * @returns {object} Parsing result with { ok: true, ...fields } or { ok: false, error: string }.
  */
-export function parseNdsHeader(input) {
+export function parseNdsHeader(input, options = {}) {
   try {
     const bytes = parseInputToBytes(input);
     if (!bytes) {
@@ -495,6 +950,10 @@ export function parseNdsHeader(input) {
     const arm7RamAddress = view.getUint32(0x038, true);
     const arm7Size = view.getUint32(0x03c, true);
 
+    // Banner offset at 0x068
+    const bannerOffset = view.getUint32(0x068, true);
+    const banner = parseNdsBanner(bytes, bannerOffset, options);
+
     // Total used ROM size at 0x080
     const totalRomSize = view.getUint32(0x080, true);
 
@@ -517,7 +976,40 @@ export function parseNdsHeader(input) {
       totalRomSize,
     });
 
-    const overallValid = logoCrcValid && headerCrcValid && armValidation.valid;
+    const bannerErrors = [];
+    if (!banner.valid) {
+      if (banner.diagnostic) {
+        bannerErrors.push(banner.diagnostic);
+      } else if (banner.crc) {
+        if (banner.crc.v1.valid === false) {
+          bannerErrors.push(
+            `Banner v1 CRC-16 mismatch: expected ${banner.crc.v1.expectedHex}, ` +
+              `calculated ${banner.crc.v1.actualHex}.`
+          );
+        }
+        if (banner.crc.v2.applicable && banner.crc.v2.valid === false) {
+          bannerErrors.push(
+            `Banner v2 CRC-16 mismatch: expected ${banner.crc.v2.expectedHex}, ` +
+              `calculated ${banner.crc.v2.actualHex}.`
+          );
+        }
+        if (banner.crc.v3.applicable && banner.crc.v3.valid === false) {
+          bannerErrors.push(
+            `Banner v3 CRC-16 mismatch: expected ${banner.crc.v3.expectedHex}, ` +
+              `calculated ${banner.crc.v3.actualHex}.`
+          );
+        }
+        if (banner.crc.v103.applicable && banner.crc.v103.valid === false) {
+          bannerErrors.push(
+            `Banner v103 CRC-16 mismatch: expected ${banner.crc.v103.expectedHex}, ` +
+              `calculated ${banner.crc.v103.actualHex}.`
+          );
+        }
+      }
+    }
+
+    const overallValid =
+      logoCrcValid && headerCrcValid && armValidation.valid && banner.valid;
 
     return {
       ok: true,
@@ -533,6 +1025,9 @@ export function parseNdsHeader(input) {
       chipSizeBytes,
       chipSizeFormatted,
       romVersion,
+      bannerOffset,
+      bannerOffsetHex: formatHex(bannerOffset, 8),
+      banner,
       arm9: {
         romOffset: arm9RomOffset,
         entryAddress: arm9EntryAddress,
@@ -565,7 +1060,7 @@ export function parseNdsHeader(input) {
       },
       armOffsetsValid: armValidation.valid,
       armOffsets: armValidation,
-      validationErrors: armValidation.errors,
+      validationErrors: [...armValidation.errors, ...bannerErrors],
       bufferSize: bytes.length,
     };
   } catch (err) {

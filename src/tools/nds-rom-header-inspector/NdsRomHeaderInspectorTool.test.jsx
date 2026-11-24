@@ -3,7 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import NdsRomHeaderInspectorTool from './NdsRomHeaderInspectorTool.jsx';
 import {
   bytesToHexString,
+  createSyntheticBanner,
   createSyntheticHeader,
+  HEADER_SIZE,
+  MAX_BANNER_SIZE,
 } from './ndsRomHeaderInspector.utils.js';
 
 describe('NdsRomHeaderInspectorTool UI', () => {
@@ -277,5 +280,201 @@ describe('NdsRomHeaderInspectorTool UI', () => {
     );
     expect(copiedSummary).toContain('ROM Offset:  0xFFFFFFFF');
     expect(copiedSummary).toContain('Total ROM Size: 4.0 GB (4294967295 bytes)');
+  });
+
+  it('loads sample with banner and displays multilingual titles and banner CRC-16', async () => {
+    render(<NdsRomHeaderInspectorTool />);
+
+    const loadBtn = screen.getByRole('button', { name: 'Load Sample' });
+    fireEvent.click(loadBtn);
+
+    expect(await screen.findByText('Icon & Title Banner')).toBeInTheDocument();
+    expect(screen.getByText('✓ Valid Banner')).toBeInTheDocument();
+    expect(screen.getByText(/Version 1 \(Original NDS\)/)).toBeInTheDocument();
+
+    // Check multilingual titles
+    expect(screen.getByText('Japanese')).toBeInTheDocument();
+    expect(screen.getByText('English')).toBeInTheDocument();
+    expect(screen.getByText('French')).toBeInTheDocument();
+    expect(screen.getByText('German')).toBeInTheDocument();
+    expect(screen.getByText('Italian')).toBeInTheDocument();
+    expect(screen.getByText('Spanish')).toBeInTheDocument();
+
+    // Check decoded lines
+    expect(screen.getByText('マリオカートDS')).toBeInTheDocument();
+    expect(screen.getByText('任天堂')).toBeInTheDocument();
+    expect(screen.getAllByText('Mario Kart DS').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Nintendo').length).toBeGreaterThan(0);
+
+    // Check banner CRC-16 table
+    expect(
+      screen.getByRole('table', { name: 'Banner Checksums' })
+    ).toBeInTheDocument();
+    expect(screen.getByText('v1 CRC-16')).toBeInTheDocument();
+  });
+
+  it('copies summary with complete banner block information', async () => {
+    const writeTextMock = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, {
+      clipboard: {
+        writeText: writeTextMock,
+      },
+    });
+
+    render(<NdsRomHeaderInspectorTool />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Load Sample' }));
+    expect(await screen.findByText('Icon & Title Banner')).toBeInTheDocument();
+
+    const copyBtn = screen.getByRole('button', { name: 'Copy Summary' });
+    fireEvent.click(copyBtn);
+
+    await waitFor(() => {
+      expect(writeTextMock).toHaveBeenCalledTimes(1);
+    });
+    const copiedSummary = writeTextMock.mock.calls[0][0];
+    expect(copiedSummary).toContain('Icon/Title Banner:');
+    expect(copiedSummary).toContain('Offset:        0x00000200');
+    expect(copiedSummary).toContain('Version:       0x0001 (Version 1 (Original NDS))');
+    expect(copiedSummary).toContain('v1 CRC-16:     Expected');
+    expect(copiedSummary).toContain('VALID');
+    expect(copiedSummary).toContain('Banner Titles:');
+    expect(copiedSummary).toContain('  Japanese:');
+    expect(copiedSummary).toContain('    マリオカートDS');
+    expect(copiedSummary).toContain('    任天堂');
+    expect(copiedSummary).toContain('  English:');
+    expect(copiedSummary).toContain('    Mario Kart DS');
+    expect(copiedSummary).toContain('    Nintendo');
+  });
+
+  it('displays diagnostic in UI when banner block is truncated', async () => {
+    const sample = createSyntheticHeader({
+      includeBanner: true,
+      bannerOffset: 0x200,
+      totalSize: 0x200 + 0x100, // Only 256 bytes instead of 0x840
+    });
+    const hex = bytesToHexString(sample);
+
+    render(<NdsRomHeaderInspectorTool />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Paste Hex / Base64' }));
+    fireEvent.change(screen.getByLabelText(/Paste ROM Header Bytes/), { target: { value: hex } });
+
+    expect(await screen.findByText('✕ Issues Detected')).toBeInTheDocument();
+    expect(screen.getAllByText(/Truncated banner block/).length).toBeGreaterThan(0);
+    expect(screen.getByText('✕ Banner Issues')).toBeInTheDocument();
+  });
+
+  it('handles unknown banner version without throwing when copying summary', async () => {
+    const writeTextMock = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, {
+      clipboard: {
+        writeText: writeTextMock,
+      },
+    });
+
+    const banner = createSyntheticBanner({ version: 0x9999 });
+    const total = 0x200 + banner.length;
+    const rom = new Uint8Array(total);
+    rom.set(
+      createSyntheticHeader({ bannerOffset: 0x200, totalSize: total }).subarray(0, 0x160),
+      0
+    );
+    rom.set(banner, 0x200);
+    const hex = bytesToHexString(rom);
+
+    render(<NdsRomHeaderInspectorTool />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Paste Hex / Base64' }));
+    fireEvent.change(screen.getByLabelText(/Paste ROM Header Bytes/), { target: { value: hex } });
+
+    expect(await screen.findByText('Icon & Title Banner')).toBeInTheDocument();
+    expect(screen.getByText(/0x9999 \(Unknown Version\)/)).toBeInTheDocument();
+    expect(screen.getAllByText(/Unknown banner version: 0x9999/).length).toBeGreaterThan(0);
+
+    const copyBtn = screen.getByRole('button', { name: 'Copy Summary' });
+    expect(() => fireEvent.click(copyBtn)).not.toThrow();
+
+    await waitFor(() => {
+      expect(writeTextMock).toHaveBeenCalledTimes(1);
+    });
+    const copiedSummary = writeTextMock.mock.calls[0][0];
+    expect(copiedSummary).toContain('Version:       0x9999 (Unknown Version)');
+    expect(copiedSummary).toContain('Diagnostic:    Unknown banner version: 0x9999');
+  });
+
+  it('reads bounded slices for large files without full allocation', async () => {
+    // 512 MB file with banner placed at 0x4000
+    const bannerOffset = 0x4000;
+    const banner = createSyntheticBanner({ version: 0x0001 });
+    const headerBytes = createSyntheticHeader({
+      bannerOffset,
+      totalRomSize: 512 * 1024 * 1024,
+    });
+
+    const sliceCalls = [];
+    const mockFile = {
+      name: 'large_game.nds',
+      size: 512 * 1024 * 1024,
+      slice: vi.fn((start, end) => {
+        sliceCalls.push({ start, end, length: end - start });
+        if (start === 0) {
+          return new Blob([headerBytes.subarray(0, HEADER_SIZE)]);
+        }
+        if (start === bannerOffset) {
+          return new Blob([banner]);
+        }
+        return new Blob([new Uint8Array(end - start)]);
+      }),
+    };
+
+    render(<NdsRomHeaderInspectorTool />);
+
+    const fileInput = screen.getByLabelText('Select NDS ROM file');
+    fireEvent.change(fileInput, { target: { files: [mockFile] } });
+
+    expect(await screen.findByText('Icon & Title Banner')).toBeInTheDocument();
+    expect(screen.getByText('✓ Valid Banner')).toBeInTheDocument();
+
+    // Verify bounded slices: header at [0, 0x200], banner at [0x4000, 0x4000 + 0x2400]
+    expect(mockFile.slice).toHaveBeenCalledTimes(2);
+    expect(sliceCalls[0]).toEqual({ start: 0, end: HEADER_SIZE, length: HEADER_SIZE });
+    expect(sliceCalls[1]).toEqual({
+      start: bannerOffset,
+      end: bannerOffset + MAX_BANNER_SIZE,
+      length: MAX_BANNER_SIZE,
+    });
+    // Ensure we never sliced the full 512MB
+    for (const call of sliceCalls) {
+      expect(call.length).toBeLessThanOrEqual(MAX_BANNER_SIZE);
+    }
+  });
+
+  it('handles malformed banner offset 0xffffffff with only header slice', async () => {
+    const malformedHeader = createSyntheticHeader({
+      bannerOffset: 0xffffffff,
+      totalRomSize: 512 * 1024 * 1024,
+    });
+
+    const mockFile = {
+      name: 'malformed_banner.nds',
+      size: 512 * 1024 * 1024,
+      slice: vi.fn((start, end) => {
+        return new Blob([malformedHeader.subarray(start, end)]);
+      }),
+    };
+
+    render(<NdsRomHeaderInspectorTool />);
+
+    const fileInput = screen.getByLabelText('Select NDS ROM file');
+    fireEvent.change(fileInput, { target: { files: [mockFile] } });
+
+    expect(await screen.findByText('Icon & Title Banner')).toBeInTheDocument();
+    expect(screen.getByText('✕ Issues Detected')).toBeInTheDocument();
+    expect(screen.getAllByText(/beyond end of file/).length).toBeGreaterThan(0);
+
+    // Only 1 slice call for the header (0..0x200); banner slice is never attempted for 0xffffffff
+    expect(mockFile.slice).toHaveBeenCalledTimes(1);
+    expect(mockFile.slice).toHaveBeenCalledWith(0, HEADER_SIZE);
   });
 });

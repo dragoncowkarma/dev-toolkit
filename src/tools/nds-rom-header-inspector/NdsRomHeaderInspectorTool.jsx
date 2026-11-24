@@ -5,7 +5,8 @@ import {
   fileToArrayBuffer,
   formatBytes,
   formatHex,
-  MIN_HEADER_SIZE,
+  HEADER_SIZE,
+  MAX_BANNER_SIZE,
   parseNdsHeader,
 } from './ndsRomHeaderInspector.utils.js';
 import { useCopyFeedback } from '../../hooks/useCopyFeedback.js';
@@ -56,11 +57,32 @@ export default function NdsRomHeaderInspectorTool() {
     if (!file) return;
     const requestId = (fileRequestRef.current += 1);
     try {
-      const headerBlob = typeof file.slice === 'function' ? file.slice(0, MIN_HEADER_SIZE) : file;
-      const buffer = await fileToArrayBuffer(headerBlob);
+      let headerBuffer;
+      let bannerBuffer = null;
+
+      if (typeof file.slice === 'function') {
+        const headerBlob = file.slice(0, Math.min(file.size, HEADER_SIZE));
+        headerBuffer = await fileToArrayBuffer(headerBlob);
+        if (fileRequestRef.current !== requestId) return;
+
+        if (headerBuffer.byteLength >= 0x06c) {
+          const view = new DataView(headerBuffer);
+          const bannerOffset = view.getUint32(0x068, true);
+          if (bannerOffset >= HEADER_SIZE && bannerOffset < file.size) {
+            const bannerLength = Math.min(file.size - bannerOffset, MAX_BANNER_SIZE);
+            const bannerBlob = file.slice(bannerOffset, bannerOffset + bannerLength);
+            bannerBuffer = await fileToArrayBuffer(bannerBlob);
+          }
+        }
+      } else {
+        headerBuffer = await fileToArrayBuffer(file);
+      }
       if (fileRequestRef.current !== requestId) return;
 
-      const result = parseNdsHeader(buffer);
+      const result = parseNdsHeader(headerBuffer, {
+        bannerBytes: bannerBuffer,
+        fileSize: file.size,
+      });
       if (result.ok) {
         setHeaderData(result);
         setFileName(file.name);
@@ -118,7 +140,7 @@ export default function NdsRomHeaderInspectorTool() {
 
   function handleLoadSample() {
     fileRequestRef.current += 1;
-    const sample = createSyntheticHeader();
+    const sample = createSyntheticHeader({ includeBanner: true });
     const result = parseNdsHeader(sample);
     if (inputMode === INPUT_MODES.PASTE) {
       setPastedText(bytesToHexString(sample));
@@ -161,6 +183,65 @@ export default function NdsRomHeaderInspectorTool() {
         `Actual ${headerData.headerCrc.actualHex} ` +
         `(${headerData.headerCrc.valid ? 'VALID' : 'MISMATCH'})`,
     ];
+
+    if (headerData.banner) {
+      lines.push(
+        ``,
+        `Icon/Title Banner:`,
+        `  Offset:        ${headerData.banner.offsetHex}`,
+      );
+      if (headerData.banner.present) {
+        lines.push(
+          `  Version:       ${headerData.banner.versionHex} (${headerData.banner.versionName})`,
+        );
+        if (headerData.banner.crc) {
+          lines.push(
+            `  v1 CRC-16:     Expected ${headerData.banner.crc.v1.expectedHex} | ` +
+              `Actual ${headerData.banner.crc.v1.actualHex} ` +
+              `(${headerData.banner.crc.v1.valid ? 'VALID' : 'MISMATCH'})`,
+          );
+          if (headerData.banner.crc.v2?.applicable) {
+            lines.push(
+              `  v2 CRC-16:     Expected ${headerData.banner.crc.v2.expectedHex} | ` +
+                `Actual ${headerData.banner.crc.v2.actualHex} ` +
+                `(${headerData.banner.crc.v2.valid ? 'VALID' : 'MISMATCH'})`,
+            );
+          }
+          if (headerData.banner.crc.v3?.applicable) {
+            lines.push(
+              `  v3 CRC-16:     Expected ${headerData.banner.crc.v3.expectedHex} | ` +
+                `Actual ${headerData.banner.crc.v3.actualHex} ` +
+                `(${headerData.banner.crc.v3.valid ? 'VALID' : 'MISMATCH'})`,
+            );
+          }
+          if (headerData.banner.crc.v103?.applicable) {
+            lines.push(
+              `  v103 CRC-16:   Expected ${headerData.banner.crc.v103.expectedHex} | ` +
+                `Actual ${headerData.banner.crc.v103.actualHex} ` +
+                `(${headerData.banner.crc.v103.valid ? 'VALID' : 'MISMATCH'})`,
+            );
+          }
+        }
+        if (headerData.banner.diagnostic) {
+          lines.push(`  Diagnostic:    ${headerData.banner.diagnostic}`);
+        }
+        if (headerData.banner.titlesList?.length > 0) {
+          lines.push(``, `Banner Titles:`);
+          for (const item of headerData.banner.titlesList) {
+            lines.push(`  ${item.label}:`);
+            if (item.lines.length > 0) {
+              for (const line of item.lines) {
+                lines.push(`    ${line}`);
+              }
+            } else {
+              lines.push(`    (Empty)`);
+            }
+          }
+        }
+      } else {
+        lines.push(`  Status:        ${headerData.banner.diagnostic || 'Not Present'}`);
+      }
+    }
 
     if (headerData.validationErrors?.length > 0) {
       lines.push(
@@ -354,6 +435,10 @@ export default function NdsRomHeaderInspectorTool() {
                 <span className="field-value">{headerData.chipSizeFormatted}</span>
               </div>
             )}
+            <div className="field-item">
+              <span className="field-label">Banner Offset (0x068)</span>
+              <span className="field-value mono">{headerData.bannerOffsetHex}</span>
+            </div>
           </div>
 
           <div className="table-container">
@@ -448,6 +533,160 @@ export default function NdsRomHeaderInspectorTool() {
               </tbody>
             </table>
           </div>
+
+          {headerData.banner && (
+            <div className="banner-section" aria-label="Icon and Title Banner">
+              <div className="card-header">
+                <h3 className="card-title">Icon &amp; Title Banner</h3>
+                <span
+                  className={`status-badge ${headerData.banner.valid ? 'valid' : 'invalid'}`}
+                  aria-label={
+                    headerData.banner.valid
+                      ? 'Banner Status: Valid'
+                      : 'Banner Status: Issues Detected'
+                  }
+                >
+                  {headerData.banner.present
+                    ? headerData.banner.valid
+                      ? '✓ Valid Banner'
+                      : '✕ Banner Issues'
+                    : headerData.banner.valid
+                      ? 'Not Present'
+                      : '✕ Banner Issues'}
+                </span>
+              </div>
+
+              <div className="grid-fields">
+                <div className="field-item">
+                  <span className="field-label">Banner Offset (0x068)</span>
+                  <span className="field-value mono">{headerData.banner.offsetHex}</span>
+                </div>
+                {headerData.banner.present && (
+                  <div className="field-item">
+                    <span className="field-label">Banner Version</span>
+                    <span className="field-value">
+                      {headerData.banner.versionHex} ({headerData.banner.versionName})
+                    </span>
+                  </div>
+                )}
+                {headerData.banner.diagnostic && (
+                  <div className="field-item">
+                    <span className="field-label">Banner Diagnostic</span>
+                    <span className="field-value">{headerData.banner.diagnostic}</span>
+                  </div>
+                )}
+              </div>
+
+              {headerData.banner.present && headerData.banner.crc && (
+                <div className="table-container">
+                  <table className="data-table" aria-label="Banner Checksums">
+                    <caption>Banner CRC-16 Checksums</caption>
+                    <thead>
+                      <tr>
+                        <th scope="col">Version Target</th>
+                        <th scope="col">Byte Range</th>
+                        <th scope="col">Expected (Stored)</th>
+                        <th scope="col">Actual (Calculated)</th>
+                        <th scope="col">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <th scope="row">v1 CRC-16</th>
+                        <td>{headerData.banner.crc.v1.byteRange}</td>
+                        <td className="mono">{headerData.banner.crc.v1.expectedHex}</td>
+                        <td className="mono">{headerData.banner.crc.v1.actualHex}</td>
+                        <td>
+                          <span
+                            className={`status-badge ${
+                              headerData.banner.crc.v1.valid ? 'valid' : 'invalid'
+                            }`}
+                          >
+                            {headerData.banner.crc.v1.valid ? 'Valid' : 'Mismatch'}
+                          </span>
+                        </td>
+                      </tr>
+                      {headerData.banner.crc.v2?.applicable && (
+                        <tr>
+                          <th scope="row">v2 CRC-16</th>
+                          <td>{headerData.banner.crc.v2.byteRange}</td>
+                          <td className="mono">{headerData.banner.crc.v2.expectedHex}</td>
+                          <td className="mono">{headerData.banner.crc.v2.actualHex}</td>
+                          <td>
+                            <span
+                              className={`status-badge ${
+                                headerData.banner.crc.v2.valid ? 'valid' : 'invalid'
+                              }`}
+                            >
+                              {headerData.banner.crc.v2.valid ? 'Valid' : 'Mismatch'}
+                            </span>
+                          </td>
+                        </tr>
+                      )}
+                      {headerData.banner.crc.v3?.applicable && (
+                        <tr>
+                          <th scope="row">v3 CRC-16</th>
+                          <td>{headerData.banner.crc.v3.byteRange}</td>
+                          <td className="mono">{headerData.banner.crc.v3.expectedHex}</td>
+                          <td className="mono">{headerData.banner.crc.v3.actualHex}</td>
+                          <td>
+                            <span
+                              className={`status-badge ${
+                                headerData.banner.crc.v3.valid ? 'valid' : 'invalid'
+                              }`}
+                            >
+                              {headerData.banner.crc.v3.valid ? 'Valid' : 'Mismatch'}
+                            </span>
+                          </td>
+                        </tr>
+                      )}
+                      {headerData.banner.crc.v103?.applicable && (
+                        <tr>
+                          <th scope="row">v103 CRC-16</th>
+                          <td>{headerData.banner.crc.v103.byteRange}</td>
+                          <td className="mono">{headerData.banner.crc.v103.expectedHex}</td>
+                          <td className="mono">{headerData.banner.crc.v103.actualHex}</td>
+                          <td>
+                            <span
+                              className={`status-badge ${
+                                headerData.banner.crc.v103.valid ? 'valid' : 'invalid'
+                              }`}
+                            >
+                              {headerData.banner.crc.v103.valid ? 'Valid' : 'Mismatch'}
+                            </span>
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {headerData.banner.present && headerData.banner.titlesList?.length > 0 && (
+                <div className="banner-titles" aria-label="Banner Multilingual Titles">
+                  <h4 className="titles-title">Game Titles</h4>
+                  <div className="titles-grid">
+                    {headerData.banner.titlesList.map((item) => (
+                      <div key={item.id} className="title-card">
+                        <span className="title-lang">{item.label}</span>
+                        <div className="title-lines">
+                          {item.lines.length > 0 ? (
+                            item.lines.map((line, idx) => (
+                              <div key={idx} className="title-line">
+                                {line}
+                              </div>
+                            ))
+                          ) : (
+                            <span className="title-empty">(Empty)</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {headerData.validationErrors?.length > 0 && (
             <div className="warnings-box" role="status" aria-label="Validation warnings">
