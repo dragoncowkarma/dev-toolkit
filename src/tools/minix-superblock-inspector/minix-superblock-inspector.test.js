@@ -256,12 +256,16 @@ describe('parseMinixSuperblock', () => {
       expect(() => parseMinixSuperblock(buffer)).toThrow(/Ambiguous superblock format/i);
     });
 
-    it('resolves magic collision to v1 when logZoneSize > 0 and firstDataZone < bitmap blocks in numeric value', () => {
+    const collisionV1Title =
+      'resolves magic collision to v1 when logZoneSize > 0 and ' +
+      'firstDataZone < bitmap blocks in numeric value';
+    it(collisionV1Title, () => {
       // 1024 inodes, 1 imap block, 10 zmap blocks, firstDataZone=4, logZoneSize=4
       // Metadata in blocks: 2 + 1 + 10 + ceil(1024/32) = 13 + 32 = 45 blocks.
       // firstDataBlock = 4 * (2^4) = 64 blocks >= 45.
       // But firstDataZone (4) < 2 + 1 + 10 = 13.
-      // Buffer also has 0x4D5A at offset 24 (v3 magic), but v3 layout fails (e.g. invalid blockSize or pads).
+      // Buffer also has 0x4D5A at offset 24 (v3 magic),
+      // but v3 layout fails (e.g. invalid blockSize or pads).
       const buffer = createSampleMinixSuperblock(MINIX_MAGIC.V1_14, {
         inodeCount: 1024,
         imapBlocks: 1,
@@ -278,8 +282,12 @@ describe('parseMinixSuperblock', () => {
       expect(parsed.logZoneSize).toBe(4);
     });
 
-    it('resolves magic collision to v3 when logZoneSize > 0 and firstDataZone < bitmap blocks in numeric value', () => {
-      // v3 layout with 2048 inodes, 1 imap block, 10 zmap blocks, firstDataZone=8, logZoneSize=3 (blockSize=1024)
+    const collisionV3Title =
+      'resolves magic collision to v3 when logZoneSize > 0 and ' +
+      'firstDataZone < bitmap blocks in numeric value';
+    it(collisionV3Title, () => {
+      // v3 layout with 2048 inodes, 1 imap block, 10 zmap blocks,
+      // firstDataZone=8, logZoneSize=3 (blockSize=1024)
       // Inodes per block: 1024 / 64 = 16. Inode blocks: 2048 / 16 = 128.
       // Metadata in blocks: 2 + 1 + 10 + 128 = 141 blocks.
       // firstDataBlock = 8 * (2^3) = 64 blocks, so with logZoneSize=5:
