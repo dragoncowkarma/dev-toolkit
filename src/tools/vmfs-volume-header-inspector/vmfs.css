@@ -1,0 +1,35 @@
+.vmfs-inspector {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  color: var(--color-text);
+}
+
+.vmfs-inspector__drop {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1.5rem;
+  border: 1px dashed var(--color-primary);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.vmfs-inspector__drop input {
+  max-width: 100%;
+  color: var(--color-text);
+}
+
+.vmfs-inspector dl > div {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.65rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.vmfs-inspector dt { color: var(--color-text-muted); }
+.vmfs-inspector dd { margin: 0; overflow-wrap: anywhere; }
+.vmfs-inspector__error { color: var(--color-error-light); }
+
+@media (min-width: 600px) {
+  .vmfs-inspector dl > div { grid-template-columns: 1fr 2fr; }
+}
