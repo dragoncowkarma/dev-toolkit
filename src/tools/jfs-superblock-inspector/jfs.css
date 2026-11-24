@@ -1,0 +1,28 @@
+.jfs-tool { display: grid; gap: 1rem; }
+.jfs-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.jfs-actions input { max-width: 100%; }
+.jfs-tool .btn {
+  padding: .5rem .75rem;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  font: inherit;
+  cursor: pointer;
+}
+.jfs-tool .btn:hover { background: var(--color-surface-hover); }
+.jfs-tool textarea {
+  width: 100%; min-height: 10rem; padding: .75rem;
+  color: var(--color-text); background: var(--color-surface);
+  border: 1px solid var(--color-border); border-radius: var(--radius);
+  font-family: monospace;
+}
+.jfs-result { margin: 0; overflow-wrap: anywhere; }
+.jfs-result div {
+  display: grid;
+  grid-template-columns: minmax(10rem, 1fr) 2fr;
+  gap: .5rem;
+  padding: .4rem 0;
+}
+.jfs-result dt { font-weight: 600; }
+.jfs-result dd { margin: 0; }
