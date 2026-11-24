@@ -1,0 +1,53 @@
+.refs-inspector {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  color: var(--color-text);
+}
+
+.refs-drop {
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  background: var(--color-surface);
+}
+
+.refs-button {
+  display: inline-block;
+  position: relative;
+  overflow: hidden;
+  margin: 0.25rem 0.5rem 0.25rem 0;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.refs-file:focus-within {
+  outline: 2px solid var(--color-primary-light);
+  outline-offset: 3px;
+}
+
+.refs-file input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.refs-fields div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.refs-fields dt { font-weight: 600; }
+.refs-fields dd { margin: 0; overflow-wrap: anywhere; }
+.refs-error { color: var(--color-error-light); }
