@@ -1,0 +1,40 @@
+.befs-tool {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.befs-tool textarea {
+  min-height: 12rem;
+  padding: 1rem;
+  resize: vertical;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  font-family: monospace;
+}
+
+.befs-tool button {
+  align-self: flex-start;
+  padding: 0.5rem 1rem;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.befs-tool dl {
+  display: grid;
+  grid-template-columns: minmax(8rem, auto) 1fr;
+  gap: 0.5rem 1rem;
+  overflow-wrap: anywhere;
+}
+
+.befs-tool dd { margin: 0; }
+.befs-tool dt { font-weight: 600; }
+.befs-tool .befs-warning { color: var(--color-error-light); }
