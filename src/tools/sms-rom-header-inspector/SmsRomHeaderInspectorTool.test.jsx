@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import SmsRomHeaderInspectorTool from './SmsRomHeaderInspectorTool.jsx';
+import * as utils from './smsRomHeaderInspector.utils.js';
 import { createMockSmsRom } from './smsRomHeaderInspector.utils.js';
 
 function selectFile(input, file) {
@@ -180,5 +181,34 @@ describe('SmsRomHeaderInspectorTool UI & Interactions', () => {
     expect(screen.queryByText('✓ Valid Header')).not.toBeInTheDocument();
     expect(screen.getByText('Choose a ROM file or drag & drop here')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Copy Summary' })).toBeDisabled();
+  });
+
+  it('resets loading state when clearing an in-flight read', async () => {
+    let resolveInspection;
+    const deferredPromise = new Promise((resolve) => {
+      resolveInspection = resolve;
+    });
+    vi.spyOn(utils, 'inspectSmsRom').mockImplementation(() => deferredPromise);
+
+    render(<SmsRomHeaderInspectorTool />);
+    const file = new File([new Uint8Array(1024)], 'test.sms', {
+      type: 'application/octet-stream',
+    });
+    const fileInput = screen.getByLabelText('Upload Sega Master System or Game Gear ROM');
+
+    await act(async () => selectFile(fileInput, file));
+
+    expect(screen.getByText('Reading ROM header...')).toBeInTheDocument();
+
+    const clearBtn = screen.getByRole('button', { name: 'Clear' });
+    expect(clearBtn).toBeEnabled();
+
+    await act(async () => fireEvent.click(clearBtn));
+
+    expect(screen.queryByText('Reading ROM header...')).not.toBeInTheDocument();
+    expect(screen.getByText('Choose a ROM file or drag & drop here')).toBeInTheDocument();
+
+    await act(async () => resolveInspection({ valid: false }));
+    expect(screen.queryByText('Reading ROM header...')).not.toBeInTheDocument();
   });
 });

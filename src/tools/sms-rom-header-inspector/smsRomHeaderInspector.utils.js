@@ -6,7 +6,7 @@
 export const SIGNATURE = 'TMR SEGA';
 export const SIGNATURE_BYTES = Object.freeze([0x54, 0x4d, 0x52, 0x20, 0x53, 0x45, 0x47, 0x41]);
 
-export const HEADER_OFFSETS = Object.freeze([0x1ff0, 0x3ff0, 0x7ff0]);
+export const HEADER_OFFSETS = Object.freeze([0x7ff0, 0x3ff0, 0x1ff0]);
 
 export const REGION_CODES = Object.freeze({
   0x3: 'SMS Japan',
@@ -38,6 +38,22 @@ export const ROM_SIZE_LABELS = Object.freeze({
   0x0: '256 KB',
   0x1: '512 KB',
   0x2: '1 MB',
+});
+
+/**
+ * Standard checksum ranges defined by the ROM size code according to Sega BIOS specifications.
+ * Ranges represent [start, end) half-open intervals to sum.
+ */
+export const CHECKSUM_RANGES = Object.freeze({
+  0xa: Object.freeze([[0, 0x1ff0]]),
+  0xb: Object.freeze([[0, 0x3ff0]]),
+  0xc: Object.freeze([[0, 0x7ff0]]),
+  0xd: Object.freeze([[0, 0xbff0]]),
+  0xe: Object.freeze([[0, 0x7ff0], [0x8000, 0x10000]]),
+  0xf: Object.freeze([[0, 0x7ff0], [0x8000, 0x20000]]),
+  0x0: Object.freeze([[0, 0x7ff0], [0x8000, 0x40000]]),
+  0x1: Object.freeze([[0, 0x7ff0], [0x8000, 0x80000]]),
+  0x2: Object.freeze([[0, 0x7ff0], [0x8000, 0x100000]]),
 });
 
 const DEFAULT_CHUNK_SIZE = 16 * 1024;
@@ -144,7 +160,9 @@ export function parseProductCode(byte12, byte13, byte14) {
       code = `${midHigh}${midLow}${lowHigh}${lowLow}`;
     }
   } else {
-    code = `${high.toString(16)}${midHigh.toString(16)}${midLow.toString(16)}${lowHigh.toString(16)}${lowLow.toString(16)}`.toUpperCase();
+    const rawHex = `${high.toString(16)}${midHigh.toString(16)}` +
+      `${midLow.toString(16)}${lowHigh.toString(16)}${lowLow.toString(16)}`;
+    code = rawHex.toUpperCase();
   }
 
   return {
@@ -221,7 +239,8 @@ export function parseSmsHeader(rawBytes, options = {}) {
   if (fileSize !== null && typeof fileSize === 'number') {
     if (fileSize < headerOffset + 16) {
       diagnostics.push(
-        `Truncated file: size is ${fileSize} bytes, smaller than header offset 0x${headerOffset.toString(16).toUpperCase()}`
+        `Truncated file: size is ${fileSize} bytes, smaller than header ` +
+        `offset 0x${headerOffset.toString(16).toUpperCase()}`
       );
     } else if (romSizeBytes !== null && fileSize < romSizeBytes) {
       diagnostics.push(
@@ -287,36 +306,112 @@ export async function readHeaderSlice(file, offset) {
  * @param {number} [options.fileSize] Total file size.
  * @returns {Promise<{offset: number, bytes: Uint8Array}|null>}
  */
+/**
+ * Prioritizes candidate header search offsets according to ROM size and layout.
+ * For >= 32 KB ROMs, 0x7FF0 is standard, followed by 0x3FF0 and 0x1FF0.
+ * For 16 KB ROMs, 0x3FF0 is standard, followed by 0x1FF0.
+ * For 8 KB ROMs, 0x1FF0 is standard.
+ *
+ * @param {number} fileSize Total ROM size in bytes.
+ * @param {readonly number[]} [offsets=HEADER_OFFSETS] Offsets to prioritize.
+ * @returns {number[]} Offsets ordered by ROM layout priority.
+ */
+export function getCandidateHeaderOffsets(fileSize, offsets = HEADER_OFFSETS) {
+  const getPriority = (offset) => {
+    if (typeof fileSize === 'number' && fileSize > 0) {
+      if (fileSize >= 0x8000) {
+        if (offset === 0x7ff0) return 0;
+        if (offset === 0x3ff0) return 1;
+        if (offset === 0x1ff0) return 2;
+        return 3;
+      }
+      if (fileSize >= 0x4000) {
+        if (offset === 0x3ff0) return 0;
+        if (offset === 0x1ff0) return 1;
+        if (offset === 0x7ff0) return 2;
+        return 3;
+      }
+      if (offset === 0x1ff0) return 0;
+      if (offset === 0x3ff0) return 1;
+      if (offset === 0x7ff0) return 2;
+      return 3;
+    }
+    if (offset === 0x7ff0) return 0;
+    if (offset === 0x3ff0) return 1;
+    if (offset === 0x1ff0) return 2;
+    return 3;
+  };
+
+  return [...offsets].sort((a, b) => getPriority(a) - getPriority(b));
+}
+
+/**
+ * Searches for a valid TMR SEGA header across standard offsets.
+ * When multiple signatures are present, selects the candidate matching
+ * the ROM size layout and valid header metadata.
+ *
+ * @param {Blob|File|Uint8Array|ArrayBuffer} file Source file or buffer.
+ * @param {object} [options] Search options.
+ * @param {number[]} [options.offsets=HEADER_OFFSETS] Offsets to check.
+ * @param {number} [options.fileSize] Total file size.
+ * @returns {Promise<{offset: number, bytes: Uint8Array}|null>}
+ */
 export async function findSmsHeader(file, options = {}) {
   const offsets = options.offsets || HEADER_OFFSETS;
   const realFileSize = options.fileSize ?? file?.size ?? file?.byteLength ?? file?.length ?? 0;
+  const prioritizedOffsets = getCandidateHeaderOffsets(realFileSize, offsets);
 
-  for (const offset of offsets) {
-    if (realFileSize > 0 && realFileSize < offset + 8) {
+  const candidates = [];
+  for (const offset of prioritizedOffsets) {
+    if (realFileSize > 0 && realFileSize < offset + 16) {
       continue;
     }
     const slice = await readHeaderSlice(file, offset);
     if (slice && matchesSignature(slice)) {
-      return { offset, bytes: slice };
+      candidates.push({ offset, bytes: slice });
     }
   }
-  return null;
+
+  if (candidates.length === 0) {
+    return null;
+  }
+  if (candidates.length === 1) {
+    return candidates[0];
+  }
+
+  // When multiple signatures exist, prefer candidates matching valid region & size codes,
+  // preserving the layout priority for ties.
+  const scored = candidates.map((cand) => {
+    const regionCode = (cand.bytes[15] >> 4) & 0x0f;
+    const romSizeCode = cand.bytes[15] & 0x0f;
+    let score = 0;
+    if (REGION_CODES[regionCode] !== undefined) score += 2;
+    if (ROM_SIZE_CODES[romSizeCode] !== undefined) score += 2;
+    return { cand, score };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored[0].cand;
 }
 
 /**
- * Recomputes the 16-bit little-endian checksum over the range specified by the
- * ROM size code, excluding header bytes at 0x7FF0..0x7FFF (and the found header offset).
+ * Recomputes the 16-bit little-endian checksum over the ranges specified by the
+ * ROM size code in accordance with Sega Master System BIOS rules.
  *
  * @param {Blob|File|Uint8Array|ArrayBuffer} fileOrBytes ROM file or buffer.
  * @param {number} romSizeCode ROM size code (0..15).
  * @param {object} [options] Checksum options.
- * @param {number} [options.headerOffset] Found header offset.
  * @param {number} [options.chunkSize] Bounded slice chunk size.
- * @returns {Promise<{computedChecksum: number|null, bytesProcessed: number, isTruncated: boolean, error?: string}>}
+ * @returns {Promise<{
+ *   computedChecksum: number|null,
+ *   bytesProcessed: number,
+ *   isTruncated: boolean,
+ *   error?: string
+ * }>}
  */
 export async function computeSmsChecksum(fileOrBytes, romSizeCode, options = {}) {
-  const expectedSize = ROM_SIZE_CODES[romSizeCode];
-  if (!expectedSize) {
+  const ranges = CHECKSUM_RANGES[romSizeCode];
+  if (!ranges) {
     return {
       computedChecksum: null,
       bytesProcessed: 0,
@@ -325,59 +420,56 @@ export async function computeSmsChecksum(fileOrBytes, romSizeCode, options = {})
     };
   }
 
-  const headerOffset = options.headerOffset;
   const chunkSize = options.chunkSize || DEFAULT_CHUNK_SIZE;
+  const expectedBytes = ranges.reduce((acc, [start, end]) => acc + (end - start), 0);
   let sum = 0;
   let totalBytesProcessed = 0;
 
   if (typeof Blob !== 'undefined' && fileOrBytes instanceof Blob) {
     const fileSize = fileOrBytes.size;
-    const bytesToRead = Math.min(fileSize, expectedSize);
 
-    for (let offset = 0; offset < bytesToRead; offset += chunkSize) {
-      const end = Math.min(offset + chunkSize, bytesToRead);
-      const sliceBlob = fileOrBytes.slice(offset, end);
-      const buffer = await readBlobAsArrayBuffer(sliceBlob);
-      const chunk = new Uint8Array(buffer);
-
-      for (let i = 0; i < chunk.length; i++) {
-        const filePos = offset + i;
-        const isHeaderRange =
-          (filePos >= 0x7ff0 && filePos <= 0x7fff) ||
-          (headerOffset !== undefined && filePos >= headerOffset && filePos < headerOffset + 16);
-        if (isHeaderRange) {
-          continue;
-        }
-        sum = (sum + chunk[i]) & 0xffff;
+    for (const [rangeStart, rangeEnd] of ranges) {
+      if (rangeStart >= fileSize) {
+        continue;
       }
-      totalBytesProcessed = end;
+      const clampedEnd = Math.min(rangeEnd, fileSize);
+      for (let offset = rangeStart; offset < clampedEnd; offset += chunkSize) {
+        const end = Math.min(offset + chunkSize, clampedEnd);
+        const sliceBlob = fileOrBytes.slice(offset, end);
+        const buffer = await readBlobAsArrayBuffer(sliceBlob);
+        const chunk = new Uint8Array(buffer);
+        for (let i = 0; i < chunk.length; i++) {
+          sum = (sum + chunk[i]) & 0xffff;
+        }
+        totalBytesProcessed += chunk.length;
+      }
     }
 
     return {
       computedChecksum: sum,
       bytesProcessed: totalBytesProcessed,
-      isTruncated: totalBytesProcessed < expectedSize,
+      isTruncated: totalBytesProcessed < expectedBytes,
     };
   }
 
   const bytes = fileOrBytes instanceof Uint8Array ? fileOrBytes : new Uint8Array(fileOrBytes);
-  const bytesToRead = Math.min(bytes.length, expectedSize);
+  const fileSize = bytes.length;
 
-  for (let filePos = 0; filePos < bytesToRead; filePos++) {
-    const isHeaderRange =
-      (filePos >= 0x7ff0 && filePos <= 0x7fff) ||
-      (headerOffset !== undefined && filePos >= headerOffset && filePos < headerOffset + 16);
-    if (isHeaderRange) {
+  for (const [rangeStart, rangeEnd] of ranges) {
+    if (rangeStart >= fileSize) {
       continue;
     }
-    sum = (sum + bytes[filePos]) & 0xffff;
+    const clampedEnd = Math.min(rangeEnd, fileSize);
+    for (let pos = rangeStart; pos < clampedEnd; pos++) {
+      sum = (sum + bytes[pos]) & 0xffff;
+      totalBytesProcessed++;
+    }
   }
-  totalBytesProcessed = bytesToRead;
 
   return {
     computedChecksum: sum,
     bytesProcessed: totalBytesProcessed,
-    isTruncated: totalBytesProcessed < expectedSize,
+    isTruncated: totalBytesProcessed < expectedBytes,
   };
 }
 
@@ -428,7 +520,6 @@ export async function inspectSmsRom(file, options = {}) {
       checksumValid = false;
     } else {
       const checksumResult = await computeSmsChecksum(file, header.romSizeCode, {
-        headerOffset: headerInfo.offset,
         chunkSize: options.chunkSize,
       });
 
@@ -438,7 +529,8 @@ export async function inspectSmsRom(file, options = {}) {
         checksumStatus = checksumValid ? 'Match' : 'Mismatch';
         if (!checksumValid) {
           header.diagnostics.push(
-            `Checksum mismatch: stored ${formatHex16(header.checksum)}, computed ${formatHex16(computedChecksum)}`
+            `Checksum mismatch: stored ${formatHex16(header.checksum)}, ` +
+            `computed ${formatHex16(computedChecksum)}`
           );
         }
       }
@@ -481,7 +573,8 @@ export function generateSummary(inspection) {
     lines.push('Status: Invalid ROM');
   } else {
     const h = inspection.header;
-    const offsetHex = `0x${(inspection.headerOffset ?? h.headerOffset ?? 0).toString(16).toUpperCase()}`;
+    const activeOffset = inspection.headerOffset ?? h.headerOffset ?? 0;
+    const offsetHex = `0x${activeOffset.toString(16).toUpperCase()}`;
     lines.push(`Header Offset: ${offsetHex}`);
     lines.push(`Signature: ${h.signature}`);
     lines.push(`Product Code: ${h.productCode || 'None'}`);
@@ -494,7 +587,9 @@ export function generateSummary(inspection) {
         inspection.computedChecksum !== null ? formatHex16(inspection.computedChecksum) : 'N/A'
       } (${inspection.checksumStatus})`
     );
-    const isClean = inspection.valid && inspection.checksumValid && inspection.diagnostics.length === 0;
+    const isClean = inspection.valid &&
+      inspection.checksumValid &&
+      inspection.diagnostics.length === 0;
     lines.push(`Status: ${isClean ? 'Valid' : 'Has Diagnostics'}`);
   }
 
@@ -556,20 +651,18 @@ export function createMockSmsRom({
       rom[headerOffset + 10] = checksum & 0xff;
       rom[headerOffset + 11] = (checksum >> 8) & 0xff;
     } else {
-      const romSize = ROM_SIZE_CODES[romSizeCode] ?? totalSize;
-      const range = Math.min(romSize, totalSize);
-      let sum = 0;
-      for (let i = 0; i < range; i++) {
-        const isHeaderRange =
-          (i >= 0x7ff0 && i <= 0x7fff) ||
-          (i >= headerOffset && i < headerOffset + 16);
-        if (isHeaderRange) {
-          continue;
+      const ranges = CHECKSUM_RANGES[romSizeCode];
+      if (ranges) {
+        let sum = 0;
+        for (const [start, end] of ranges) {
+          const actualEnd = Math.min(end, totalSize);
+          for (let i = start; i < actualEnd; i++) {
+            sum = (sum + rom[i]) & 0xffff;
+          }
         }
-        sum = (sum + rom[i]) & 0xffff;
+        rom[headerOffset + 10] = sum & 0xff;
+        rom[headerOffset + 11] = (sum >> 8) & 0xff;
       }
-      rom[headerOffset + 10] = sum & 0xff;
-      rom[headerOffset + 11] = (sum >> 8) & 0xff;
     }
   }
 

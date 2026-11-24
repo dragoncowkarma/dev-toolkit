@@ -26,6 +26,7 @@ export default function SmsRomHeaderInspectorTool() {
   useEffect(() => {
     if (!file) {
       setInspection(null);
+      setLoading(false);
       return;
     }
 
@@ -72,6 +73,7 @@ export default function SmsRomHeaderInspectorTool() {
     setFile(null);
     setFileName('');
     setInspection(null);
+    setLoading(false);
     setCopyError('');
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -253,11 +255,15 @@ export default function SmsRomHeaderInspectorTool() {
               isValid
                 ? 'sms-inspector__status-badge--valid'
                 : inspection.header
-                ? 'sms-inspector__status-badge--warning'
-                : 'sms-inspector__status-badge--invalid'
+                  ? 'sms-inspector__status-badge--warning'
+                  : 'sms-inspector__status-badge--invalid'
             }`}
           >
-            {isValid ? '✓ Valid Header' : inspection.header ? '⚠ Header Issues' : '✕ Missing Header'}
+            {isValid
+              ? '✓ Valid Header'
+              : inspection.header
+                ? '⚠ Header Issues'
+                : '✕ Missing Header'}
           </div>
         )}
       </div>
@@ -299,8 +305,8 @@ export default function SmsRomHeaderInspectorTool() {
               {inspection.headerOffset === 0x7ff0
                 ? '32 KB boundary'
                 : inspection.headerOffset === 0x3ff0
-                ? '16 KB boundary'
-                : '8 KB boundary'}
+                  ? '16 KB boundary'
+                  : '8 KB boundary'}
             </span>
           </div>
 
