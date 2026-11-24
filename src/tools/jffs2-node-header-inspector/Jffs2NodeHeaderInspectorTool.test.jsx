@@ -106,7 +106,7 @@ describe('Jffs2NodeHeaderInspectorTool', () => {
     expect(screen.queryByLabelText('Inspection summary')).not.toBeInTheDocument();
   });
 
-  it('shows Window-limited status without truncated-node error for an 8192-byte image', async () => {
+  it('shows Window-limited status without truncated-node error for 8192 B image', async () => {
     const raw = new Uint8Array(8192);
     const largeInode = jffs2Utils.buildJffs2Node({
       nodetype: 0xe002,

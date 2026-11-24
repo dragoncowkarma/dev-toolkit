@@ -166,7 +166,7 @@ describe('parseJffs2Nodes', () => {
     );
   });
 
-  it('reports window-limited-node (info) instead of truncated-node when node exceeds 4096 B cap in an 8192 B file', async () => {
+  it('reports window-limited-node when node exceeds 4096 B cap in an 8192 B file', async () => {
     const raw = new Uint8Array(8192);
     const largeInode = buildJffs2Node({
       nodetype: 0xe002,
@@ -194,7 +194,7 @@ describe('parseJffs2Nodes', () => {
     );
   });
 
-  it('still flags truncated-node when totlen exceeds the real file size of an 8192 B file', async () => {
+  it('flags truncated-node when totlen exceeds the real 8192 B file size', async () => {
     const raw = new Uint8Array(8192);
     const oversizedInode = buildJffs2Node({
       nodetype: 0xe002,
@@ -216,7 +216,7 @@ describe('parseJffs2Nodes', () => {
     );
   });
 
-  it('reports window-limited-header when a node header crosses the 4096 B window boundary', async () => {
+  it('reports window-limited-header when a header crosses the 4096 B boundary', async () => {
     const raw = new Uint8Array(8192).fill(0xff);
     const leadingCleanmarker = buildJffs2Node({
       nodetype: 0x2003,
