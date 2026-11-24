@@ -4,8 +4,12 @@ const LICENSES = new Set([
 ]);
 
 function asciiField(bytes) {
-  const text = Array.from(bytes, (byte) => String.fromCharCode(byte)).join('');
-  const trimmed = text.replace(/^[\x00\x20]+|[\x00\x20]+$/g, '');
+  let start = 0;
+  let end = bytes.length;
+  while (start < end && (bytes[start] === 0 || bytes[start] === 0x20)) start++;
+  while (end > start && (bytes[end - 1] === 0 || bytes[end - 1] === 0x20)) end--;
+  const trimmed = Array.from(bytes.subarray(start, end), (byte) => String.fromCharCode(byte))
+    .join('');
   return trimmed && /^[\x20-\x7e]+$/.test(trimmed) ? trimmed : 'Unknown';
 }
 
