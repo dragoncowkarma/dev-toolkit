@@ -503,6 +503,68 @@ describe('Multiple signatures & Header candidate selection according to ROM layo
     expect(found).not.toBeNull();
     expect(found.offset).toBe(0x7ff0);
   });
+
+  it('selects 0x7FF0 over earlier plausible 0x1FF0 signature when real header has unknown metadata',
+    async () => {
+      // 32 KB ROM with real header at 0x7FF0 having an unknown region code 0x8
+      const rom = createMockSmsRom({
+        headerOffset: 0x7ff0,
+        totalSize: 32 * 1024,
+        romSizeCode: 0xc, // 32 KB
+        regionCode: 0x8, // Unknown region code
+      });
+
+      // Place TMR SEGA and plausible metadata (0x4C: SMS Export, 32 KB) in ordinary data at 0x1FF0
+      const sigBytes = [0x54, 0x4d, 0x52, 0x20, 0x53, 0x45, 0x47, 0x41];
+      for (let i = 0; i < 8; i++) {
+        rom[0x1ff0 + i] = sigBytes[i];
+      }
+      rom[0x1fff] = 0x4c;
+
+      // Recompute valid checksum at 0x7FF0 after modifying ROM data
+      let sum = 0;
+      for (let i = 0; i < 0x7ff0; i++) {
+        sum = (sum + rom[i]) & 0xffff;
+      }
+      rom[0x7ff0 + 10] = sum & 0xff;
+      rom[0x7ff0 + 11] = (sum >> 8) & 0xff;
+
+      const file = new File([rom], 'unknown_region_multi_sig_32kb.sms');
+      const result = await inspectSmsRom(file);
+
+      // Real header at 0x7FF0 must be selected, preserving the unknown region diagnostic
+      expect(result.valid).toBe(true);
+      expect(result.headerOffset).toBe(0x7ff0);
+      expect(result.header.regionCode).toBe(0x8);
+      expect(result.header.region).toBe('Unknown (0x8)');
+      expect(result.diagnostics).toContain('Unknown region code: 0x8');
+      expect(result.checksumValid).toBe(true);
+      expect(result.computedChecksum).toBe(sum);
+    });
+
+  it('selects 0x7FF0 over earlier signature when real header has unknown ROM size code',
+    async () => {
+      const rom = createMockSmsRom({
+        headerOffset: 0x7ff0,
+        totalSize: 32 * 1024,
+        romSizeCode: 0x5, // Unknown size code
+        regionCode: 0x4,
+      });
+
+      const sigBytes = [0x54, 0x4d, 0x52, 0x20, 0x53, 0x45, 0x47, 0x41];
+      for (let i = 0; i < 8; i++) {
+        rom[0x1ff0 + i] = sigBytes[i];
+      }
+      rom[0x1fff] = 0x4c; // Plausible metadata at 0x1FF0
+
+      const file = new File([rom], 'unknown_size_multi_sig.sms');
+      const result = await inspectSmsRom(file);
+
+      expect(result.valid).toBe(true);
+      expect(result.headerOffset).toBe(0x7ff0);
+      expect(result.header.romSizeCode).toBe(0x5);
+      expect(result.diagnostics).toContain('Unknown ROM size code: 0x5');
+    });
 });
 
 describe('Independent checksum vectors (SMS BIOS range validation)', () => {

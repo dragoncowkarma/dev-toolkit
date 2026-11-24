@@ -307,6 +307,39 @@ export async function readHeaderSlice(file, offset) {
  * @returns {Promise<{offset: number, bytes: Uint8Array}|null>}
  */
 /**
+ * Determines layout priority rank for a given header offset and file size.
+ * Lower value indicates higher priority (closer to expected hardware/BIOS layout).
+ *
+ * @param {number} offset Candidate header offset.
+ * @param {number} [fileSize] Total ROM file size in bytes.
+ * @returns {number} Layout priority rank (0 = highest).
+ */
+export function getHeaderOffsetPriority(offset, fileSize) {
+  if (typeof fileSize === 'number' && fileSize > 0) {
+    if (fileSize >= 0x8000) {
+      if (offset === 0x7ff0) return 0;
+      if (offset === 0x3ff0) return 1;
+      if (offset === 0x1ff0) return 2;
+      return 3;
+    }
+    if (fileSize >= 0x4000) {
+      if (offset === 0x3ff0) return 0;
+      if (offset === 0x1ff0) return 1;
+      if (offset === 0x7ff0) return 2;
+      return 3;
+    }
+    if (offset === 0x1ff0) return 0;
+    if (offset === 0x3ff0) return 1;
+    if (offset === 0x7ff0) return 2;
+    return 3;
+  }
+  if (offset === 0x7ff0) return 0;
+  if (offset === 0x3ff0) return 1;
+  if (offset === 0x1ff0) return 2;
+  return 3;
+}
+
+/**
  * Prioritizes candidate header search offsets according to ROM size and layout.
  * For >= 32 KB ROMs, 0x7FF0 is standard, followed by 0x3FF0 and 0x1FF0.
  * For 16 KB ROMs, 0x3FF0 is standard, followed by 0x1FF0.
@@ -317,38 +350,17 @@ export async function readHeaderSlice(file, offset) {
  * @returns {number[]} Offsets ordered by ROM layout priority.
  */
 export function getCandidateHeaderOffsets(fileSize, offsets = HEADER_OFFSETS) {
-  const getPriority = (offset) => {
-    if (typeof fileSize === 'number' && fileSize > 0) {
-      if (fileSize >= 0x8000) {
-        if (offset === 0x7ff0) return 0;
-        if (offset === 0x3ff0) return 1;
-        if (offset === 0x1ff0) return 2;
-        return 3;
-      }
-      if (fileSize >= 0x4000) {
-        if (offset === 0x3ff0) return 0;
-        if (offset === 0x1ff0) return 1;
-        if (offset === 0x7ff0) return 2;
-        return 3;
-      }
-      if (offset === 0x1ff0) return 0;
-      if (offset === 0x3ff0) return 1;
-      if (offset === 0x7ff0) return 2;
-      return 3;
-    }
-    if (offset === 0x7ff0) return 0;
-    if (offset === 0x3ff0) return 1;
-    if (offset === 0x1ff0) return 2;
-    return 3;
-  };
-
-  return [...offsets].sort((a, b) => getPriority(a) - getPriority(b));
+  return [...offsets].sort(
+    (a, b) => getHeaderOffsetPriority(a, fileSize) - getHeaderOffsetPriority(b, fileSize)
+  );
 }
 
 /**
  * Searches for a valid TMR SEGA header across standard offsets.
  * When multiple signatures are present, selects the candidate matching
- * the ROM size layout and valid header metadata.
+ * the ROM size layout priority without letting plausible metadata at earlier
+ * arbitrary data offsets override the actual expected header location.
+ * Metadata validity is only used as a tiebreaker for equal layout priorities.
  *
  * @param {Blob|File|Uint8Array|ArrayBuffer} file Source file or buffer.
  * @param {object} [options] Search options.
@@ -379,18 +391,30 @@ export async function findSmsHeader(file, options = {}) {
     return candidates[0];
   }
 
-  // When multiple signatures exist, prefer candidates matching valid region & size codes,
-  // preserving the layout priority for ties.
-  const scored = candidates.map((cand) => {
+  // When multiple signatures exist, ROM layout priority is the primary decider.
+  // Candidates at the expected layout offset (e.g. 0x7FF0 for >= 32 KB ROMs)
+  // must not be overridden by earlier arbitrary ROM data with plausible metadata.
+  // Metadata validity is only used as a tiebreaker for equal layout priorities.
+  const scored = candidates.map((cand, index) => {
+    const priority = getHeaderOffsetPriority(cand.offset, realFileSize);
     const regionCode = (cand.bytes[15] >> 4) & 0x0f;
     const romSizeCode = cand.bytes[15] & 0x0f;
     let score = 0;
     if (REGION_CODES[regionCode] !== undefined) score += 2;
     if (ROM_SIZE_CODES[romSizeCode] !== undefined) score += 2;
-    return { cand, score };
+    return { cand, priority, score, index };
   });
 
-  scored.sort((a, b) => b.score - a.score);
+  scored.sort((a, b) => {
+    if (a.priority !== b.priority) {
+      return a.priority - b.priority;
+    }
+    if (b.score !== a.score) {
+      return b.score - a.score;
+    }
+    return a.index - b.index;
+  });
+
   return scored[0].cand;
 }
 
