@@ -208,7 +208,8 @@ export function parseReiserfsSuperblock(input, offset = REISERFS_DEFAULT_OFFSET)
     } else {
       formatDescription = `ReiserFS unknown version ${version} (journal relocated)`;
       diagnostics.push(
-        `Unknown ReiserFS version ${version} for relocated journal magic "${magic}". Expected 1 (3.5) or 2 (3.6).`
+        `Unknown ReiserFS version ${version} for relocated journal magic "${magic}". ` +
+          'Expected 1 (3.5) or 2 (3.6).'
       );
     }
   } else {

@@ -171,6 +171,7 @@
 }
 
 .reiserfs-file-input:focus-visible + .reiserfs-file-btn,
+.reiserfs-file-label:focus-within .reiserfs-file-btn,
 .reiserfs-file-btn:focus-visible {
   outline: 2px solid var(--color-primary-light);
   outline-offset: 2px;

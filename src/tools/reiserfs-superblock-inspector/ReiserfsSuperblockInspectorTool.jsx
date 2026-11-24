@@ -260,7 +260,6 @@ export default function ReiserfsSuperblockInspectorTool() {
       ) : (
         <div className="reiserfs-file-dropzone">
           <label className="reiserfs-file-label" htmlFor="reiserfs-file-input">
-            <span className="reiserfs-btn reiserfs-file-btn">Select Disk Image / Dump File</span>
             <input
               ref={fileInputRef}
               id="reiserfs-file-input"
@@ -268,7 +267,16 @@ export default function ReiserfsSuperblockInspectorTool() {
               className="reiserfs-file-input"
               aria-label="Upload ReiserFS file"
               onChange={handleFileChange}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  e.currentTarget.click();
+                }
+              }}
             />
+            <span className="reiserfs-btn reiserfs-file-btn">
+              Select Disk Image / Dump File
+            </span>
           </label>
           <p className="reiserfs-metric-card-sub">
             Reads only the 512-byte slice holding the superblock via File.slice.

@@ -109,7 +109,7 @@ describe('ReiserfsSuperblockInspectorTool - Invalid hex input', () => {
   });
 });
 
-describe('ReiserfsSuperblockInspectorTool - Mode switching and deferred read loading states', () => {
+describe('ReiserfsSuperblockInspectorTool - Mode switching and loading states', () => {
   it('clears previous hex results when switching to File Upload without a file', async () => {
     render(<ReiserfsSuperblockInspectorTool />);
 
@@ -128,7 +128,7 @@ describe('ReiserfsSuperblockInspectorTool - Mode switching and deferred read loa
     expect(screen.getByRole('button', { name: 'Copy JSON' })).toBeDisabled();
   });
 
-  it('clears previous results and shows loading state while deferred file read is in progress', async () => {
+  it('clears previous results and shows loading state while read is in progress', async () => {
     const deferred1 = createDeferred();
     const deferred2 = createDeferred();
     vi.spyOn(utils, 'readFileSlice')
@@ -204,15 +204,19 @@ describe('ReiserfsSuperblockInspectorTool - Keyboard accessibility', () => {
     expect(fileInput).toHaveClass('reiserfs-file-input');
     expect(fileInput).not.toHaveStyle({ display: 'none' });
 
-    // Focus file input
+    // Focus file input and verify DOM structure supports adjacent sibling focus styling
     fileInput.focus();
     expect(document.activeElement).toBe(fileInput);
+    expect(fileInput.nextElementSibling).toHaveClass('reiserfs-file-btn');
 
-    // Verify change event works after keyboard activation
+    // Verify keyboard activation triggers file chooser click
     const clickSpy = vi.spyOn(fileInput, 'click');
     fireEvent.keyDown(fileInput, { key: 'Enter', code: 'Enter' });
-    // In standard DOM / browser, a label or input receives keyboard events
-    expect(fileInput).toBeInTheDocument();
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+
+    fireEvent.keyDown(fileInput, { key: ' ', code: 'Space' });
+    expect(clickSpy).toHaveBeenCalledTimes(2);
+    clickSpy.mockRestore();
   });
 });
 
