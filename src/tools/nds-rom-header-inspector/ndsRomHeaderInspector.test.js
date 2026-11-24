@@ -1,16 +1,24 @@
 import { describe, expect, it } from 'vitest';
 import {
+  BANNER_LANGUAGES,
+  BANNER_VERSIONS,
   base64ToBytes,
   bytesToHexString,
   calculateCrc16,
   calculateDeviceCapacity,
+  createSyntheticBanner,
   createSyntheticHeader,
+  decodeUtf16LeTitle,
+  encodeUtf16Le,
   formatBytes,
   formatHex,
   hexToBytes,
   MAX_DEVICE_CAPACITY,
+  MIN_BANNER_SIZE,
   MIN_DEVICE_CAPACITY,
+  MIN_HEADER_SIZE,
   parseInputToBytes,
+  parseNdsBanner,
   parseNdsHeader,
   STANDARD_NINTENDO_LOGO,
   validateArmOffsets,
@@ -558,5 +566,223 @@ describe('calculateDeviceCapacity', () => {
       formatted: 'Unknown',
       valid: false,
     });
+  });
+});
+
+describe('UTF-16LE Title Encoding and Decoding', () => {
+  it('encodes and decodes ASCII and Unicode strings', () => {
+    const text = 'Mario Kart DS';
+    const encoded = encodeUtf16Le(text);
+    const decoded = decodeUtf16LeTitle(encoded, 0, 0x100);
+    expect(decoded.raw).toBe(text);
+    expect(decoded.lines).toEqual([text]);
+  });
+
+  it('splits multiline titles on newline into lines', () => {
+    const text = 'Mario Kart DS\nNintendo';
+    const encoded = encodeUtf16Le(text);
+    const decoded = decodeUtf16LeTitle(encoded, 0, 0x100);
+    expect(decoded.raw).toBe('Mario Kart DS\nNintendo');
+    expect(decoded.lines).toEqual(['Mario Kart DS', 'Nintendo']);
+  });
+
+  it('handles CRLF line endings', () => {
+    const text = 'Line 1\r\nLine 2';
+    const encoded = encodeUtf16Le(text);
+    const decoded = decodeUtf16LeTitle(encoded, 0, 0x100);
+    expect(decoded.lines).toEqual(['Line 1', 'Line 2']);
+  });
+
+  it('decodes non-ASCII titles including Japanese Katakana and accented characters', () => {
+    const jpText = 'マリオカートDS\n任天堂';
+    const jpEncoded = encodeUtf16Le(jpText);
+    const jpDecoded = decodeUtf16LeTitle(jpEncoded, 0, 0x100);
+    expect(jpDecoded.raw).toBe(jpText);
+    expect(jpDecoded.lines).toEqual(['マリオカートDS', '任天堂']);
+
+    const frText = 'Pokémon Édition Platine\nNintendo';
+    const frEncoded = encodeUtf16Le(frText);
+    const frDecoded = decodeUtf16LeTitle(frEncoded, 0, 0x100);
+    expect(frDecoded.raw).toBe(frText);
+    expect(frDecoded.lines).toEqual(['Pokémon Édition Platine', 'Nintendo']);
+  });
+
+  it('returns empty lines for null or empty buffer', () => {
+    expect(decodeUtf16LeTitle(null, 0)).toEqual({ raw: '', lines: [] });
+    expect(decodeUtf16LeTitle(new Uint8Array(0), 10)).toEqual({ raw: '', lines: [] });
+    const empty = new Uint8Array(256);
+    expect(decodeUtf16LeTitle(empty, 0, 256)).toEqual({ raw: '', lines: [] });
+  });
+});
+
+describe('NDS Icon/Title Banner Inspector', () => {
+  it('exports valid banner constants and parseNdsBanner utility', () => {
+    expect(MIN_BANNER_SIZE).toBe(0x840);
+    expect(BANNER_LANGUAGES).toHaveLength(6);
+    expect(BANNER_VERSIONS[0x0001]).toContain('Version 1');
+    expect(typeof parseNdsBanner).toBe('function');
+  });
+
+  it('parses a valid version 1 banner with all 6 language titles and valid CRC-16', () => {
+    const rom = createSyntheticHeader({
+      includeBanner: true,
+      bannerOffset: 0x200,
+      bannerTitles: {
+        japanese: 'マリオカートDS\n任天堂',
+        english: 'Mario Kart DS\nNintendo',
+        french: 'Mario Kart DS\nNintendo',
+        german: 'Mario Kart DS\nNintendo',
+        italian: 'Mario Kart DS\nNintendo',
+        spanish: 'Mario Kart DS\nNintendo',
+      },
+    });
+
+    const result = parseNdsHeader(rom);
+    expect(result.ok).toBe(true);
+    expect(result.valid).toBe(true);
+    expect(result.banner.present).toBe(true);
+    expect(result.banner.offset).toBe(0x200);
+    expect(result.banner.offsetHex).toBe('0x00000200');
+    expect(result.banner.version).toBe(0x0001);
+    expect(result.banner.versionHex).toBe('0x0001');
+    expect(result.banner.versionName).toBe('Version 1 (Original NDS)');
+    expect(result.banner.valid).toBe(true);
+    expect(result.banner.crc.v1.valid).toBe(true);
+    expect(result.banner.crc.v1.expected).toBe(result.banner.crc.v1.actual);
+    expect(result.banner.titles.japanese.lines).toEqual(['マリオカートDS', '任天堂']);
+    expect(result.banner.titles.english.lines).toEqual(['Mario Kart DS', 'Nintendo']);
+    expect(result.banner.titles.french.lines).toEqual(['Mario Kart DS', 'Nintendo']);
+    expect(result.banner.titles.german.lines).toEqual(['Mario Kart DS', 'Nintendo']);
+    expect(result.banner.titles.italian.lines).toEqual(['Mario Kart DS', 'Nintendo']);
+    expect(result.banner.titles.spanish.lines).toEqual(['Mario Kart DS', 'Nintendo']);
+    expect(result.banner.titlesList).toHaveLength(6);
+  });
+
+  it('detects a banner CRC-16 mismatch and reports error', () => {
+    const rom = createSyntheticHeader({
+      includeBanner: true,
+      bannerOffset: 0x200,
+      badBannerV1Crc: true,
+    });
+
+    const result = parseNdsHeader(rom);
+    expect(result.ok).toBe(true);
+    expect(result.valid).toBe(false);
+    expect(result.banner.present).toBe(true);
+    expect(result.banner.valid).toBe(false);
+    expect(result.banner.crc.v1.valid).toBe(false);
+    expect(result.banner.crc.v1.expected).not.toBe(result.banner.crc.v1.actual);
+    expect(result.validationErrors.some((e) => e.includes('Banner v1 CRC-16 mismatch'))).toBe(true);
+  });
+
+  it('reports diagnostic without crashing when banner offset is 0', () => {
+    const rom = createSyntheticHeader({ bannerOffset: 0 });
+    const result = parseNdsHeader(rom);
+
+    expect(result.ok).toBe(true);
+    expect(result.valid).toBe(true);
+    expect(result.banner.present).toBe(false);
+    expect(result.banner.offset).toBe(0);
+    expect(result.banner.offsetHex).toBe('0x00000000');
+    expect(result.banner.diagnostic).toContain('Banner offset is 0x00000000');
+    expect(result.banner.titles).toBeNull();
+  });
+
+  it('reports diagnostic when banner offset is past EOF', () => {
+    // 352-byte header, but bannerOffset points to 0x4000 (> 352 bytes)
+    const rom = createSyntheticHeader({ bannerOffset: 0x4000, totalSize: MIN_HEADER_SIZE });
+    const result = parseNdsHeader(rom);
+
+    expect(result.ok).toBe(true);
+    expect(result.valid).toBe(false);
+    expect(result.banner.present).toBe(false);
+    expect(result.banner.valid).toBe(false);
+    expect(result.banner.diagnostic).toMatch(/beyond end of file/);
+    expect(result.validationErrors.some((e) => e.includes('beyond end of file'))).toBe(true);
+  });
+
+  it('reports diagnostic when banner is truncated (fewer than 0x840 bytes)', () => {
+    // Total size only gives 0x100 bytes of banner space at 0x200
+    const rom = createSyntheticHeader({
+      includeBanner: true,
+      bannerOffset: 0x200,
+      totalSize: 0x200 + 0x100,
+    });
+    const result = parseNdsHeader(rom);
+
+    expect(result.ok).toBe(true);
+    expect(result.valid).toBe(false);
+    expect(result.banner.present).toBe(false);
+    expect(result.banner.valid).toBe(false);
+    expect(result.banner.diagnostic).toMatch(/Truncated banner block/);
+    expect(result.validationErrors.some((e) => e.includes('Truncated banner block'))).toBe(true);
+  });
+
+  it('reports diagnostic when banner version is unknown', () => {
+    const banner = createSyntheticBanner({ version: 0x9999 });
+    const total = 0x200 + banner.length;
+    const rom = new Uint8Array(total);
+    rom.set(createSyntheticHeader({ bannerOffset: 0x200, totalSize: total }).subarray(0, 0x160), 0);
+    rom.set(banner, 0x200);
+
+    const result = parseNdsHeader(rom);
+    expect(result.ok).toBe(true);
+    expect(result.valid).toBe(false);
+    expect(result.banner.present).toBe(true);
+    expect(result.banner.valid).toBe(false);
+    expect(result.banner.version).toBe(0x9999);
+    expect(result.banner.diagnostic).toMatch(/Unknown banner version: 0x9999/);
+    expect(result.validationErrors.some((e) => e.includes('Unknown banner version'))).toBe(true);
+  });
+
+  it('reports diagnostic when banner offset is within header (< MIN_HEADER_SIZE)', () => {
+    const rom = createSyntheticHeader({ bannerOffset: 0x080 });
+    const result = parseNdsHeader(rom);
+
+    expect(result.ok).toBe(true);
+    expect(result.valid).toBe(false);
+    expect(result.banner.present).toBe(false);
+    expect(result.banner.valid).toBe(false);
+    expect(result.banner.diagnostic).toMatch(/within header/);
+  });
+
+  it('verifies v2, v3, and v103 banner CRCs when applicable', () => {
+    // Version 2 banner (includes v1 and v2 CRCs, Chinese title space up to 0x940)
+    const v2Banner = createSyntheticBanner({ version: 0x0002 });
+    expect(v2Banner.length).toBe(0x940);
+
+    const v2Rom = new Uint8Array(0x200 + v2Banner.length);
+    v2Rom.set(createSyntheticHeader({ bannerOffset: 0x200, totalSize: v2Rom.length }), 0);
+    v2Rom.set(v2Banner, 0x200);
+
+    const v2Result = parseNdsHeader(v2Rom);
+    expect(v2Result.ok).toBe(true);
+    expect(v2Result.banner.present).toBe(true);
+    expect(v2Result.banner.version).toBe(0x0002);
+    expect(v2Result.banner.crc.v1.valid).toBe(true);
+    expect(v2Result.banner.crc.v2.applicable).toBe(true);
+    expect(v2Result.banner.crc.v2.valid).toBe(true);
+
+    // Version 3 banner
+    const v3Banner = createSyntheticBanner({ version: 0x0003 });
+    expect(v3Banner.length).toBe(0x0a40);
+    const v3Rom = new Uint8Array(0x200 + v3Banner.length);
+    v3Rom.set(createSyntheticHeader({ bannerOffset: 0x200, totalSize: v3Rom.length }), 0);
+    v3Rom.set(v3Banner, 0x200);
+
+    const v3Result = parseNdsHeader(v3Rom);
+    expect(v3Result.banner.crc.v3.applicable).toBe(true);
+    expect(v3Result.banner.crc.v3.valid).toBe(true);
+
+    // Version 103h banner
+    const v103Banner = createSyntheticBanner({ version: 0x0103 });
+    expect(v103Banner.length).toBe(0x23c0);
+    const v103Rom = new Uint8Array(0x200 + v103Banner.length);
+    v103Rom.set(createSyntheticHeader({ bannerOffset: 0x200, totalSize: v103Rom.length }), 0);
+    v103Rom.set(v103Banner, 0x200);
+
+    const v103Result = parseNdsHeader(v103Rom);
+    expect(v103Result.banner.crc.v103.applicable).toBe(true);
+    expect(v103Result.banner.crc.v103.valid).toBe(true);
   });
 });
