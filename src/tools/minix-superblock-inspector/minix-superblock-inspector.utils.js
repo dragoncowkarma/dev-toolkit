@@ -120,6 +120,162 @@ export function readFileBuffer(file) {
 }
 
 /**
+ * Checks whether candidate fields in DataView conform to plausible Minix v3 superblock invariants.
+ *
+ * @param {DataView} view - DataView of the buffer.
+ * @returns {boolean} True if candidate layout satisfies Minix v3 invariants.
+ */
+function isPlausibleMinixV3(view) {
+  const blockSize = view.getUint16(SUPERBLOCK_OFFSET + 28, true);
+  // Minix v3 block size must be a power of 2 between 512 and 65536.
+  const isValidBlockSize =
+    blockSize >= 512 &&
+    blockSize <= 65536 &&
+    (blockSize & (blockSize - 1)) === 0;
+
+  if (!isValidBlockSize) return false;
+
+  const pad0 = view.getUint16(SUPERBLOCK_OFFSET + 4, true);
+  const pad1 = view.getUint16(SUPERBLOCK_OFFSET + 14, true);
+  const pad2 = view.getUint16(SUPERBLOCK_OFFSET + 26, true);
+  if (pad0 !== 0 || pad1 !== 0 || pad2 !== 0) return false;
+
+  const ninodes = view.getUint32(SUPERBLOCK_OFFSET + 0, true);
+  const imapBlocks = view.getUint16(SUPERBLOCK_OFFSET + 6, true);
+  const zmapBlocks = view.getUint16(SUPERBLOCK_OFFSET + 8, true);
+  const firstDataZone = view.getUint16(SUPERBLOCK_OFFSET + 10, true);
+
+  if (ninodes === 0 || imapBlocks === 0 || zmapBlocks === 0 || firstDataZone === 0) {
+    return false;
+  }
+
+  // First data zone must be at or after boot block + superblock + bitmap blocks
+  if (firstDataZone < 2 + imapBlocks + zmapBlocks) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Checks whether candidate fields in DataView conform to plausible Minix v1/v2 invariants.
+ *
+ * @param {DataView} view - DataView of the buffer.
+ * @returns {boolean} True if candidate layout satisfies Minix v1/v2 invariants.
+ */
+function isPlausibleMinixV1V2(view) {
+  const ninodes = view.getUint16(SUPERBLOCK_OFFSET + 0, true);
+  const imapBlocks = view.getUint16(SUPERBLOCK_OFFSET + 4, true);
+  const zmapBlocks = view.getUint16(SUPERBLOCK_OFFSET + 6, true);
+  const firstDataZone = view.getUint16(SUPERBLOCK_OFFSET + 8, true);
+  const maxFileSize = view.getUint32(SUPERBLOCK_OFFSET + 12, true);
+
+  if (ninodes === 0 || imapBlocks === 0 || zmapBlocks === 0 || firstDataZone === 0) {
+    return false;
+  }
+
+  if (firstDataZone < 2 + imapBlocks + zmapBlocks) {
+    return false;
+  }
+
+  if (maxFileSize === 0) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Decodes a Minix v1 or v2 superblock.
+ *
+ * @param {DataView} view - DataView of the buffer.
+ * @param {number} magic - Superblock magic at offset 16.
+ * @returns {object} Decoded fields.
+ */
+function decodeMinixV1V2(view, magic) {
+  const isV1 = magic === MINIX_MAGIC.V1_14 || magic === MINIX_MAGIC.V1_30;
+  const version = isV1 ? 1 : 2;
+  const variant = MINIX_VARIANTS[magic];
+
+  const inodeCount = view.getUint16(SUPERBLOCK_OFFSET + 0, true);
+  const nzones = view.getUint16(SUPERBLOCK_OFFSET + 2, true);
+  const imapBlocks = view.getUint16(SUPERBLOCK_OFFSET + 4, true);
+  const zmapBlocks = view.getUint16(SUPERBLOCK_OFFSET + 6, true);
+  const firstDataZone = view.getUint16(SUPERBLOCK_OFFSET + 8, true);
+  const logZoneSize = view.getUint16(SUPERBLOCK_OFFSET + 10, true);
+  const maxFileSize = view.getUint32(SUPERBLOCK_OFFSET + 12, true);
+  const state = view.getUint16(SUPERBLOCK_OFFSET + 18, true);
+  const zones = view.getUint32(SUPERBLOCK_OFFSET + 20, true);
+
+  // Preserve the 32-bit v2 on-disk zone count even when it is 0
+  const zoneCount = isV1 ? nzones : zones;
+  const stateInfo = formatStateFlags(state);
+
+  return {
+    variant,
+    version,
+    magic,
+    magicHex: `0x${(magic >>> 0).toString(16).toUpperCase().padStart(4, '0')}`,
+    inodeCount,
+    zoneCount,
+    imapBlocks,
+    zmapBlocks,
+    firstDataZone,
+    logZoneSize,
+    maxFileSize,
+    state,
+    stateHex: stateInfo.rawHex,
+    stateDescription: stateInfo.summary,
+    blockSize: 1024,
+    v3BlockSize: null,
+    diskVersion: null,
+  };
+}
+
+/**
+ * Decodes a Minix v3 superblock.
+ *
+ * @param {DataView} view - DataView of the buffer.
+ * @param {number} magic - Superblock magic at offset 24.
+ * @returns {object} Decoded fields.
+ */
+function decodeMinixV3(view, magic) {
+  const variant = MINIX_VARIANTS[MINIX_MAGIC.V3];
+  const version = 3;
+
+  const inodeCount = view.getUint32(SUPERBLOCK_OFFSET + 0, true);
+  const imapBlocks = view.getUint16(SUPERBLOCK_OFFSET + 6, true);
+  const zmapBlocks = view.getUint16(SUPERBLOCK_OFFSET + 8, true);
+  const firstDataZone = view.getUint16(SUPERBLOCK_OFFSET + 10, true);
+  const logZoneSize = view.getUint16(SUPERBLOCK_OFFSET + 12, true);
+  const maxFileSize = view.getUint32(SUPERBLOCK_OFFSET + 16, true);
+  const zoneCount = view.getUint32(SUPERBLOCK_OFFSET + 20, true);
+  const blockSize = view.getUint16(SUPERBLOCK_OFFSET + 28, true);
+  const diskVersion = view.getUint8(SUPERBLOCK_OFFSET + 30);
+  const stateInfo = formatStateFlags(null);
+
+  return {
+    variant,
+    version,
+    magic,
+    magicHex: `0x${(magic >>> 0).toString(16).toUpperCase().padStart(4, '0')}`,
+    inodeCount,
+    zoneCount,
+    imapBlocks,
+    zmapBlocks,
+    firstDataZone,
+    logZoneSize,
+    maxFileSize,
+    state: null,
+    stateHex: stateInfo.rawHex,
+    stateDescription: stateInfo.summary,
+    blockSize,
+    v3BlockSize: blockSize,
+    diskVersion,
+  };
+}
+
+/**
  * Parses a Minix filesystem superblock from a buffer.
  *
  * @param {Uint8Array|ArrayBuffer} buffer - Buffer containing the superblock at offset 1024.
@@ -154,86 +310,39 @@ export function parseMinixSuperblock(buffer) {
   // Minix v3 magic is at offset 1024 + 24 (uint16 LE)
   const magic24 = view.getUint16(SUPERBLOCK_OFFSET + 24, true);
 
-  if (
+  const isV1V2 =
     magic16 === MINIX_MAGIC.V1_14 ||
     magic16 === MINIX_MAGIC.V1_30 ||
     magic16 === MINIX_MAGIC.V2_14 ||
-    magic16 === MINIX_MAGIC.V2_30
-  ) {
-    const isV1 = magic16 === MINIX_MAGIC.V1_14 || magic16 === MINIX_MAGIC.V1_30;
-    const version = isV1 ? 1 : 2;
-    const variant = MINIX_VARIANTS[magic16];
+    magic16 === MINIX_MAGIC.V2_30;
+  const isV3 = magic24 === MINIX_MAGIC.V3;
 
-    const inodeCount = view.getUint16(SUPERBLOCK_OFFSET + 0, true);
-    const nzones = view.getUint16(SUPERBLOCK_OFFSET + 2, true);
-    const imapBlocks = view.getUint16(SUPERBLOCK_OFFSET + 4, true);
-    const zmapBlocks = view.getUint16(SUPERBLOCK_OFFSET + 6, true);
-    const firstDataZone = view.getUint16(SUPERBLOCK_OFFSET + 8, true);
-    const logZoneSize = view.getUint16(SUPERBLOCK_OFFSET + 10, true);
-    const maxFileSize = view.getUint32(SUPERBLOCK_OFFSET + 12, true);
-    const magic = magic16;
-    const state = view.getUint16(SUPERBLOCK_OFFSET + 18, true);
-    const zones = view.getUint32(SUPERBLOCK_OFFSET + 20, true);
+  // Resolve magic collisions when matching bytes appear at both offset 16 and offset 24
+  if (isV1V2 && isV3) {
+    const v1v2Valid = isPlausibleMinixV1V2(view);
+    const v3Valid = isPlausibleMinixV3(view);
 
-    const zoneCount = isV1 ? nzones : (zones || nzones);
-    const stateInfo = formatStateFlags(state);
+    if (v3Valid && !v1v2Valid) {
+      return decodeMinixV3(view, magic24);
+    }
+    if (v1v2Valid && !v3Valid) {
+      return decodeMinixV1V2(view, magic16);
+    }
 
-    return {
-      variant,
-      version,
-      magic,
-      magicHex: `0x${(magic >>> 0).toString(16).toUpperCase().padStart(4, '0')}`,
-      inodeCount,
-      zoneCount,
-      imapBlocks,
-      zmapBlocks,
-      firstDataZone,
-      logZoneSize,
-      maxFileSize,
-      state,
-      stateHex: stateInfo.rawHex,
-      stateDescription: stateInfo.summary,
-      blockSize: 1024,
-      v3BlockSize: null,
-      diskVersion: null,
-    };
+    const magic16Hex = `0x${(magic16 >>> 0).toString(16).toUpperCase().padStart(4, '0')}`;
+    const magic24Hex = `0x${(magic24 >>> 0).toString(16).toUpperCase().padStart(4, '0')}`;
+    throw new Error(
+      `Ambiguous superblock format: matches both Minix v1/v2 magic (${magic16Hex}) ` +
+      `and v3 magic (${magic24Hex}), and layout could not be uniquely resolved.`
+    );
   }
 
-  if (magic24 === MINIX_MAGIC.V3) {
-    const variant = MINIX_VARIANTS[MINIX_MAGIC.V3];
-    const version = 3;
-    const magic = magic24;
+  if (isV1V2) {
+    return decodeMinixV1V2(view, magic16);
+  }
 
-    const inodeCount = view.getUint32(SUPERBLOCK_OFFSET + 0, true);
-    const imapBlocks = view.getUint16(SUPERBLOCK_OFFSET + 6, true);
-    const zmapBlocks = view.getUint16(SUPERBLOCK_OFFSET + 8, true);
-    const firstDataZone = view.getUint16(SUPERBLOCK_OFFSET + 10, true);
-    const logZoneSize = view.getUint16(SUPERBLOCK_OFFSET + 12, true);
-    const maxFileSize = view.getUint32(SUPERBLOCK_OFFSET + 16, true);
-    const zoneCount = view.getUint32(SUPERBLOCK_OFFSET + 20, true);
-    const blockSize = view.getUint16(SUPERBLOCK_OFFSET + 28, true);
-    const diskVersion = view.getUint8(SUPERBLOCK_OFFSET + 30);
-    const stateInfo = formatStateFlags(null);
-
-    return {
-      variant,
-      version,
-      magic,
-      magicHex: `0x${(magic >>> 0).toString(16).toUpperCase().padStart(4, '0')}`,
-      inodeCount,
-      zoneCount,
-      imapBlocks,
-      zmapBlocks,
-      firstDataZone,
-      logZoneSize,
-      maxFileSize,
-      state: null,
-      stateHex: stateInfo.rawHex,
-      stateDescription: stateInfo.summary,
-      blockSize,
-      v3BlockSize: blockSize,
-      diskVersion,
-    };
+  if (isV3) {
+    return decodeMinixV3(view, magic24);
   }
 
   const unknownMagicHex = `0x${(magic16 >>> 0).toString(16).toUpperCase().padStart(4, '0')}`;
@@ -279,6 +388,10 @@ export function createSampleMinixSuperblock(magic, overrides = {}) {
     view.setUint16(SUPERBLOCK_OFFSET + 16, magic, true);
     view.setUint16(SUPERBLOCK_OFFSET + 18, state, true);
     view.setUint32(SUPERBLOCK_OFFSET + 20, zones, true);
+
+    if (overrides.magic24 !== undefined) {
+      view.setUint16(SUPERBLOCK_OFFSET + 24, overrides.magic24, true);
+    }
   } else if (magic === MINIX_MAGIC.V3) {
     const ninodes = overrides.inodeCount ?? 4096;
     const imapBlocks = overrides.imapBlocks ?? 2;
@@ -303,6 +416,10 @@ export function createSampleMinixSuperblock(magic, overrides = {}) {
     view.setUint16(SUPERBLOCK_OFFSET + 26, 0, true); // s_pad2
     view.setUint16(SUPERBLOCK_OFFSET + 28, blockSize, true);
     view.setUint8(SUPERBLOCK_OFFSET + 30, diskVersion);
+
+    if (overrides.magic16 !== undefined) {
+      view.setUint16(SUPERBLOCK_OFFSET + 16, overrides.magic16, true);
+    }
   }
 
   return bytes;

@@ -197,4 +197,83 @@ describe('parseMinixSuperblock', () => {
     expect(parsed.stateHex).toBe('0x8001');
     expect(parsed.stateDescription).toContain('Unknown bits: 0x8000');
   });
+
+  describe('regression tests: magic collision resolution and v2 zone count', () => {
+    it('resolves magic collision to v3 when v3 s_max_size matches v1 magic (0x137F)', () => {
+      // Offset 24 has 0x4D5A (v3), while low 16 bits of s_max_size at offset 16
+      // have 0x137F (v1 magic)
+      const buffer = createSampleMinixSuperblock(MINIX_MAGIC.V3, {
+        inodeCount: 4096,
+        zoneCount: 65536,
+        maxFileSize: 0x137F,
+        blockSize: 1024,
+      });
+
+      // Verify that offset 16 holds 0x137F and offset 24 holds 0x4D5A
+      const view = new DataView(buffer.buffer);
+      expect(view.getUint16(1024 + 16, true)).toBe(MINIX_MAGIC.V1_14);
+      expect(view.getUint16(1024 + 24, true)).toBe(MINIX_MAGIC.V3);
+
+      const parsed = parseMinixSuperblock(buffer);
+      expect(parsed.version).toBe(3);
+      expect(parsed.variant).toBe('Minix v3');
+      expect(parsed.magic).toBe(MINIX_MAGIC.V3);
+      expect(parsed.magicHex).toBe('0x4D5A');
+      expect(parsed.inodeCount).toBe(4096);
+      expect(parsed.zoneCount).toBe(65536);
+      expect(parsed.maxFileSize).toBe(0x137F);
+      expect(parsed.blockSize).toBe(1024);
+    });
+
+    it('resolves magic collision to v1 when v1 buffer has v3 magic bytes at offset 24', () => {
+      // Offset 16 has 0x137F (v1 magic), while offset 24 has 0x4D5A (v3 magic)
+      const buffer = createSampleMinixSuperblock(MINIX_MAGIC.V1_14, {
+        inodeCount: 512,
+        zoneCount: 1440,
+        magic24: MINIX_MAGIC.V3,
+      });
+
+      const view = new DataView(buffer.buffer);
+      expect(view.getUint16(1024 + 16, true)).toBe(MINIX_MAGIC.V1_14);
+      expect(view.getUint16(1024 + 24, true)).toBe(MINIX_MAGIC.V3);
+
+      const parsed = parseMinixSuperblock(buffer);
+      expect(parsed.version).toBe(1);
+      expect(parsed.variant).toBe('Minix v1 (14-byte names)');
+      expect(parsed.magic).toBe(MINIX_MAGIC.V1_14);
+      expect(parsed.magicHex).toBe('0x137F');
+      expect(parsed.inodeCount).toBe(512);
+      expect(parsed.zoneCount).toBe(1440);
+    });
+
+    it('reports error on ambiguous superblock matching both v1 and v3 magics', () => {
+      // Create a buffer with both magic bytes set, but zeroes elsewhere so neither layout is valid
+      const buffer = new Uint8Array(1056);
+      const view = new DataView(buffer.buffer);
+      view.setUint16(1024 + 16, MINIX_MAGIC.V1_14, true);
+      view.setUint16(1024 + 24, MINIX_MAGIC.V3, true);
+
+      expect(() => parseMinixSuperblock(buffer)).toThrow(/Ambiguous superblock format/i);
+    });
+
+    it('preserves 32-bit v2 s_zones count when zero and differing from legacy s_nzones', () => {
+      const buffer = createSampleMinixSuperblock(MINIX_MAGIC.V2_14, {
+        inodeCount: 1024,
+        zoneCount: 0,
+        nzones: 42,
+      });
+
+      const view = new DataView(buffer.buffer);
+      // Legacy 16-bit nzones at offset 2 is 42
+      expect(view.getUint16(1024 + 2, true)).toBe(42);
+      // 32-bit zones at offset 20 is 0
+      expect(view.getUint32(1024 + 20, true)).toBe(0);
+
+      const parsed = parseMinixSuperblock(buffer);
+      expect(parsed.version).toBe(2);
+      expect(parsed.magic).toBe(MINIX_MAGIC.V2_14);
+      // Must report the 32-bit s_zones value (0), not substitute legacy s_nzones (42)
+      expect(parsed.zoneCount).toBe(0);
+    });
+  });
 });
