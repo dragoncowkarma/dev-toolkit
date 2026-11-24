@@ -1,0 +1,7 @@
+.md-inspector { display: grid; gap: 1rem; }
+.md-inspector textarea { width: 100%; min-height: 10rem; }
+.md-drop { border: 1px dashed var(--border-color); padding: 1rem; }
+.md-drop label { display: block; margin-bottom: .5rem; }
+.md-inspector dl { overflow-wrap: anywhere; }
+.md-inspector dt { font-weight: bold; }
+.md-inspector dd { margin: 0 0 .75rem; }
