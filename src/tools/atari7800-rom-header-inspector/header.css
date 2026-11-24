@@ -1,0 +1,43 @@
+.a78-tool {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.a78-tool textarea {
+  min-height: 10rem;
+  resize: vertical;
+  padding: 1rem;
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.a78-tool button {
+  align-self: flex-start;
+  padding: 0.5rem 1rem;
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.a78-results div {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--color-border);
+  overflow-wrap: anywhere;
+}
+
+.a78-results dt { color: var(--color-text-muted); }
+.a78-error { color: var(--color-error-light); }
+
+@media (min-width: 768px) {
+  .a78-results div { grid-template-columns: 12rem 1fr; }
+}
