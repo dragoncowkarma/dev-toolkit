@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   buildSampleSuperblock,
   bytesToHex,
@@ -19,7 +19,15 @@ export default function Qnx6SuperblockInspectorTool() {
   const [fileInfo, setFileInfo] = useState(null);
   const [parsed, setParsed] = useState(null);
   const [parseError, setParseError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const fileInputRef = useRef(null);
+  const activeRequestIdRef = useRef(0);
+
+  useEffect(() => {
+    return () => {
+      activeRequestIdRef.current += 1;
+    };
+  }, []);
 
   function analyzeBytes(bytes) {
     try {
@@ -33,6 +41,8 @@ export default function Qnx6SuperblockInspectorTool() {
   }
 
   function handleHexChange(e) {
+    activeRequestIdRef.current += 1;
+    setIsLoading(false);
     const val = e.target.value;
     setHexInput(val);
     setFileInfo(null);
@@ -55,9 +65,14 @@ export default function Qnx6SuperblockInspectorTool() {
   async function handleFileChange(e) {
     const file = e.target.files?.[0];
     if (!file) return;
+    const requestId = ++activeRequestIdRef.current;
+    setIsLoading(true);
 
     try {
       const bytes = await readSuperblockSlice(file);
+      if (activeRequestIdRef.current !== requestId) {
+        return;
+      }
       setFileInfo({
         name: file.name,
         size: file.size,
@@ -66,12 +81,21 @@ export default function Qnx6SuperblockInspectorTool() {
       setHexInput(bytesToHex(bytes, true));
       analyzeBytes(bytes);
     } catch (err) {
+      if (activeRequestIdRef.current !== requestId) {
+        return;
+      }
       setParsed(null);
       setParseError(err.message || 'Failed to read file slice.');
+    } finally {
+      if (activeRequestIdRef.current === requestId) {
+        setIsLoading(false);
+      }
     }
   }
 
   function handleLoadSample() {
+    activeRequestIdRef.current += 1;
+    setIsLoading(false);
     const sampleBytes = buildSampleSuperblock();
     const hex = bytesToHex(sampleBytes, true);
     setHexInput(hex);
@@ -83,6 +107,8 @@ export default function Qnx6SuperblockInspectorTool() {
   }
 
   function handleClear() {
+    activeRequestIdRef.current += 1;
+    setIsLoading(false);
     setHexInput('');
     setFileInfo(null);
     setParsed(null);
@@ -122,7 +148,7 @@ export default function Qnx6SuperblockInspectorTool() {
             type="button"
             className="btn"
             onClick={handleClear}
-            disabled={!hexInput && !fileInfo && !parsed && !parseError}
+            disabled={!hexInput && !fileInfo && !parsed && !parseError && !isLoading}
             aria-label="Clear all inputs"
           >
             Clear

@@ -1,10 +1,16 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import Qnx6SuperblockInspectorTool from './Qnx6SuperblockInspectorTool.jsx';
+import * as qnx6Utils from './qnx6Superblock.utils.js';
 import {
   buildSampleSuperblock,
   bytesToHex,
 } from './qnx6Superblock.utils.js';
+
+function selectFile(input, file) {
+  Object.defineProperty(input, 'files', { value: [file], configurable: true });
+  fireEvent.change(input);
+}
 
 afterEach(() => {
   cleanup();
@@ -164,5 +170,236 @@ describe('Qnx6SuperblockInspectorTool component', () => {
     expect(screen.queryByText('Inspection Overview')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Superblock Hex Input')).toHaveValue('');
     expect(clearBtn).toBeDisabled();
+  });
+
+  it('ignores obsolete file read on out-of-order success', async () => {
+    let resolveFirst;
+    const firstPromise = new Promise((resolve) => {
+      resolveFirst = resolve;
+    });
+
+    let resolveSecond;
+    const secondPromise = new Promise((resolve) => {
+      resolveSecond = resolve;
+    });
+
+    vi.spyOn(qnx6Utils, 'readSuperblockSlice')
+      .mockReturnValueOnce(firstPromise)
+      .mockReturnValueOnce(secondPromise);
+
+    render(<Qnx6SuperblockInspectorTool />);
+
+    const fileInput = screen.getByLabelText('Upload disk image or superblock file');
+    const firstFile = new File(['first'], 'first.img');
+    const secondFile = new File(['second'], 'second.img');
+
+    selectFile(fileInput, firstFile);
+    selectFile(fileInput, secondFile);
+
+    const firstBytes = buildSampleSuperblock({ serial: 1111n });
+    const secondBytes = buildSampleSuperblock({ serial: 2222n });
+
+    await act(async () => {
+      resolveSecond(secondBytes);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Loaded: second\.img/)).toBeInTheDocument();
+      expect(screen.getByText('2222')).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      resolveFirst(firstBytes);
+    });
+
+    expect(screen.getByText(/Loaded: second\.img/)).toBeInTheDocument();
+    expect(screen.getByText('2222')).toBeInTheDocument();
+    expect(screen.queryByText(/Loaded: first\.img/)).not.toBeInTheDocument();
+    expect(screen.queryByText('1111')).not.toBeInTheDocument();
+  });
+
+  it('ignores obsolete file read error on out-of-order failure', async () => {
+    let rejectFirst;
+    const firstPromise = new Promise((_, reject) => {
+      rejectFirst = reject;
+    });
+
+    let resolveSecond;
+    const secondPromise = new Promise((resolve) => {
+      resolveSecond = resolve;
+    });
+
+    vi.spyOn(qnx6Utils, 'readSuperblockSlice')
+      .mockReturnValueOnce(firstPromise)
+      .mockReturnValueOnce(secondPromise);
+
+    render(<Qnx6SuperblockInspectorTool />);
+
+    const fileInput = screen.getByLabelText('Upload disk image or superblock file');
+    const firstFile = new File(['first'], 'first.img');
+    const secondFile = new File(['second'], 'second.img');
+
+    selectFile(fileInput, firstFile);
+    selectFile(fileInput, secondFile);
+
+    const secondBytes = buildSampleSuperblock({ serial: 3333n });
+
+    await act(async () => {
+      resolveSecond(secondBytes);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Loaded: second\.img/)).toBeInTheDocument();
+      expect(screen.getByText('3333')).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      rejectFirst(new Error('First read disk error'));
+    });
+
+    expect(screen.getByText(/Loaded: second\.img/)).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('ignores obsolete file read success when a newer file read fails', async () => {
+    let resolveFirst;
+    const firstPromise = new Promise((resolve) => {
+      resolveFirst = resolve;
+    });
+
+    let rejectSecond;
+    const secondPromise = new Promise((_, reject) => {
+      rejectSecond = reject;
+    });
+
+    vi.spyOn(qnx6Utils, 'readSuperblockSlice')
+      .mockReturnValueOnce(firstPromise)
+      .mockReturnValueOnce(secondPromise);
+
+    render(<Qnx6SuperblockInspectorTool />);
+
+    const fileInput = screen.getByLabelText('Upload disk image or superblock file');
+    const firstFile = new File(['first'], 'first.img');
+    const secondFile = new File(['second'], 'second.img');
+
+    selectFile(fileInput, firstFile);
+    selectFile(fileInput, secondFile);
+
+    await act(async () => {
+      rejectSecond(new Error('Corrupt second image'));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('Corrupt second image');
+    });
+
+    const firstBytes = buildSampleSuperblock({ serial: 4444n });
+
+    await act(async () => {
+      resolveFirst(firstBytes);
+    });
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Corrupt second image');
+    expect(screen.queryByText('4444')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Loaded: first\.img/)).not.toBeInTheDocument();
+  });
+
+  it('ignores pending file read when Clear is clicked', async () => {
+    let resolveFirst;
+    const firstPromise = new Promise((resolve) => {
+      resolveFirst = resolve;
+    });
+
+    vi.spyOn(qnx6Utils, 'readSuperblockSlice').mockReturnValueOnce(firstPromise);
+
+    render(<Qnx6SuperblockInspectorTool />);
+
+    const fileInput = screen.getByLabelText('Upload disk image or superblock file');
+    const file = new File(['first'], 'delayed.img');
+
+    selectFile(fileInput, file);
+
+    const clearBtn = screen.getByRole('button', { name: 'Clear all inputs' });
+    fireEvent.click(clearBtn);
+
+    const sampleBytes = buildSampleSuperblock({ serial: 5555n });
+
+    await act(async () => {
+      resolveFirst(sampleBytes);
+    });
+
+    expect(screen.queryByText('5555')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Loaded: delayed\.img/)).not.toBeInTheDocument();
+    expect(screen.queryByText('Inspection Overview')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Superblock Hex Input')).toHaveValue('');
+  });
+
+  it('ignores pending file read when Load Sample is clicked', async () => {
+    let resolveFirst;
+    const firstPromise = new Promise((resolve) => {
+      resolveFirst = resolve;
+    });
+
+    vi.spyOn(qnx6Utils, 'readSuperblockSlice').mockReturnValueOnce(firstPromise);
+
+    render(<Qnx6SuperblockInspectorTool />);
+
+    const fileInput = screen.getByLabelText('Upload disk image or superblock file');
+    const file = new File(['first'], 'delayed.img');
+
+    selectFile(fileInput, file);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Load Sample Superblock' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Inspection Overview')).toBeInTheDocument();
+      expect(screen.getByText('42')).toBeInTheDocument();
+    });
+
+    const delayedBytes = buildSampleSuperblock({ serial: 6666n });
+
+    await act(async () => {
+      resolveFirst(delayedBytes);
+    });
+
+    expect(screen.getByText('42')).toBeInTheDocument();
+    expect(screen.queryByText('6666')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Loaded: delayed\.img/)).not.toBeInTheDocument();
+  });
+
+  it('ignores pending file read when hex input is manually edited', async () => {
+    let resolveFirst;
+    const firstPromise = new Promise((resolve) => {
+      resolveFirst = resolve;
+    });
+
+    vi.spyOn(qnx6Utils, 'readSuperblockSlice').mockReturnValueOnce(firstPromise);
+
+    render(<Qnx6SuperblockInspectorTool />);
+
+    const fileInput = screen.getByLabelText('Upload disk image or superblock file');
+    const file = new File(['first'], 'delayed.img');
+
+    selectFile(fileInput, file);
+
+    const manualBytes = buildSampleSuperblock({ serial: 7777n });
+    const manualHex = bytesToHex(manualBytes, true);
+
+    const textarea = screen.getByLabelText('Superblock Hex Input');
+    fireEvent.change(textarea, { target: { value: manualHex } });
+
+    await waitFor(() => {
+      expect(screen.getByText('7777')).toBeInTheDocument();
+    });
+
+    const delayedBytes = buildSampleSuperblock({ serial: 8888n });
+
+    await act(async () => {
+      resolveFirst(delayedBytes);
+    });
+
+    expect(screen.getByText('7777')).toBeInTheDocument();
+    expect(screen.queryByText('8888')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Loaded: delayed\.img/)).not.toBeInTheDocument();
   });
 });
