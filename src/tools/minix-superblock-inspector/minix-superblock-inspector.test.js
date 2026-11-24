@@ -256,6 +256,53 @@ describe('parseMinixSuperblock', () => {
       expect(() => parseMinixSuperblock(buffer)).toThrow(/Ambiguous superblock format/i);
     });
 
+    it('resolves magic collision to v1 when logZoneSize > 0 and firstDataZone < bitmap blocks in numeric value', () => {
+      // 1024 inodes, 1 imap block, 10 zmap blocks, firstDataZone=4, logZoneSize=4
+      // Metadata in blocks: 2 + 1 + 10 + ceil(1024/32) = 13 + 32 = 45 blocks.
+      // firstDataBlock = 4 * (2^4) = 64 blocks >= 45.
+      // But firstDataZone (4) < 2 + 1 + 10 = 13.
+      // Buffer also has 0x4D5A at offset 24 (v3 magic), but v3 layout fails (e.g. invalid blockSize or pads).
+      const buffer = createSampleMinixSuperblock(MINIX_MAGIC.V1_14, {
+        inodeCount: 1024,
+        imapBlocks: 1,
+        zmapBlocks: 10,
+        firstDataZone: 4,
+        logZoneSize: 4,
+        magic24: MINIX_MAGIC.V3,
+      });
+
+      const parsed = parseMinixSuperblock(buffer);
+      expect(parsed.version).toBe(1);
+      expect(parsed.variant).toBe('Minix v1 (14-byte names)');
+      expect(parsed.firstDataZone).toBe(4);
+      expect(parsed.logZoneSize).toBe(4);
+    });
+
+    it('resolves magic collision to v3 when logZoneSize > 0 and firstDataZone < bitmap blocks in numeric value', () => {
+      // v3 layout with 2048 inodes, 1 imap block, 10 zmap blocks, firstDataZone=8, logZoneSize=3 (blockSize=1024)
+      // Inodes per block: 1024 / 64 = 16. Inode blocks: 2048 / 16 = 128.
+      // Metadata in blocks: 2 + 1 + 10 + 128 = 141 blocks.
+      // firstDataBlock = 8 * (2^3) = 64 blocks, so with logZoneSize=5:
+      // firstDataBlock = 8 * (2^5) = 256 blocks >= 141.
+      // But firstDataZone (8) < 2 + 1 + 10 = 13.
+      // Buffer also has 0x137F at offset 16 (v1 magic in maxFileSize low word).
+      const buffer = createSampleMinixSuperblock(MINIX_MAGIC.V3, {
+        inodeCount: 2048,
+        imapBlocks: 1,
+        zmapBlocks: 10,
+        firstDataZone: 8,
+        logZoneSize: 5,
+        blockSize: 1024,
+        maxFileSize: MINIX_MAGIC.V1_14,
+      });
+
+      const parsed = parseMinixSuperblock(buffer);
+      expect(parsed.version).toBe(3);
+      expect(parsed.variant).toBe('Minix v3');
+      expect(parsed.firstDataZone).toBe(8);
+      expect(parsed.logZoneSize).toBe(5);
+    });
+
     it('preserves 32-bit v2 s_zones count when zero and differing from legacy s_nzones', () => {
       const buffer = createSampleMinixSuperblock(MINIX_MAGIC.V2_14, {
         inodeCount: 1024,

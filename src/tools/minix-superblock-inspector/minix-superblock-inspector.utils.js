@@ -144,13 +144,16 @@ function isPlausibleMinixV3(view) {
   const imapBlocks = view.getUint16(SUPERBLOCK_OFFSET + 6, true);
   const zmapBlocks = view.getUint16(SUPERBLOCK_OFFSET + 8, true);
   const firstDataZone = view.getUint16(SUPERBLOCK_OFFSET + 10, true);
+  const logZoneSize = view.getUint16(SUPERBLOCK_OFFSET + 12, true);
 
   if (ninodes === 0 || imapBlocks === 0 || zmapBlocks === 0 || firstDataZone === 0) {
     return false;
   }
 
-  // First data zone must be at or after boot block + superblock + bitmap blocks
-  if (firstDataZone < 2 + imapBlocks + zmapBlocks) {
+  // Convert firstDataZone (zones) to blocks: firstDataBlock = firstDataZone << logZoneSize.
+  // Data blocks must begin at or after the boot block (1) + superblock (1) + bitmap blocks.
+  const firstDataBlock = firstDataZone * Math.pow(2, logZoneSize);
+  if (firstDataBlock < 2 + imapBlocks + zmapBlocks) {
     return false;
   }
 
@@ -168,13 +171,17 @@ function isPlausibleMinixV1V2(view) {
   const imapBlocks = view.getUint16(SUPERBLOCK_OFFSET + 4, true);
   const zmapBlocks = view.getUint16(SUPERBLOCK_OFFSET + 6, true);
   const firstDataZone = view.getUint16(SUPERBLOCK_OFFSET + 8, true);
+  const logZoneSize = view.getUint16(SUPERBLOCK_OFFSET + 10, true);
   const maxFileSize = view.getUint32(SUPERBLOCK_OFFSET + 12, true);
 
   if (ninodes === 0 || imapBlocks === 0 || zmapBlocks === 0 || firstDataZone === 0) {
     return false;
   }
 
-  if (firstDataZone < 2 + imapBlocks + zmapBlocks) {
+  // Convert firstDataZone (zones) to blocks: firstDataBlock = firstDataZone << logZoneSize.
+  // Data blocks must begin at or after the boot block (1) + superblock (1) + bitmap blocks.
+  const firstDataBlock = firstDataZone * Math.pow(2, logZoneSize);
+  if (firstDataBlock < 2 + imapBlocks + zmapBlocks) {
     return false;
   }
 
