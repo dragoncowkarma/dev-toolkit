@@ -60,18 +60,19 @@ export function bytesToHex(bytes, separator = ' ') {
 }
 
 /**
- * Parses a byte offset from a string or number (supports decimal and hex e.g. "0x2000" or "8192").
+ * Parses a byte offset from a string or number (supports decimal and hex e.g. "0x2000", "2000h", or "8192").
+ * Validates the full string without allowing trailing garbage and checks safe integer boundaries.
  *
  * @param {string|number|null|undefined} value
  * @returns {number} Non-negative byte offset.
- * @throws {Error} If offset is invalid or negative.
+ * @throws {TypeError|Error} If offset is invalid or negative.
  */
 export function parseByteOffset(value) {
   if (value === null || value === undefined || value === '') {
     return 0;
   }
   if (typeof value === 'number') {
-    if (!Number.isFinite(value) || value < 0 || !Number.isInteger(value)) {
+    if (!Number.isSafeInteger(value) || value < 0) {
       throw new Error('Invalid byte offset. Must be a non-negative integer.');
     }
     return value;
@@ -83,15 +84,19 @@ export function parseByteOffset(value) {
   if (trimmed === '') {
     return 0;
   }
+
   let parsed;
-  if (/^0x/i.test(trimmed)) {
-    parsed = parseInt(trimmed, 16);
+  if (/^0x[0-9a-fA-F]+$/i.test(trimmed)) {
+    parsed = parseInt(trimmed.slice(2), 16);
   } else if (/^[0-9a-fA-F]+h$/i.test(trimmed)) {
     parsed = parseInt(trimmed.slice(0, -1), 16);
-  } else {
+  } else if (/^\d+$/.test(trimmed)) {
     parsed = parseInt(trimmed, 10);
+  } else {
+    throw new Error('Invalid byte offset. Must be a non-negative integer.');
   }
-  if (!Number.isFinite(parsed) || parsed < 0) {
+
+  if (!Number.isSafeInteger(parsed) || parsed < 0) {
     throw new Error('Invalid byte offset. Must be a non-negative integer.');
   }
   return parsed;
@@ -219,13 +224,13 @@ export function parseHpfsBootBlock(bytes, offset = 0) {
 }
 
 /**
- * Parses an HPFS Spare Block (Sector 17, 512 bytes).
+ * Parses an HPFS Spare Block (Sector 17, 512 bytes) according to Linux fs/hpfs/hpfs.h.
  *
  * @param {Uint8Array} bytes
- * @param {number} offset
+ * @param {number} [offset=0]
  * @returns {object|null}
  */
-export function parseHpfsSpareBlock(bytes, offset) {
+export function parseHpfsSpareBlock(bytes, offset = 0) {
   if (bytes.length < offset + HPFS_SECTOR_SIZE) {
     return null;
   }
@@ -245,14 +250,15 @@ export function parseHpfsSpareBlock(bytes, offset) {
   const badBitmap = Boolean(flags & 0x10);
   const fast = Boolean(flags & 0x20);
 
-  const nUsedSpareSds = view.getUint8(offset + 9);
-  const nFreeSpareSds = view.getUint16(offset + 10, true);
-  const spareSecDir = view.getUint32(offset + 12, true);
-  const nSpareSectors = view.getUint32(offset + 16, true);
-  const codePageDir = view.getUint32(offset + 20, true);
-  const nCodePages = view.getUint32(offset + 24, true);
-  const superCrc = view.getUint32(offset + 28, true);
-  const spareCrc = view.getUint32(offset + 32, true);
+  const hotfixMap = view.getUint32(offset + 12, true);
+  const usedHotfixes = view.getUint32(offset + 16, true);
+  const totalHotfixes = view.getUint32(offset + 20, true);
+  const freeDnodeSpares = view.getUint32(offset + 24, true);
+  const totalDnodeSpares = view.getUint32(offset + 28, true);
+  const codePageDir = view.getUint32(offset + 32, true);
+  const nCodePages = view.getUint32(offset + 36, true);
+  const superCrc = view.getUint32(offset + 40, true);
+  const spareCrc = view.getUint32(offset + 44, true);
 
   return {
     magicHex: `0x${magic.toString(16).toUpperCase()}`,
@@ -263,13 +269,16 @@ export function parseHpfsSpareBlock(bytes, offset) {
     badSector,
     badBitmap,
     fast,
-    nUsedSpareSds,
-    nFreeSpareSds,
-    spareSecDir,
-    nSpareSectors,
+    hotfixMap,
+    usedHotfixes,
+    totalHotfixes,
+    freeDnodeSpares,
+    totalDnodeSpares,
     codePageDir,
     nCodePages,
+    superCrc,
     superCrcHex: `0x${superCrc.toString(16).toUpperCase().padStart(8, '0')}`,
+    spareCrc,
     spareCrcHex: `0x${spareCrc.toString(16).toUpperCase().padStart(8, '0')}`,
   };
 }
@@ -279,7 +288,9 @@ export function parseHpfsSpareBlock(bytes, offset) {
  *
  * @param {Uint8Array|ArrayBuffer} input
  * @param {object} [options={}]
- * @param {number|string} [options.offset=0] - Optional byte offset to superblock.
+ * @param {number|string} [options.offset=0] - Optional byte offset to superblock inside input.
+ * @param {number|string} [options.baseOffset=0] - Optional absolute base offset of the slice within the file.
+ * @param {object|null} [options.bootBlock=null] - Pre-parsed boot block if read separately.
  * @returns {object} Result object containing ok, data, error, and diagnostics.
  */
 export function parseHpfsSuperblock(input, options = {}) {
@@ -301,10 +312,20 @@ export function parseHpfsSuperblock(input, options = {}) {
     return { ok: false, error: err.message, diagnostics: [err.message] };
   }
 
-  // Auto-detect: If offset is 0 but offset 0x2000 contains the superblock signature,
+  let baseOffset = 0;
+  if (options.baseOffset !== undefined && options.baseOffset !== null) {
+    try {
+      baseOffset = parseByteOffset(options.baseOffset);
+    } catch (err) {
+      return { ok: false, error: err.message, diagnostics: [err.message] };
+    }
+  }
+
+  // Auto-detect: If offset is 0 and baseOffset is 0 but offset 0x2000 contains the superblock signature,
   // automatically locate the superblock at sector 16 (0x2000).
   if (
     sbOffset === 0 &&
+    baseOffset === 0 &&
     bytes.length >= HPFS_SUPERBLOCK_OFFSET + 8
   ) {
     const viewProbe = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -350,50 +371,57 @@ export function parseHpfsSuperblock(input, options = {}) {
     return { ok: false, error, diagnostics: [error] };
   }
 
-  // Extract superblock fields
+  // Extract superblock fields according to fs/hpfs/hpfs.h:
+  // Offset 12: root directory fnode sector
+  // Offset 16: total sector count
+  // Offset 20: bad-block count
+  // Offset 24: bitmap pointer sector
+  // Offset 32: bad block list sector
+  // Offset 40: last chkdsk timestamp
+  // Offset 44: last optimize timestamp
+  // Offset 48: directory band sector count
+  // Offset 52: directory band start sector
+  // Offset 56: directory band end sector
+  // Offset 60: directory band bitmap sector
+  // Offset 64..95: volume name (32 bytes)
+  // Offset 96: user ID table sector
   const rootdir = view.getUint32(sbOffset + 12, true);
   const nSectors = view.getUint32(sbOffset + 16, true);
   const nBadblocks = view.getUint32(sbOffset + 20, true);
   const bitmaps = view.getUint32(sbOffset + 24, true);
-  const pubir = view.getUint32(sbOffset + 28, true);
-  const rootBitmap = view.getUint32(sbOffset + 32, true);
-  const malBitmap = view.getUint32(sbOffset + 36, true);
-  const hotfixes = view.getUint32(sbOffset + 40, true);
-  const nHotfixes = view.getUint32(sbOffset + 44, true);
-  const dpB = view.getUint32(sbOffset + 48, true);
-  const dep = view.getUint32(sbOffset + 52, true);
-  const nDirBand = view.getUint32(sbOffset + 56, true);
-  const dirBandStart = view.getUint32(sbOffset + 60, true);
-  const dirBandEnd = view.getUint32(sbOffset + 64, true);
-  const dirMap = view.getUint32(sbOffset + 68, true);
+  const badblocks = view.getUint32(sbOffset + 32, true);
+  const lastChkdsk = view.getUint32(sbOffset + 40, true);
+  const lastOptimize = view.getUint32(sbOffset + 44, true);
+  const nDirBand = view.getUint32(sbOffset + 48, true);
+  const dirBandStart = view.getUint32(sbOffset + 52, true);
+  const dirBandEnd = view.getUint32(sbOffset + 56, true);
+  const dirBandBitmap = view.getUint32(sbOffset + 60, true);
 
-  // Extract volume name (offset 72, 32 bytes)
+  // Extract volume name (offset 64, 32 bytes)
   let volumeName = '';
   for (let i = 0; i < 32; i += 1) {
-    const code = bytes[sbOffset + 72 + i];
+    const code = bytes[sbOffset + 64 + i];
     if (code === 0) break;
     if (code >= 32 && code <= 126) volumeName += String.fromCharCode(code);
   }
 
-  const fnodeBitmap = view.getUint32(sbOffset + 104, true);
-  const checkpoints = view.getUint32(sbOffset + 108, true);
-  const permBitmap = view.getUint32(sbOffset + 112, true);
+  const userIdTable = view.getUint32(sbOffset + 96, true);
+
+  const effectiveOffset = baseOffset + sbOffset;
+  const effectiveSector = Math.floor(effectiveOffset / HPFS_SECTOR_SIZE);
 
   // Standard HPFS Spare Block is at sector 17
   const spareBlockSector = 17;
 
-  // Optional boot block parsing (if sector 0 is included)
-  let bootBlock = null;
-  if (sbOffset >= HPFS_SECTOR_SIZE && bytes.length >= HPFS_SECTOR_SIZE) {
+  // Optional boot block parsing (if sector 0 is included in this buffer)
+  let bootBlock = options.bootBlock || null;
+  if (!bootBlock && baseOffset === 0 && sbOffset >= HPFS_SECTOR_SIZE && bytes.length >= HPFS_SECTOR_SIZE) {
     bootBlock = parseHpfsBootBlock(bytes, 0);
   }
 
   // Optional spare block parsing (if sector 17 is included)
   let spareBlock = null;
-  const spareOffsetCandidate =
-    sbOffset === HPFS_SUPERBLOCK_OFFSET
-      ? HPFS_SPAREBLOCK_OFFSET
-      : sbOffset + HPFS_SECTOR_SIZE;
+  const spareOffsetCandidate = sbOffset + HPFS_SECTOR_SIZE;
   if (bytes.length >= spareOffsetCandidate + HPFS_SECTOR_SIZE) {
     spareBlock = parseHpfsSpareBlock(bytes, spareOffsetCandidate);
   }
@@ -402,8 +430,8 @@ export function parseHpfsSuperblock(input, options = {}) {
   const dirBandBytes = nDirBand * HPFS_SECTOR_SIZE;
 
   const superblock = {
-    offset: sbOffset,
-    sector: Math.floor(sbOffset / HPFS_SECTOR_SIZE),
+    offset: effectiveOffset,
+    sector: effectiveSector,
     magicHex: `0x${magic.toString(16).toUpperCase()}`,
     magic1Hex: `0x${magic1.toString(16).toUpperCase()}`,
     version,
@@ -413,25 +441,19 @@ export function parseHpfsSuperblock(input, options = {}) {
     totalBytesFormatted: formatFileSize(totalBytes),
     badBlockCount: nBadblocks,
     bitmapPointerSector: bitmaps,
+    badBlockListSector: badblocks,
+    lastChkdsk,
+    lastOptimize,
     spareBlockSector,
-    pubir,
-    rootBitmapSector: rootBitmap,
-    malBitmapSector: malBitmap,
-    hotfixMapSector: hotfixes,
-    hotfixCount: nHotfixes,
-    dpB,
-    dep,
     dirBand: {
       sectorCount: nDirBand,
       startSector: dirBandStart,
       endSector: dirBandEnd,
-      bitmapSector: dirMap,
+      bitmapSector: dirBandBitmap,
       sizeFormatted: formatFileSize(dirBandBytes),
     },
     volumeName: volumeName.trim(),
-    fnodeBitmapSector: fnodeBitmap,
-    checkpointsSector: checkpoints,
-    permBitmapSector: permBitmap,
+    userIdTableSector: userIdTable,
   };
 
   return {
@@ -446,7 +468,7 @@ export function parseHpfsSuperblock(input, options = {}) {
 }
 
 /**
- * Creates a valid HPFS superblock fixture as a Uint8Array.
+ * Creates a valid HPFS superblock fixture as a Uint8Array according to Linux fs/hpfs/hpfs.h.
  *
  * @param {object} [overrides={}]
  * @returns {Uint8Array}
@@ -463,21 +485,20 @@ export function createHpfsSuperblockBuffer(overrides = {}) {
   const nSectors = overrides.nSectors !== undefined ? overrides.nSectors : 204800; // 100 MB
   const nBadblocks = overrides.nBadblocks !== undefined ? overrides.nBadblocks : 0;
   const bitmaps = overrides.bitmaps !== undefined ? overrides.bitmaps : 18;
-  const pubir = overrides.pubir !== undefined ? overrides.pubir : 0;
-  const rootBitmap = overrides.rootBitmap !== undefined ? overrides.rootBitmap : 20;
-  const malBitmap = overrides.malBitmap !== undefined ? overrides.malBitmap : 22;
-  const hotfixes = overrides.hotfixes !== undefined ? overrides.hotfixes : 24;
-  const nHotfixes = overrides.nHotfixes !== undefined ? overrides.nHotfixes : 0;
-  const dpB = overrides.dpB !== undefined ? overrides.dpB : 4;
-  const dep = overrides.dep !== undefined ? overrides.dep : 0;
+  const badblocks = overrides.badblocks !== undefined ? overrides.badblocks : 0;
+  const lastChkdsk = overrides.lastChkdsk !== undefined ? overrides.lastChkdsk : 0;
+  const lastOptimize = overrides.lastOptimize !== undefined ? overrides.lastOptimize : 0;
   const nDirBand = overrides.nDirBand !== undefined ? overrides.nDirBand : 1600;
   const dirBandStart = overrides.dirBandStart !== undefined ? overrides.dirBandStart : 102400;
   const dirBandEnd = overrides.dirBandEnd !== undefined ? overrides.dirBandEnd : 103999;
-  const dirMap = overrides.dirMap !== undefined ? overrides.dirMap : 102400;
+  const dirBandBitmap =
+    overrides.dirBandBitmap !== undefined
+      ? overrides.dirBandBitmap
+      : overrides.dirMap !== undefined
+        ? overrides.dirMap
+        : 120;
   const volumeName = overrides.volumeName !== undefined ? overrides.volumeName : 'OS2_HPFS';
-  const fnodeBitmap = overrides.fnodeBitmap !== undefined ? overrides.fnodeBitmap : 26;
-  const checkpoints = overrides.checkpoints !== undefined ? overrides.checkpoints : 0;
-  const permBitmap = overrides.permBitmap !== undefined ? overrides.permBitmap : 0;
+  const userIdTable = overrides.userIdTable !== undefined ? overrides.userIdTable : 0;
 
   view.setUint32(0, magic, true);
   view.setUint32(4, magic1, true);
@@ -488,27 +509,144 @@ export function createHpfsSuperblockBuffer(overrides = {}) {
   view.setUint32(16, nSectors, true);
   view.setUint32(20, nBadblocks, true);
   view.setUint32(24, bitmaps, true);
-  view.setUint32(28, pubir, true);
-  view.setUint32(32, rootBitmap, true);
-  view.setUint32(36, malBitmap, true);
-  view.setUint32(40, hotfixes, true);
-  view.setUint32(44, nHotfixes, true);
-  view.setUint32(48, dpB, true);
-  view.setUint32(52, dep, true);
-  view.setUint32(56, nDirBand, true);
-  view.setUint32(60, dirBandStart, true);
-  view.setUint32(64, dirBandEnd, true);
-  view.setUint32(68, dirMap, true);
+  view.setUint32(28, 0, true);
+  view.setUint32(32, badblocks, true);
+  view.setUint32(36, 0, true);
+  view.setUint32(40, lastChkdsk, true);
+  view.setUint32(44, lastOptimize, true);
+  view.setUint32(48, nDirBand, true);
+  view.setUint32(52, dirBandStart, true);
+  view.setUint32(56, dirBandEnd, true);
+  view.setUint32(60, dirBandBitmap, true);
 
   for (let i = 0; i < Math.min(32, volumeName.length); i += 1) {
-    buffer[72 + i] = volumeName.charCodeAt(i);
+    buffer[64 + i] = volumeName.charCodeAt(i);
   }
 
-  view.setUint32(104, fnodeBitmap, true);
-  view.setUint32(108, checkpoints, true);
-  view.setUint32(112, permBitmap, true);
+  view.setUint32(96, userIdTable, true);
 
   return buffer;
+}
+
+/**
+ * Creates a valid HPFS spare block fixture as a Uint8Array according to Linux fs/hpfs/hpfs.h.
+ *
+ * @param {object} [overrides={}]
+ * @returns {Uint8Array}
+ */
+export function createHpfsSpareBlockBuffer(overrides = {}) {
+  const buffer = new Uint8Array(HPFS_SECTOR_SIZE);
+  const view = new DataView(buffer.buffer);
+
+  const magic = overrides.magic !== undefined ? overrides.magic : HPFS_SP_MAGIC;
+  const magic1 = overrides.magic1 !== undefined ? overrides.magic1 : HPFS_SP_MAGIC1;
+  const dirty = overrides.dirty !== undefined ? overrides.dirty : false;
+  const spareDirUsed = overrides.spareDirUsed !== undefined ? overrides.spareDirUsed : false;
+  const hotfixesUsed = overrides.hotfixesUsed !== undefined ? overrides.hotfixesUsed : false;
+  const badSector = overrides.badSector !== undefined ? overrides.badSector : false;
+  const badBitmap = overrides.badBitmap !== undefined ? overrides.badBitmap : false;
+  const fast = overrides.fast !== undefined ? overrides.fast : false;
+
+  let flags = 0;
+  if (dirty) flags |= 0x01;
+  if (spareDirUsed) flags |= 0x02;
+  if (hotfixesUsed) flags |= 0x04;
+  if (badSector) flags |= 0x08;
+  if (badBitmap) flags |= 0x10;
+  if (fast) flags |= 0x20;
+
+  view.setUint32(0, magic, true);
+  view.setUint32(4, magic1, true);
+  buffer[8] = flags;
+
+  view.setUint32(12, overrides.hotfixMap !== undefined ? overrides.hotfixMap : 0, true);
+  view.setUint32(16, overrides.usedHotfixes !== undefined ? overrides.usedHotfixes : 0, true);
+  view.setUint32(20, overrides.totalHotfixes !== undefined ? overrides.totalHotfixes : 0, true);
+  view.setUint32(24, overrides.freeDnodeSpares !== undefined ? overrides.freeDnodeSpares : 0, true);
+  view.setUint32(28, overrides.totalDnodeSpares !== undefined ? overrides.totalDnodeSpares : 0, true);
+  view.setUint32(32, overrides.codePageDir !== undefined ? overrides.codePageDir : 0, true);
+  view.setUint32(36, overrides.nCodePages !== undefined ? overrides.nCodePages : 0, true);
+  view.setUint32(40, overrides.superCrc !== undefined ? overrides.superCrc : 0, true);
+  view.setUint32(44, overrides.spareCrc !== undefined ? overrides.spareCrc : 0, true);
+
+  return buffer;
+}
+
+/**
+ * Creates an HPFS boot block fixture as a Uint8Array.
+ *
+ * @param {object} [overrides={}]
+ * @returns {Uint8Array}
+ */
+export function createHpfsBootBlockBuffer(overrides = {}) {
+  const buffer = new Uint8Array(HPFS_SECTOR_SIZE);
+  const view = new DataView(buffer.buffer);
+
+  buffer[0] = 0xeb;
+  buffer[1] = 0x3c;
+  buffer[2] = 0x90;
+
+  const oemId = overrides.oemId !== undefined ? overrides.oemId : 'IBM 4.0';
+  for (let i = 0; i < Math.min(8, oemId.length); i += 1) {
+    buffer[3 + i] = oemId.charCodeAt(i);
+  }
+
+  view.setUint16(11, overrides.bytesPerSector || 512, true);
+  buffer[13] = overrides.sectorsPerCluster || 1;
+  view.setUint16(14, overrides.reservedSectors || 1, true);
+  buffer[16] = overrides.fatsCount || 0;
+  view.setUint16(17, overrides.rootDirEntries || 0, true);
+  view.setUint16(19, overrides.sectorsSmall || 0, true);
+  buffer[21] = overrides.mediaByte !== undefined ? overrides.mediaByte : 0xf8;
+  view.setUint16(24, overrides.sectorsPerTrack || 32, true);
+  view.setUint16(26, overrides.heads || 64, true);
+  view.setUint32(28, overrides.hiddenSectors || 0, true);
+  view.setUint32(32, overrides.sectorsLarge || 204800, true);
+
+  buffer[36] = overrides.driveNumber !== undefined ? overrides.driveNumber : 0x80;
+  buffer[38] = 0x28; // HPFS signature byte
+  view.setUint32(
+    39,
+    overrides.volumeSerialNumber !== undefined ? overrides.volumeSerialNumber : 0x12345678,
+    true
+  );
+
+  const volumeLabel = overrides.volumeLabel !== undefined ? overrides.volumeLabel : 'HPFS VOL';
+  for (let i = 0; i < Math.min(11, volumeLabel.length); i += 1) {
+    buffer[43 + i] = volumeLabel.charCodeAt(i);
+  }
+
+  const systemId = overrides.systemId !== undefined ? overrides.systemId : 'HPFS';
+  for (let i = 0; i < Math.min(8, systemId.length); i += 1) {
+    buffer[54 + i] = systemId.charCodeAt(i);
+  }
+
+  view.setUint16(510, HPFS_BOOT_MAGIC, true);
+
+  return buffer;
+}
+
+/**
+ * Creates a full HPFS partition image buffer containing Sector 0 (boot block),
+ * Sector 16 (superblock), and Sector 17 (spare block).
+ *
+ * @param {object} [options={}]
+ * @returns {Uint8Array}
+ */
+export function createHpfsPartitionImageBuffer(options = {}) {
+  const totalSize = Math.max(18 * HPFS_SECTOR_SIZE, options.totalSize || 0);
+  const image = new Uint8Array(totalSize);
+
+  const bootBlock = createHpfsBootBlockBuffer(options.bootBlock);
+  image.set(bootBlock, 0);
+
+  const superblock = createHpfsSuperblockBuffer(options.superblock);
+  image.set(superblock, HPFS_SUPERBLOCK_OFFSET);
+
+  const spareBlock = createHpfsSpareBlockBuffer(options.spareBlock);
+  image.set(spareBlock, HPFS_SPAREBLOCK_OFFSET);
+
+  return image;
 }
 
 /**

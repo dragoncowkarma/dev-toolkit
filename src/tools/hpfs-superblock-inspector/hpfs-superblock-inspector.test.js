@@ -9,11 +9,16 @@ import {
   HPFS_SP_MAGIC1,
   HPFS_SUPERBLOCK_OFFSET,
   bytesToHex,
+  createHpfsBootBlockBuffer,
+  createHpfsPartitionImageBuffer,
+  createHpfsSpareBlockBuffer,
   createHpfsSuperblockBuffer,
   createSampleHpfsSuperblockHex,
   formatFileSize,
   hexToBytes,
   parseByteOffset,
+  parseHpfsBootBlock,
+  parseHpfsSpareBlock,
   parseHpfsSuperblock,
   readSlice,
 } from './hpfs-superblock-inspector.utils.js';
@@ -67,28 +72,47 @@ describe('parseByteOffset', () => {
     expect(parseByteOffset('   ')).toBe(0);
   });
 
-  it('parses decimal strings', () => {
+  it('parses valid decimal strings', () => {
     expect(parseByteOffset('8192')).toBe(8192);
     expect(parseByteOffset('0')).toBe(0);
+    expect(parseByteOffset('  1024  ')).toBe(1024);
   });
 
-  it('parses hexadecimal strings with 0x prefix or h suffix', () => {
+  it('parses valid hexadecimal strings with 0x prefix or h suffix', () => {
     expect(parseByteOffset('0x2000')).toBe(8192);
     expect(parseByteOffset('0X2000')).toBe(8192);
     expect(parseByteOffset('2000h')).toBe(8192);
+    expect(parseByteOffset('2000H')).toBe(8192);
+    expect(parseByteOffset('  0x100  ')).toBe(256);
   });
 
-  it('accepts integer numbers', () => {
+  it('accepts safe non-negative integer numbers', () => {
     expect(parseByteOffset(8192)).toBe(8192);
     expect(parseByteOffset(0)).toBe(0);
   });
 
-  it('throws on invalid or negative offsets', () => {
+  it('rejects malformed strings with trailing junk or invalid characters', () => {
+    expect(() => parseByteOffset('12junk')).toThrow(/Invalid byte offset/);
+    expect(() => parseByteOffset('0x2000zz')).toThrow(/Invalid byte offset/);
+    expect(() => parseByteOffset('1.5')).toThrow(/Invalid byte offset/);
+    expect(() => parseByteOffset('0x')).toThrow(/Invalid byte offset/);
+    expect(() => parseByteOffset('h')).toThrow(/Invalid byte offset/);
+    expect(() => parseByteOffset('invalid')).toThrow(/Invalid byte offset/);
+    expect(() => parseByteOffset('0x12g4')).toThrow(/Invalid byte offset/);
+  });
+
+  it('rejects non-integer, negative, or unsafe numeric offsets', () => {
     expect(() => parseByteOffset(-10)).toThrow(/Invalid byte offset/);
     expect(() => parseByteOffset('-100')).toThrow(/Invalid byte offset/);
-    expect(() => parseByteOffset('invalid')).toThrow(/Invalid byte offset/);
     expect(() => parseByteOffset(12.34)).toThrow(/Invalid byte offset/);
+    expect(() => parseByteOffset(NaN)).toThrow(/Invalid byte offset/);
+    expect(() => parseByteOffset(Infinity)).toThrow(/Invalid byte offset/);
+    expect(() => parseByteOffset(Number.MAX_SAFE_INTEGER + 100)).toThrow(/Invalid byte offset/);
+  });
+
+  it('throws TypeError for non-string, non-numeric values', () => {
     expect(() => parseByteOffset({})).toThrow(TypeError);
+    expect(() => parseByteOffset([])).toThrow(TypeError);
   });
 });
 
@@ -140,25 +164,59 @@ describe('readSlice', () => {
   });
 });
 
-describe('parseHpfsSuperblock - Acceptance Criteria Fixtures', () => {
-  it('correctly parses a valid HPFS superblock fixture', () => {
-    const buffer = createHpfsSuperblockBuffer({
-      magic: HPFS_SB_MAGIC,
-      magic1: HPFS_SB_MAGIC1,
-      version: 2,
-      funcversion: 2,
-      rootdir: 1200,
-      nSectors: 204800,
-      nBadblocks: 3,
-      bitmaps: 18,
-      nDirBand: 1600,
-      dirBandStart: 102400,
-      dirBandEnd: 103999,
-      dirMap: 102400,
-      volumeName: 'MY_OS2_VOL',
-    });
+describe('parseHpfsSuperblock - Acceptance Criteria & Layouts', () => {
+  it('correctly parses an independently encoded HPFS superblock fixture with accurate directory-band offsets', () => {
+    // Independently encoded 512-byte buffer according to Linux kernel fs/hpfs/hpfs.h
+    const rawBuffer = new Uint8Array(HPFS_SECTOR_SIZE);
+    const view = new DataView(rawBuffer.buffer);
 
-    const result = parseHpfsSuperblock(buffer);
+    // 0: magic
+    view.setUint32(0, HPFS_SB_MAGIC, true);
+    // 4: magic1
+    view.setUint32(4, HPFS_SB_MAGIC1, true);
+    // 8: version
+    rawBuffer[8] = 2;
+    // 9: funcversion
+    rawBuffer[9] = 2;
+    // 10: zero (u16)
+    view.setUint16(10, 0, true);
+    // 12: root directory fnode sector
+    view.setUint32(12, 1200, true);
+    // 16: total sectors
+    view.setUint32(16, 204800, true);
+    // 20: bad blocks count
+    view.setUint32(20, 3, true);
+    // 24: bitmap pointers sector
+    view.setUint32(24, 18, true);
+    // 28: zero1
+    view.setUint32(28, 0, true);
+    // 32: bad block list sector
+    view.setUint32(32, 22, true);
+    // 36: zero3
+    view.setUint32(36, 0, true);
+    // 40: last chkdsk timestamp
+    view.setUint32(40, 1500000000, true);
+    // 44: last optimize timestamp
+    view.setUint32(44, 1500005000, true);
+    // 48: directory band count (1600)
+    view.setUint32(48, 1600, true);
+    // 52: directory band start (102400)
+    view.setUint32(52, 102400, true);
+    // 56: directory band end (103999)
+    view.setUint32(56, 103999, true);
+    // 60: directory band bitmap (120)
+    view.setUint32(60, 120, true);
+
+    // 64..95: volume name (32 bytes)
+    const volName = 'MY_OS2_VOL';
+    for (let i = 0; i < volName.length; i += 1) {
+      rawBuffer[64 + i] = volName.charCodeAt(i);
+    }
+
+    // 96: user ID table sector
+    view.setUint32(96, 48, true);
+
+    const result = parseHpfsSuperblock(rawBuffer);
     expect(result.ok).toBe(true);
     expect(result.diagnostics).toEqual([]);
     expect(result.data).toBeDefined();
@@ -172,15 +230,58 @@ describe('parseHpfsSuperblock - Acceptance Criteria Fixtures', () => {
     expect(superblock.totalSectors).toBe(204800);
     expect(superblock.badBlockCount).toBe(3);
     expect(superblock.bitmapPointerSector).toBe(18);
-    expect(superblock.spareBlockSector).toBe(17);
+    expect(superblock.badBlockListSector).toBe(22);
+    expect(superblock.lastChkdsk).toBe(1500000000);
+    expect(superblock.lastOptimize).toBe(1500005000);
     expect(superblock.volumeName).toBe('MY_OS2_VOL');
+    expect(superblock.userIdTableSector).toBe(48);
+
+    // Verify directory band fields at offsets 48, 52, 56, 60
     expect(superblock.dirBand).toEqual({
       sectorCount: 1600,
       startSector: 102400,
       endSector: 103999,
-      bitmapSector: 102400,
+      bitmapSector: 120,
       sizeFormatted: '800.0 KB',
     });
+  });
+
+  it('correctly decodes the spare block at its actual on-disk offsets with distinct values', () => {
+    // Independently encoded 512-byte spare block fixture
+    const rawSpare = new Uint8Array(HPFS_SECTOR_SIZE);
+    const view = new DataView(rawSpare.buffer);
+
+    view.setUint32(0, HPFS_SP_MAGIC, true); // 0xf9911849
+    view.setUint32(4, HPFS_SP_MAGIC1, true); // 0xfa5229c5
+    rawSpare[8] = 0x01 | 0x04; // dirty: 1, hotfixes_used: 1
+
+    view.setUint32(12, 16, true); // hotfix_map sector
+    view.setUint32(16, 5, true); // used hotfixes = 5
+    view.setUint32(20, 99, true); // total hotfix spares = 99
+    view.setUint32(24, 12, true); // free dnode spares = 12
+    view.setUint32(28, 40, true); // total dnode spares = 40
+    view.setUint32(32, 777, true); // code page directory = 777
+    view.setUint32(36, 3, true); // nCodePages = 3
+    view.setUint32(40, 0x11223344, true); // super CRC = 0x11223344
+    view.setUint32(44, 0x55667788, true); // spare CRC = 0x55667788
+
+    const spare = parseHpfsSpareBlock(rawSpare, 0);
+    expect(spare).toBeDefined();
+    expect(spare.magicHex).toBe('0xF9911849');
+    expect(spare.magic1Hex).toBe('0xFA5229C5');
+    expect(spare.dirty).toBe(true);
+    expect(spare.hotfixesUsed).toBe(true);
+    expect(spare.spareDirUsed).toBe(false);
+
+    expect(spare.hotfixMap).toBe(16);
+    expect(spare.usedHotfixes).toBe(5);
+    expect(spare.totalHotfixes).toBe(99);
+    expect(spare.freeDnodeSpares).toBe(12);
+    expect(spare.totalDnodeSpares).toBe(40);
+    expect(spare.codePageDir).toBe(777);
+    expect(spare.nCodePages).toBe(3);
+    expect(spare.superCrcHex).toBe('0x11223344');
+    expect(spare.spareCrcHex).toBe('0x55667788');
   });
 
   it('rejects truncated input as a diagnostic and not as a valid result', () => {
@@ -247,41 +348,35 @@ describe('parseHpfsSuperblock - Acceptance Criteria Fixtures', () => {
 
 describe('HPFS Partition Image with Boot Block and Spare Block', () => {
   it('parses superblock, boot block, and spare block when full image slice is provided', () => {
-    // Slice with Sector 0 (Boot block), Sector 16 (Superblock), and Sector 17 (Spare block)
-    const imageSize = HPFS_SPAREBLOCK_OFFSET + HPFS_SECTOR_SIZE;
-    const image = new Uint8Array(imageSize);
-    const view = new DataView(image.buffer);
-
-    // 1. Sector 0: Boot Block
-    view.setUint16(510, HPFS_BOOT_MAGIC, true); // 0xAA55
-    view.setUint16(11, 512, true); // bytes per sector
-    view.setUint8(13, 1); // sectors per cluster
-    view.setUint32(32, 204800, true); // total sectors
-    // Write OEM ID "IBM 20.0"
-    const oem = 'IBM 20.0';
-    for (let i = 0; i < oem.length; i += 1) image[3 + i] = oem.charCodeAt(i);
-    // Write System ID "HPFS    "
-    const sysId = 'HPFS    ';
-    for (let i = 0; i < sysId.length; i += 1) image[54 + i] = sysId.charCodeAt(i);
-
-    // 2. Sector 16: Super Block (offset 0x2000 = 8192)
-    const sbBuffer = createHpfsSuperblockBuffer({
-      volumeName: 'IMAGE_VOL',
-      rootdir: 500,
+    const image = createHpfsPartitionImageBuffer({
+      bootBlock: {
+        oemId: 'IBM 20.0',
+        systemId: 'HPFS',
+      },
+      superblock: {
+        volumeName: 'IMAGE_VOL',
+        rootdir: 500,
+        nDirBand: 1600,
+        dirBandStart: 102400,
+        dirBandEnd: 103999,
+        dirBandBitmap: 120,
+      },
+      spareBlock: {
+        dirty: false,
+        usedHotfixes: 5,
+        totalHotfixes: 99,
+        codePageDir: 777,
+      },
     });
-    image.set(sbBuffer, HPFS_SUPERBLOCK_OFFSET);
-
-    // 3. Sector 17: Spare Block (offset 0x2200 = 8704)
-    view.setUint32(HPFS_SPAREBLOCK_OFFSET, HPFS_SP_MAGIC, true);
-    view.setUint32(HPFS_SPAREBLOCK_OFFSET + 4, HPFS_SP_MAGIC1, true);
-    view.setUint8(HPFS_SPAREBLOCK_OFFSET + 8, 0x00); // dirty: 0 (clean)
-    view.setUint32(HPFS_SPAREBLOCK_OFFSET + 16, 20, true); // nSpareSectors
 
     // Auto-detect offset 0x2000
     const result = parseHpfsSuperblock(image);
     expect(result.ok).toBe(true);
     expect(result.data.superblock.volumeName).toBe('IMAGE_VOL');
     expect(result.data.superblock.offset).toBe(0x2000);
+    expect(result.data.superblock.sector).toBe(16);
+    expect(result.data.superblock.dirBand.sectorCount).toBe(1600);
+    expect(result.data.superblock.dirBand.bitmapSector).toBe(120);
 
     // Boot block verified
     expect(result.data.bootBlock).toBeDefined();
@@ -293,10 +388,12 @@ describe('HPFS Partition Image with Boot Block and Spare Block', () => {
     expect(result.data.spareBlock).toBeDefined();
     expect(result.data.spareBlock.magicHex).toBe('0xF9911849');
     expect(result.data.spareBlock.dirty).toBe(false);
-    expect(result.data.spareBlock.nSpareSectors).toBe(20);
+    expect(result.data.spareBlock.usedHotfixes).toBe(5);
+    expect(result.data.spareBlock.totalHotfixes).toBe(99);
+    expect(result.data.spareBlock.codePageDir).toBe(777);
   });
 
-  it('respects explicit byte offset', () => {
+  it('respects explicit byte offset and base offset', () => {
     const offset = 4096;
     const buffer = new Uint8Array(offset + HPFS_SECTOR_SIZE);
     const sb = createHpfsSuperblockBuffer({ volumeName: 'CUSTOM_OFFSET' });
@@ -306,6 +403,15 @@ describe('HPFS Partition Image with Boot Block and Spare Block', () => {
     expect(result.ok).toBe(true);
     expect(result.data.superblock.volumeName).toBe('CUSTOM_OFFSET');
     expect(result.data.superblock.offset).toBe(4096);
+    expect(result.data.superblock.sector).toBe(8);
+  });
+
+  it('carries slice base offset into reported location', () => {
+    const sb = createHpfsSuperblockBuffer({ volumeName: 'SLICED_SB' });
+    const result = parseHpfsSuperblock(sb, { offset: 0, baseOffset: 8192 });
+    expect(result.ok).toBe(true);
+    expect(result.data.superblock.offset).toBe(8192);
+    expect(result.data.superblock.sector).toBe(16);
   });
 
   it('createSampleHpfsSuperblockHex generates valid parsable hex', () => {

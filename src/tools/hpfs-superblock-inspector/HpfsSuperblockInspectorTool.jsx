@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import {
+  HPFS_SECTOR_SIZE,
   createSampleHpfsSuperblockHex,
   formatFileSize,
   hexToBytes,
   parseByteOffset,
+  parseHpfsBootBlock,
   parseHpfsSuperblock,
   readSlice,
 } from './hpfs-superblock-inspector.utils.js';
@@ -82,14 +84,26 @@ export default function HpfsSuperblockInspectorTool() {
     const readStart = offsetNumber === 0 ? 0 : Math.max(0, offsetNumber);
     const readLength = 16384; // 16 KB covers boot block, superblock and spare block
 
-    readSlice(file, readStart, readLength)
-      .then((bytes) => {
+    const needSeparateBootBlock = readStart >= HPFS_SECTOR_SIZE && file.size >= HPFS_SECTOR_SIZE;
+
+    const readMainPromise = readSlice(file, readStart, readLength);
+    const readBootPromise = needSeparateBootBlock
+      ? readSlice(file, 0, HPFS_SECTOR_SIZE)
+      : Promise.resolve(null);
+
+    Promise.all([readMainPromise, readBootPromise])
+      .then(([bytes, bootBytes]) => {
         if (fileRequestRef.current !== requestId) return;
         setIsReading(false);
-        // Relative offset inside this slice is offsetNumber - readStart
         const relativeOffset = offsetNumber - readStart;
-        const result = parseHpfsSuperblock(bytes, { offset: relativeOffset });
+        const result = parseHpfsSuperblock(bytes, {
+          offset: relativeOffset,
+          baseOffset: readStart,
+        });
         if (result.ok) {
+          if (!result.data.bootBlock && bootBytes) {
+            result.data.bootBlock = parseHpfsBootBlock(bootBytes, 0);
+          }
           setParsedData(result.data);
           setError('');
         } else {
@@ -294,6 +308,12 @@ export default function HpfsSuperblockInspectorTool() {
 
             <div className="data-grid">
               <div className="data-item">
+                <span className="data-item-label">Superblock Location</span>
+                <span className="data-item-value">
+                  Offset 0x{sb.offset.toString(16).toUpperCase()} ({sb.offset} bytes, Sector {sb.sector})
+                </span>
+              </div>
+              <div className="data-item">
                 <span className="data-item-label">Primary Signature (Magic)</span>
                 <span className="data-item-value">{sb.magicHex}</span>
               </div>
@@ -362,24 +382,24 @@ export default function HpfsSuperblockInspectorTool() {
             </div>
 
             <h4 style={{ margin: '0.75rem 0 0.25rem', fontSize: '0.95rem' }}>
-              Additional Metadata
+              Maintenance & Storage Fields
             </h4>
             <div className="data-grid">
               <div className="data-item">
-                <span className="data-item-label">Root Bitmap Fnode</span>
-                <span className="data-item-value">{sb.rootBitmapSector}</span>
+                <span className="data-item-label">Bad-Block List Sector</span>
+                <span className="data-item-value">{sb.badBlockListSector}</span>
               </div>
               <div className="data-item">
-                <span className="data-item-label">Hotfix Map Sector</span>
-                <span className="data-item-value">{sb.hotfixMapSector}</span>
+                <span className="data-item-label">Last Chkdsk Date</span>
+                <span className="data-item-value">{sb.lastChkdsk}</span>
               </div>
               <div className="data-item">
-                <span className="data-item-label">Hotfix Count</span>
-                <span className="data-item-value">{sb.hotfixCount}</span>
+                <span className="data-item-label">Last Optimize Date</span>
+                <span className="data-item-value">{sb.lastOptimize}</span>
               </div>
               <div className="data-item">
-                <span className="data-item-label">Fnode Bitmap Sector</span>
-                <span className="data-item-value">{sb.fnodeBitmapSector}</span>
+                <span className="data-item-label">User ID Table Sector</span>
+                <span className="data-item-value">{sb.userIdTableSector}</span>
               </div>
             </div>
           </div>
@@ -439,12 +459,28 @@ export default function HpfsSuperblockInspectorTool() {
                   <span className="data-item-value">{sp.spareDirUsed ? 'Yes' : 'No'}</span>
                 </div>
                 <div className="data-item">
-                  <span className="data-item-label">Spare Sectors Count</span>
-                  <span className="data-item-value">{sp.nSpareSectors}</span>
+                  <span className="data-item-label">Used Hotfixes</span>
+                  <span className="data-item-value">{sp.usedHotfixes}</span>
+                </div>
+                <div className="data-item">
+                  <span className="data-item-label">Total Hotfix Spares</span>
+                  <span className="data-item-value">{sp.totalHotfixes}</span>
                 </div>
                 <div className="data-item">
                   <span className="data-item-label">Code Page Directory</span>
                   <span className="data-item-value">{sp.codePageDir}</span>
+                </div>
+                <div className="data-item">
+                  <span className="data-item-label">Code Pages Count</span>
+                  <span className="data-item-value">{sp.nCodePages}</span>
+                </div>
+                <div className="data-item">
+                  <span className="data-item-label">Superblock CRC</span>
+                  <span className="data-item-value">{sp.superCrcHex}</span>
+                </div>
+                <div className="data-item">
+                  <span className="data-item-label">Spare Block CRC</span>
+                  <span className="data-item-value">{sp.spareCrcHex}</span>
                 </div>
               </div>
             </div>

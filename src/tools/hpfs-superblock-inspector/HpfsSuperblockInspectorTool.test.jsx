@@ -52,6 +52,8 @@ describe('HpfsSuperblockInspectorTool rendering and basic interactions', () => {
     expect(screen.getAllByText('Version 2')).toHaveLength(2); // HPFS Version and Functional Version
     expect(screen.getByText('17')).toBeInTheDocument(); // spare block sector
     expect(screen.getByText('Dir Band Sector Count')).toBeInTheDocument();
+    expect(screen.getByText('Bad-Block List Sector')).toBeInTheDocument();
+    expect(screen.getByText('Last Chkdsk Date')).toBeInTheDocument();
   });
 
   it('displays diagnostic alert on truncated hex input without valid result', async () => {
@@ -103,6 +105,32 @@ describe('HpfsSuperblockInspectorTool rendering and basic interactions', () => {
     expect(screen.queryByText('Valid Superblock')).not.toBeInTheDocument();
   });
 
+  it('displays diagnostic alert on malformed byte offset input', async () => {
+    render(<HpfsSuperblockInspectorTool />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Load Sample' }));
+    await waitFor(() => expect(screen.getByText('Valid Superblock')).toBeInTheDocument());
+
+    const offsetInput = screen.getByLabelText('Byte Offset:');
+    fireEvent.change(offsetInput, { target: { value: '12junk' } });
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+    });
+    expect(screen.getByRole('alert')).toHaveTextContent(/Invalid byte offset/);
+    expect(screen.queryByText('Valid Superblock')).not.toBeInTheDocument();
+
+    fireEvent.change(offsetInput, { target: { value: '0x2000zz' } });
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(/Invalid byte offset/);
+    });
+
+    fireEvent.change(offsetInput, { target: { value: '1.5' } });
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(/Invalid byte offset/);
+    });
+  });
+
   it('clears all inputs, parsed results, and errors on "Clear" button click', async () => {
     render(<HpfsSuperblockInspectorTool />);
 
@@ -138,6 +166,91 @@ describe('HpfsSuperblockInspectorTool file upload and async slicing', () => {
 
     expect(screen.getByText(/hpfs_image\.img/)).toBeInTheDocument();
     expect(screen.getByText('Valid Superblock')).toBeInTheDocument();
+  });
+
+  it('parses full image file with explicit offset, preserving absolute location and boot block', async () => {
+    render(<HpfsSuperblockInspectorTool />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'File Upload' }));
+
+    // Create a full HPFS partition image (sector 0: boot block, sector 16: superblock, sector 17: spare block)
+    const fullImageBytes = hpfsUtils.createHpfsPartitionImageBuffer({
+      bootBlock: {
+        oemId: 'IBM 4.0',
+        volumeLabel: 'FULL_IMG',
+        systemId: 'HPFS',
+      },
+      superblock: {
+        volumeName: 'OS2_FULL',
+        nDirBand: 1600,
+        dirBandStart: 102400,
+        dirBandEnd: 103999,
+        dirBandBitmap: 120,
+      },
+      spareBlock: {
+        dirty: false,
+        usedHotfixes: 5,
+        totalHotfixes: 99,
+        codePageDir: 777,
+      },
+    });
+
+    const file = new File([fullImageBytes], 'full_hpfs.img', { type: 'application/octet-stream' });
+    const offsetInput = screen.getByLabelText('Byte Offset:');
+    fireEvent.change(offsetInput, { target: { value: '8192' } });
+
+    const fileInput = screen.getByLabelText('Upload HPFS image or superblock file');
+    await act(async () => {
+      selectFile(fileInput, file);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Valid Superblock')).toBeInTheDocument();
+    });
+
+    // Check that superblock location reports offset 8192 / Sector 16
+    expect(screen.getByText(/Offset 0x2000 \(8192 bytes, Sector 16\)/)).toBeInTheDocument();
+    expect(screen.getByText('OS2_FULL')).toBeInTheDocument();
+
+    // Check directory band fields
+    expect(screen.getByText('102400')).toBeInTheDocument();
+    expect(screen.getByText('103999')).toBeInTheDocument();
+    expect(screen.getByText('120')).toBeInTheDocument();
+
+    // Check that Boot Block (Sector 0) is parsed and rendered
+    expect(screen.getByText('Boot Block (Sector 0)')).toBeInTheDocument();
+    expect(screen.getByText('IBM 4.0')).toBeInTheDocument();
+    expect(screen.getByText('FULL_IMG')).toBeInTheDocument();
+
+    // Check that Spare Block (Sector 17) is parsed and rendered
+    expect(screen.getByText('Spare Block (Sector 17)')).toBeInTheDocument();
+    expect(screen.getByText('Used Hotfixes')).toBeInTheDocument();
+    expect(screen.getByText('5')).toBeInTheDocument();
+    expect(screen.getByText('Total Hotfix Spares')).toBeInTheDocument();
+    expect(screen.getByText('99')).toBeInTheDocument();
+    expect(screen.getByText('777')).toBeInTheDocument();
+  });
+
+  it('rejects malformed offset in file mode and sets error alert', async () => {
+    render(<HpfsSuperblockInspectorTool />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'File Upload' }));
+    const sampleBuffer = hpfsUtils.createHpfsSuperblockBuffer();
+    const file = new File([sampleBuffer], 'hpfs.img');
+    const fileInput = screen.getByLabelText('Upload HPFS image or superblock file');
+
+    await act(async () => {
+      selectFile(fileInput, file);
+    });
+    await waitFor(() => expect(screen.getByText('Valid Superblock')).toBeInTheDocument());
+
+    const offsetInput = screen.getByLabelText('Byte Offset:');
+    fireEvent.change(offsetInput, { target: { value: '0x2000zz' } });
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+    });
+    expect(screen.getByRole('alert')).toHaveTextContent(/Invalid byte offset/);
   });
 
   it('clears results and displays loading indicator while reading file slice', async () => {
