@@ -324,7 +324,8 @@ export async function inspectAffsFile(file, options = {}) {
     targetSector = useMidpoint ? defaultMidpointSector : bootBlock.rootblockPtr;
 
     if (!useMidpoint && (targetSector < 0 || targetSector >= totalSectors)) {
-      rootBlockError = `Root block pointer sector ${targetSector} is out of range (0–${totalSectors - 1}).`;
+      rootBlockError =
+        `Root block pointer sector ${targetSector} is out of range (0–${totalSectors - 1}).`;
     } else {
       const rootByteOffset = targetSector * SECTOR_SIZE;
       const rootSlice = await readBlobAsArrayBuffer(
@@ -382,7 +383,8 @@ export function inspectAffsBuffer(buffer, options = {}) {
     targetSector = useMidpoint ? defaultMidpointSector : bootBlock.rootblockPtr;
 
     if (!useMidpoint && (targetSector < 0 || targetSector >= totalSectors)) {
-      rootBlockError = `Root block pointer sector ${targetSector} is out of range (0–${totalSectors - 1}).`;
+      rootBlockError =
+        `Root block pointer sector ${targetSector} is out of range (0–${totalSectors - 1}).`;
     } else {
       const rootByteOffset = targetSector * SECTOR_SIZE;
       const rootBytes = bytes.slice(rootByteOffset, rootByteOffset + SECTOR_SIZE);

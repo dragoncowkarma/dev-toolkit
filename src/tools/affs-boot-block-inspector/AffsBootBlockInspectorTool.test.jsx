@@ -150,7 +150,7 @@ describe('AffsBootBlockInspectorTool', () => {
     expect(clearBtn).toBeDisabled();
   });
 
-  it('reports error when boot block pointer is out of range, and validates when switching to midpoint', async () => {
+  it('reports error when pointer is out of range, and validates on midpoint', async () => {
     // Build floppy with out-of-range rootblockPtr (4000) and valid root block at sector 880
     const disk = new Uint8Array(1760 * 512);
     disk[0] = 0x44; // 'D'

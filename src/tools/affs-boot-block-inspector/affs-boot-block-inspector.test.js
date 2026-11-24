@@ -507,7 +507,7 @@ describe('affs-boot-block-inspector.utils', () => {
       expect(result.rootBlockError).toContain('Invalid root block checksum');
     });
 
-    it('reports an error for an out-of-range pointer without silently validating midpoint', async () => {
+    it('reports error for out-of-range pointer without validating midpoint', async () => {
       const floppy = new Uint8Array(1760 * 512);
       // Boot block with out-of-range rootblockPtr (e.g. 5000)
       const boot = buildIndependentBootBlock({
@@ -531,7 +531,9 @@ describe('affs-boot-block-inspector.utils', () => {
       });
       expect(pointerResult.targetSector).toBe(5000);
       expect(pointerResult.rootBlock).toBeNull();
-      expect(pointerResult.rootBlockError).toContain('Root block pointer sector 5000 is out of range');
+      expect(pointerResult.rootBlockError).toContain(
+        'Root block pointer sector 5000 is out of range',
+      );
 
       // 2. In explicit midpoint mode: validates sector 880
       const midpointResult = await inspectAffsFile(file, {
@@ -561,7 +563,9 @@ describe('affs-boot-block-inspector.utils', () => {
       const pointerResult = inspectAffsBuffer(floppy, { rootBlockSource: 'pointer' });
       expect(pointerResult.targetSector).toBe(2500);
       expect(pointerResult.rootBlock).toBeNull();
-      expect(pointerResult.rootBlockError).toContain('Root block pointer sector 2500 is out of range');
+      expect(pointerResult.rootBlockError).toContain(
+        'Root block pointer sector 2500 is out of range',
+      );
 
       // Midpoint mode
       const midpointResult = inspectAffsBuffer(floppy, { rootBlockSource: 'midpoint' });
