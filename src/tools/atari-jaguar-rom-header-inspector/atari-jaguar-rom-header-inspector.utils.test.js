@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CART_ROM_BASE,
+  CART_ROM_END,
   CART_START_OFFSET,
   COPIER_HEADER_SIZE,
   HEADER_SLICE_SIZE,
@@ -7,8 +9,10 @@ import {
   MARKER_TRACK_2,
   MIN_HEADER_SIZE,
   detectSizeClass,
+  extractCartridgeStartAddress,
   findHeaderOffset,
   formatFileSize,
+  isValidCartridgeAddress,
   parseJaguarRomHeader,
   readFileHeader,
 } from './atari-jaguar-rom-header-inspector.utils.js';
@@ -202,6 +206,111 @@ describe('parseJaguarRomHeader - Cartridge ROMs', () => {
     expect(result.bootAddressHex).toBe('Unknown');
     expect(result.sizeClass).toBe('2 MB');
   });
+
+  it('handles irregular file sizes without call stack overflow when raw address is zeroed', () => {
+    // 2049-byte file with a zeroed 2048-byte header
+    const bytes = new Uint8Array(2048);
+
+    const result = parseJaguarRomHeader(bytes, 2049);
+
+    expect(result.markerPresent).toBe(false);
+    expect(result.bootAddress).toBeNull();
+    expect(result.bootAddressHex).toBe('Unknown');
+    expect(result.sizeClass).toBe('Unknown');
+  });
+
+  it('handles irregular file sizes without stack overflow when raw address is 0xffffffff', () => {
+    const bytes = new Uint8Array(2048);
+    bytes.fill(0xff, CART_START_OFFSET, CART_START_OFFSET + 4);
+
+    const result = parseJaguarRomHeader(bytes, 2049);
+
+    expect(result.markerPresent).toBe(false);
+    expect(result.bootAddress).toBeNull();
+    expect(result.bootAddressHex).toBe('Unknown');
+  });
+
+  it('detects copier header on irregular file sizes when offset 0x404 is absent', () => {
+    // 2049-byte file with absent raw address at 0x404 but valid copier address at 512 + 0x404
+    const bytes = createCartridgeRomBuffer({
+      bootAddress: 0x00802000,
+      hasCopierHeader: true,
+      totalSize: 2048,
+    });
+    // Ensure raw offset 0x404 is zeroed
+    bytes.fill(0, CART_START_OFFSET, CART_START_OFFSET + 4);
+
+    const result = parseJaguarRomHeader(bytes, 2049);
+
+    expect(result.markerPresent).toBe(false);
+    expect(result.bootAddress).toBe(0x00802000);
+    expect(result.bootAddressHex).toBe('0x00802000');
+  });
+
+  it('falls back to copier header when raw offset 0x404 address is absent in standard size', () => {
+    const bytes = createCartridgeRomBuffer({
+      bootAddress: 0x00802000,
+      hasCopierHeader: true,
+      totalSize: 2048,
+    });
+    bytes.fill(0, CART_START_OFFSET, CART_START_OFFSET + 4);
+
+    const result = parseJaguarRomHeader(bytes, 2097152 + 512);
+
+    expect(result.bootAddress).toBe(0x00802000);
+    expect(result.bootAddressHex).toBe('0x00802000');
+  });
+
+  it('rejects invalid raw start address (e.g. byte 0x407 = 1 resulting in 0x00000001)', () => {
+    const bytes = new Uint8Array(2048);
+    bytes[CART_START_OFFSET + 3] = 0x01; // raw = 0x00000001
+
+    const result = parseJaguarRomHeader(bytes, 2097152);
+
+    expect(result.bootAddress).toBeNull();
+    expect(result.bootAddressHex).toBe('Unknown');
+  });
+
+  it('rejects invalid raw start address exceeding the cartridge ROM size', () => {
+    // 2 MB cartridge (range 0x00800000 - 0x009FFFFF), address at 0x00A50000
+    const bytes = createCartridgeRomBuffer({
+      bootAddress: 0x00a50000,
+      totalSize: 2048,
+    });
+
+    const result = parseJaguarRomHeader(bytes, 2097152);
+
+    expect(result.bootAddress).toBeNull();
+    expect(result.bootAddressHex).toBe('Unknown');
+  });
+
+  it('rejects word-swapped address when neither byte order is a valid cartridge address', () => {
+    const bytes = new Uint8Array(2048);
+    // raw = 0x01000000, swapped = 0x00010000 (neither is in cartridge ROM space)
+    bytes[CART_START_OFFSET] = 0x01;
+    bytes[CART_START_OFFSET + 1] = 0x00;
+    bytes[CART_START_OFFSET + 2] = 0x00;
+    bytes[CART_START_OFFSET + 3] = 0x00;
+
+    const result = parseJaguarRomHeader(bytes, 2097152);
+
+    expect(result.bootAddress).toBeNull();
+    expect(result.bootAddressHex).toBe('Unknown');
+  });
+
+  it('rejects word-swapped address exceeding the cartridge ROM size', () => {
+    // Word-swapped 0x00A50000 for a 2 MB cartridge
+    const bytes = createCartridgeRomBuffer({
+      bootAddress: 0x00a50000,
+      swapped: true,
+      totalSize: 2048,
+    });
+
+    const result = parseJaguarRomHeader(bytes, 2097152);
+
+    expect(result.bootAddress).toBeNull();
+    expect(result.bootAddressHex).toBe('Unknown');
+  });
 });
 
 describe('parseJaguarRomHeader - CD boot-tracks', () => {
@@ -353,5 +462,67 @@ describe('readFileHeader', () => {
 
   it('throws an error if no file is provided', async () => {
     await expect(readFileHeader(null)).rejects.toThrow('No file provided.');
+  });
+});
+
+describe('isValidCartridgeAddress', () => {
+  it('accepts standard cartridge boot addresses within range', () => {
+    expect(isValidCartridgeAddress(0x00802000)).toBe(true);
+    expect(isValidCartridgeAddress(CART_ROM_BASE)).toBe(true);
+    expect(isValidCartridgeAddress(CART_ROM_END)).toBe(true);
+  });
+
+  it('validates against specific ROM sizes when provided', () => {
+    // 2 MB cartridge (0x00800000 to 0x009FFFFF)
+    expect(isValidCartridgeAddress(0x00802000, 2097152)).toBe(true);
+    expect(isValidCartridgeAddress(0x009fffff, 2097152)).toBe(true);
+    expect(isValidCartridgeAddress(0x00a00000, 2097152)).toBe(false);
+
+    // 2 MB cartridge with 512-byte copier header
+    expect(isValidCartridgeAddress(0x00802000, 2097152 + 512)).toBe(true);
+    expect(isValidCartridgeAddress(0x00a00000, 2097152 + 512)).toBe(false);
+  });
+
+  it('rejects addresses below CART_ROM_BASE or above CART_ROM_END', () => {
+    expect(isValidCartridgeAddress(0x00000001)).toBe(false);
+    expect(isValidCartridgeAddress(0x00004000)).toBe(false);
+    expect(isValidCartridgeAddress(0x007fffff)).toBe(false);
+    expect(isValidCartridgeAddress(0x01000000)).toBe(false);
+    expect(isValidCartridgeAddress(0xffffffff)).toBe(false);
+    expect(isValidCartridgeAddress(0)).toBe(false);
+    expect(isValidCartridgeAddress(-1)).toBe(false);
+  });
+
+  it('rejects invalid inputs such as non-numbers or non-integers', () => {
+    expect(isValidCartridgeAddress(null)).toBe(false);
+    expect(isValidCartridgeAddress(undefined)).toBe(false);
+    expect(isValidCartridgeAddress(NaN)).toBe(false);
+    expect(isValidCartridgeAddress(8396800.5)).toBe(false);
+  });
+});
+
+describe('extractCartridgeStartAddress', () => {
+  it('returns null when buffer is smaller than CART_START_OFFSET + 4', () => {
+    const small = new Uint8Array(100);
+    expect(extractCartridgeStartAddress(small)).toBeNull();
+  });
+
+  it('extracts valid address from raw dump offset 0x404', () => {
+    const bytes = createCartridgeRomBuffer({ bootAddress: 0x00802000 });
+    expect(extractCartridgeStartAddress(bytes, 2097152)).toBe(0x00802000);
+  });
+
+  it('extracts valid address from copier header offset 512 + 0x404', () => {
+    const bytes = createCartridgeRomBuffer({
+      bootAddress: 0x00802000,
+      hasCopierHeader: true,
+    });
+    expect(extractCartridgeStartAddress(bytes, 2097152 + 512)).toBe(0x00802000);
+  });
+
+  it('probes copier header fallback at most once without recursion on irregular size', () => {
+    const bytes = new Uint8Array(2048);
+    // Irregular file size with zeroed header
+    expect(extractCartridgeStartAddress(bytes, 2049)).toBeNull();
   });
 });

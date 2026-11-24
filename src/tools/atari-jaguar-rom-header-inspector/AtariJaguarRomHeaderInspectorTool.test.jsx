@@ -169,4 +169,38 @@ describe('AtariJaguarRomHeaderInspectorTool', () => {
     expect(screen.queryByText('Header Marker')).not.toBeInTheDocument();
     expect(input.value).toBe('');
   });
+
+  it('inspects irregular file size without stack overflow and shows Unknown address', async () => {
+    render(<AtariJaguarRomHeaderInspectorTool />);
+
+    // 2049-byte file with zeroed header
+    const file = createRomFile('irregular_zeroed.rom', 2049);
+    const input = screen.getByLabelText('Upload Atari Jaguar ROM');
+
+    await act(async () => selectFile(input, file));
+
+    await waitFor(() => {
+      expect(screen.getByText('Header Marker')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Unknown').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('displays Unknown for boot address when cartridge address is invalid', async () => {
+    render(<AtariJaguarRomHeaderInspectorTool />);
+
+    const file = createRomFile('invalid_addr.j64', 2097152, (bytes) => {
+      bytes[CART_START_OFFSET + 3] = 0x01;
+    });
+    const input = screen.getByLabelText('Upload Atari Jaguar ROM');
+
+    await act(async () => selectFile(input, file));
+
+    await waitFor(() => {
+      expect(screen.getByText('Header Marker')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText('0x00000001')).not.toBeInTheDocument();
+  });
 });

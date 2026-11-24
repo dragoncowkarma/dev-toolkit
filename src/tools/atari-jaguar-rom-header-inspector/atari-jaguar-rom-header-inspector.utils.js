@@ -43,6 +43,21 @@ export const CART_START_OFFSET = 0x404;
  */
 export const COPIER_HEADER_SIZE = 512;
 
+/**
+ * Atari Jaguar Cartridge ROM base address in 68000 address space (0x00800000).
+ */
+export const CART_ROM_BASE = 0x00800000;
+
+/**
+ * Maximum cartridge ROM size supported by the Jaguar memory architecture (8 MB).
+ */
+export const CART_MAX_ROM_SIZE = 8388608;
+
+/**
+ * Upper address limit for Jaguar cartridge space (0x00FFFFFF).
+ */
+export const CART_ROM_END = CART_ROM_BASE + CART_MAX_ROM_SIZE - 1;
+
 const SIZE_CLASSES = [
   { bytes: 524288, label: '512 KB' },
   { bytes: 1048576, label: '1 MB' },
@@ -156,61 +171,106 @@ export function findHeaderOffset(bytes) {
 }
 
 /**
+ * Validates whether an address is a plausible Atari Jaguar cartridge boot/start address.
+ *
+ * Cartridge ROM space begins at 0x00800000. When file size indicates a known ROM image
+ * size, the start address must fall within the ROM's mapped range. Otherwise, it must
+ * fall within the Jaguar cartridge address space (0x00800000 - 0x00FFFFFF).
+ *
+ * @param {number} address - Decoded 32-bit start address.
+ * @param {number} [fileSize] - Total file size in bytes.
+ * @returns {boolean} True if address is a valid cartridge address.
+ */
+export function isValidCartridgeAddress(address, fileSize) {
+  if (typeof address !== 'number' || !Number.isInteger(address) || address <= 0) {
+    return false;
+  }
+  if (address < CART_ROM_BASE || address > CART_ROM_END) {
+    return false;
+  }
+  if (typeof fileSize === 'number' && fileSize >= 524288) {
+    const isCopier = fileSize % 524288 === COPIER_HEADER_SIZE;
+    const romSize = isCopier ? fileSize - COPIER_HEADER_SIZE : fileSize;
+    if (address >= CART_ROM_BASE + romSize) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Decodes and validates cartridge start address at a specific byte offset.
+ *
+ * @param {Uint8Array} bytes - Header bytes.
+ * @param {number} offset - Byte offset to read from.
+ * @param {number} [fileSize] - Total file size in bytes.
+ * @returns {number|null} Decoded start address or null if invalid.
+ */
+function decodeCartridgeAddressAt(bytes, offset, fileSize) {
+  if (!bytes || bytes.length < offset + 4) {
+    return null;
+  }
+
+  const raw =
+    ((bytes[offset] << 24) |
+      (bytes[offset + 1] << 16) |
+      (bytes[offset + 2] << 8) |
+      bytes[offset + 3]) >>>
+    0;
+
+  const swapped =
+    ((bytes[offset + 1] << 24) |
+      (bytes[offset] << 16) |
+      (bytes[offset + 3] << 8) |
+      bytes[offset + 2]) >>>
+    0;
+
+  if (isValidCartridgeAddress(raw, fileSize)) {
+    return raw;
+  }
+
+  if (isValidCartridgeAddress(swapped, fileSize)) {
+    return swapped;
+  }
+
+  return null;
+}
+
+/**
  * Extracts cartridge start address from ROM offset 0x404 (and 512 + 0x404 for copier headers).
+ * Probes the copier-header offset directly at most once without unbounded recursion.
  *
  * @param {Uint8Array} bytes - Header bytes.
  * @param {number} [fileSize] - Total file size in bytes.
  * @returns {number|null} Start address or null if invalid.
  */
-function extractCartridgeStartAddress(bytes, fileSize) {
-  let baseOffset = 0;
-  if (
-    typeof fileSize === 'number' &&
-    (fileSize % 524288 === COPIER_HEADER_SIZE || fileSize % 1048576 === COPIER_HEADER_SIZE)
-  ) {
-    baseOffset = COPIER_HEADER_SIZE;
-  }
-
-  let targetOffset = baseOffset + CART_START_OFFSET;
-  if (bytes.length < targetOffset + 4) {
-    if (baseOffset !== 0) {
-      return null;
-    }
-    targetOffset = CART_START_OFFSET;
-    if (bytes.length < targetOffset + 4) {
-      return null;
-    }
-  }
-
-  const raw =
-    ((bytes[targetOffset] << 24) |
-      (bytes[targetOffset + 1] << 16) |
-      (bytes[targetOffset + 2] << 8) |
-      bytes[targetOffset + 3]) >>>
-    0;
-
-  const swapped =
-    ((bytes[targetOffset + 1] << 24) |
-      (bytes[targetOffset] << 16) |
-      (bytes[targetOffset + 3] << 8) |
-      bytes[targetOffset + 2]) >>>
-    0;
-
-  if (raw === 0 || raw === 0xffffffff) {
-    // If raw at 0x404 is empty, check if copier header is present at 512 + 0x404
-    if (baseOffset === 0 && bytes.length >= COPIER_HEADER_SIZE + CART_START_OFFSET + 4) {
-      return extractCartridgeStartAddress(bytes, (fileSize || 0) + COPIER_HEADER_SIZE);
-    }
+export function extractCartridgeStartAddress(bytes, fileSize) {
+  if (!bytes || bytes.length < CART_START_OFFSET + 4) {
     return null;
   }
 
-  // Jaguar cartridge ROM addresses start at 0x00800000+.
-  // If swapped starts with 0x008 while raw does not, the cartridge is word-swapped.
-  if ((swapped >>> 20) === 0x008 && (raw >>> 20) !== 0x008) {
-    return swapped;
+  const isCopierSized =
+    typeof fileSize === 'number' &&
+    (fileSize % 524288 === COPIER_HEADER_SIZE || fileSize % 1048576 === COPIER_HEADER_SIZE);
+
+  const primaryOffset = isCopierSized
+    ? COPIER_HEADER_SIZE + CART_START_OFFSET
+    : CART_START_OFFSET;
+  const fallbackOffset = isCopierSized
+    ? CART_START_OFFSET
+    : COPIER_HEADER_SIZE + CART_START_OFFSET;
+
+  const primaryAddress = decodeCartridgeAddressAt(bytes, primaryOffset, fileSize);
+  if (primaryAddress !== null) {
+    return primaryAddress;
   }
 
-  return raw;
+  // Probe the alternate offset at most once (e.g. copier header fallback or absent raw address)
+  if (bytes.length >= fallbackOffset + 4) {
+    return decodeCartridgeAddressAt(bytes, fallbackOffset, fileSize);
+  }
+
+  return null;
 }
 
 /**
@@ -245,7 +305,8 @@ export function parseJaguarRomHeader(bytes, fileSize) {
 
   if (!markerMatch) {
     const cartStart = extractCartridgeStartAddress(bytes, fileSize);
-    const validBoot = typeof cartStart === 'number' && cartStart > 0 && cartStart !== 0xffffffff;
+    const validBoot =
+      typeof cartStart === 'number' && isValidCartridgeAddress(cartStart, fileSize);
     const bootAddress = validBoot ? cartStart : null;
     const bootAddressHex = validBoot
       ? `0x${cartStart.toString(16).toUpperCase().padStart(8, '0')}`
