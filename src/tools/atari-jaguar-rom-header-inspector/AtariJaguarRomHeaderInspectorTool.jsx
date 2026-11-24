@@ -60,6 +60,9 @@ export default function AtariJaguarRomHeaderInspectorTool() {
             ref={fileInputRef}
             type="file"
             className="jaguar-header-inspector__file-input"
+            onClick={(event) => {
+              event.target.value = '';
+            }}
             onChange={handleFileChange}
             aria-label="Upload Atari Jaguar ROM"
           />
@@ -73,18 +76,20 @@ export default function AtariJaguarRomHeaderInspectorTool() {
         </div>
       )}
 
+      {(header || error) && (
+        <div className="jaguar-header-inspector__actions">
+          <button
+            type="button"
+            className="jaguar-header-inspector__btn-clear"
+            onClick={handleClear}
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
       {header && (
         <div className="jaguar-header-inspector__results">
-          <div className="jaguar-header-inspector__actions">
-            <button
-              type="button"
-              className="jaguar-header-inspector__btn-clear"
-              onClick={handleClear}
-            >
-              Clear
-            </button>
-          </div>
-
           <dl className="jaguar-header-inspector__details">
             <div>
               <dt>Header Marker</dt>

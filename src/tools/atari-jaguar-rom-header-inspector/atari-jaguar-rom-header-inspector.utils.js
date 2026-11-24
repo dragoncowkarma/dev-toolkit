@@ -1,20 +1,47 @@
 /**
  * Maximum header region read from the cartridge file.
+ * Set to 2048 bytes to cover the cartridge start address at ROM offset 0x404
+ * (1028 bytes) both for raw dumps (.j64) and copier-headered (.jag) ROMs
+ * (512 + 1028 = 1540 bytes).
  */
-export const HEADER_SLICE_SIZE = 1024;
+export const HEADER_SLICE_SIZE = 2048;
 
 /**
- * Minimum header size required to read marker, boot address, and size field.
+ * Minimum header size required to read CD marker and following fields.
  */
 export const MIN_HEADER_SIZE = 40;
 
 /**
- * Standard ASCII marker string.
+ * Standard ASCII CD boot-track marker string (space terminator).
  */
-export const MARKER_TEXT = 'ATARI APPROVED DATA HEADER ATRI!';
+export const MARKER_BOOT_TRACK = 'ATARI APPROVED DATA HEADER ATRI ';
 
-const STANDARD_MARKER = 'ATARI APPROVED DATA HEADER ATRI';
-const SWAPPED_MARKER = 'TARA IPARPVODED TA AEHDAREA RT';
+/**
+ * Standard ASCII CD track 2 marker string (exclamation terminator).
+ */
+export const MARKER_TRACK_2 = 'ATARI APPROVED DATA HEADER ATRI!';
+
+/**
+ * Default marker text reference for backwards compatibility.
+ */
+export const MARKER_TEXT = MARKER_TRACK_2;
+
+/**
+ * Supported 32-byte header markers.
+ */
+export const SUPPORTED_MARKERS = [MARKER_TRACK_2, MARKER_BOOT_TRACK];
+
+/**
+ * Cartridge start address offset within Jaguar cartridge ROM space.
+ * MAME and Jaguar hardware documentation locate the cart start address at 0x800404,
+ * which is offset 0x404 (1028 bytes) in the cartridge ROM.
+ */
+export const CART_START_OFFSET = 0x404;
+
+/**
+ * Standard copier header size (512 bytes).
+ */
+export const COPIER_HEADER_SIZE = 512;
 
 const SIZE_CLASSES = [
   { bytes: 524288, label: '512 KB' },
@@ -26,8 +53,18 @@ const SIZE_CLASSES = [
   { bytes: 8388608, label: '8 MB' },
 ];
 
+function swap16String(str) {
+  let swapped = '';
+  for (let i = 0; i < str.length; i += 2) {
+    swapped += str[i + 1] + str[i];
+  }
+  return swapped;
+}
+
+const SWAPPED_SUPPORTED_MARKERS = SUPPORTED_MARKERS.map(swap16String);
+
 /**
- * Reads up to 1024 bytes of the cartridge ROM header from a File or Blob.
+ * Reads up to 2048 bytes of the cartridge ROM header from a File or Blob.
  *
  * @param {Blob|File} file - Uploaded file or blob.
  * @returns {Promise<Uint8Array>} Raw bytes of the header region.
@@ -69,7 +106,7 @@ export function detectSizeClass(romSizeField, fileSize) {
   }
   if (typeof fileSize === 'number' && fileSize > 0) {
     const match = SIZE_CLASSES.find(
-      (entry) => entry.bytes === fileSize || entry.bytes + 512 === fileSize,
+      (entry) => entry.bytes === fileSize || entry.bytes + COPIER_HEADER_SIZE === fileSize,
     );
     if (match) {
       return match.label;
@@ -79,10 +116,10 @@ export function detectSizeClass(romSizeField, fileSize) {
 }
 
 /**
- * Searches for standard or byte-swapped Atari Jaguar header marker in bytes.
+ * Searches for complete standard or byte-swapped Atari Jaguar header marker in bytes.
  *
  * @param {Uint8Array} bytes - Header bytes.
- * @returns {{ offset: number, swapped: boolean } | null}
+ * @returns {{ offset: number, swapped: boolean, marker: string } | null}
  */
 export function findHeaderOffset(bytes) {
   if (!bytes || bytes.length < MIN_HEADER_SIZE) {
@@ -93,23 +130,93 @@ export function findHeaderOffset(bytes) {
     ascii += String.fromCharCode(bytes[i]);
   }
 
-  const standardIdx = ascii.indexOf(STANDARD_MARKER);
-  if (standardIdx !== -1) {
-    return { offset: standardIdx, swapped: false };
+  let bestMatch = null;
+
+  for (let i = 0; i < SUPPORTED_MARKERS.length; i++) {
+    const standard = SUPPORTED_MARKERS[i];
+    let idx = ascii.indexOf(standard);
+    while (idx !== -1) {
+      if (!bestMatch || idx < bestMatch.offset) {
+        bestMatch = { offset: idx, swapped: false, marker: standard };
+      }
+      idx = ascii.indexOf(standard, idx + 1);
+    }
+
+    const swapped = SWAPPED_SUPPORTED_MARKERS[i];
+    let swapIdx = ascii.indexOf(swapped);
+    while (swapIdx !== -1) {
+      if (!bestMatch || swapIdx < bestMatch.offset) {
+        bestMatch = { offset: swapIdx, swapped: true, marker: standard };
+      }
+      swapIdx = ascii.indexOf(swapped, swapIdx + 1);
+    }
   }
 
-  const swappedIdx = ascii.indexOf(SWAPPED_MARKER);
-  if (swappedIdx !== -1) {
-    return { offset: swappedIdx, swapped: true };
+  return bestMatch;
+}
+
+/**
+ * Extracts cartridge start address from ROM offset 0x404 (and 512 + 0x404 for copier headers).
+ *
+ * @param {Uint8Array} bytes - Header bytes.
+ * @param {number} [fileSize] - Total file size in bytes.
+ * @returns {number|null} Start address or null if invalid.
+ */
+function extractCartridgeStartAddress(bytes, fileSize) {
+  let baseOffset = 0;
+  if (
+    typeof fileSize === 'number' &&
+    (fileSize % 524288 === COPIER_HEADER_SIZE || fileSize % 1048576 === COPIER_HEADER_SIZE)
+  ) {
+    baseOffset = COPIER_HEADER_SIZE;
   }
 
-  return null;
+  let targetOffset = baseOffset + CART_START_OFFSET;
+  if (bytes.length < targetOffset + 4) {
+    if (baseOffset !== 0) {
+      return null;
+    }
+    targetOffset = CART_START_OFFSET;
+    if (bytes.length < targetOffset + 4) {
+      return null;
+    }
+  }
+
+  const raw =
+    ((bytes[targetOffset] << 24) |
+      (bytes[targetOffset + 1] << 16) |
+      (bytes[targetOffset + 2] << 8) |
+      bytes[targetOffset + 3]) >>>
+    0;
+
+  const swapped =
+    ((bytes[targetOffset + 1] << 24) |
+      (bytes[targetOffset] << 16) |
+      (bytes[targetOffset + 3] << 8) |
+      bytes[targetOffset + 2]) >>>
+    0;
+
+  if (raw === 0 || raw === 0xffffffff) {
+    // If raw at 0x404 is empty, check if copier header is present at 512 + 0x404
+    if (baseOffset === 0 && bytes.length >= COPIER_HEADER_SIZE + CART_START_OFFSET + 4) {
+      return extractCartridgeStartAddress(bytes, (fileSize || 0) + COPIER_HEADER_SIZE);
+    }
+    return null;
+  }
+
+  // Jaguar cartridge ROM addresses start at 0x00800000+.
+  // If swapped starts with 0x008 while raw does not, the cartridge is word-swapped.
+  if ((swapped >>> 20) === 0x008 && (raw >>> 20) !== 0x008) {
+    return swapped;
+  }
+
+  return raw;
 }
 
 /**
  * Parses Atari Jaguar ROM header bytes and returns inspected fields.
  *
- * @param {Uint8Array} bytes - Header bytes (up to 1024 bytes).
+ * @param {Uint8Array} bytes - Header bytes (up to 2048 bytes).
  * @param {number} [fileSize] - Full file size in bytes.
  * @returns {object} Parsed header fields.
  * @throws {Error} If the file or header is truncated.
@@ -137,18 +244,25 @@ export function parseJaguarRomHeader(bytes, fileSize) {
   const markerMatch = findHeaderOffset(bytes);
 
   if (!markerMatch) {
+    const cartStart = extractCartridgeStartAddress(bytes, fileSize);
+    const validBoot = typeof cartStart === 'number' && cartStart > 0 && cartStart !== 0xffffffff;
+    const bootAddress = validBoot ? cartStart : null;
+    const bootAddressHex = validBoot
+      ? `0x${cartStart.toString(16).toUpperCase().padStart(8, '0')}`
+      : 'Unknown';
+
     return {
       marker: 'Unknown',
       markerPresent: false,
-      bootAddress: null,
-      bootAddressHex: 'Unknown',
+      bootAddress,
+      bootAddressHex,
       romSizeField: null,
       romSizeFormatted: 'Unknown',
       sizeClass: detectSizeClass(null, fileSize),
     };
   }
 
-  const { offset, swapped } = markerMatch;
+  const { offset, swapped, marker } = markerMatch;
 
   if (offset + MIN_HEADER_SIZE > bytes.length) {
     throw new Error('Truncated file: incomplete header fields.');
@@ -171,9 +285,6 @@ export function parseJaguarRomHeader(bytes, fileSize) {
   const rawBootAddress =
     ((slice[32] << 24) | (slice[33] << 16) | (slice[34] << 8) | slice[35]) >>>
     0;
-  const rawRomSize =
-    ((slice[36] << 24) | (slice[37] << 16) | (slice[38] << 8) | slice[39]) >>>
-    0;
 
   const validBootAddress =
     rawBootAddress !== 0 && rawBootAddress !== 0xffffffff;
@@ -182,21 +293,18 @@ export function parseJaguarRomHeader(bytes, fileSize) {
     ? `0x${rawBootAddress.toString(16).toUpperCase().padStart(8, '0')}`
     : 'Unknown';
 
-  const validRomSize = rawRomSize !== 0 && rawRomSize !== 0xffffffff;
-  const romSizeField = validRomSize ? rawRomSize : null;
-  const romSizeFormatted = validRomSize
-    ? `${rawRomSize.toLocaleString()} bytes`
-    : 'Unknown';
-
-  const sizeClass = detectSizeClass(romSizeField, fileSize);
+  // The longword at offset+36 in a CD boot-track header is the boot-code length
+  // in bytes (maximum 64 KB), not a cartridge ROM size header. We report
+  // romSizeField as Unknown to avoid mislabeling CD boot-code length as ROM size.
+  const sizeClass = detectSizeClass(null, fileSize);
 
   return {
-    marker: MARKER_TEXT,
+    marker,
     markerPresent: true,
     bootAddress,
     bootAddressHex,
-    romSizeField,
-    romSizeFormatted,
+    romSizeField: null,
+    romSizeFormatted: 'Unknown',
     sizeClass,
   };
 }
