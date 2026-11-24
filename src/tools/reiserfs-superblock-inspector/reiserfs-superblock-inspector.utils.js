@@ -12,7 +12,7 @@ export const VALID_BLOCK_SIZES = [512, 1024, 2048, 4096, 8192];
 export const MAGIC_FORMATS = {
   ReIsErFs: '3.5 format',
   ReIsEr2Fs: '3.6 format',
-  ReIsEr3Fs: 'ReiserFS 3.6 (journal relocated)',
+  ReIsEr3Fs: 'journal relocated',
 };
 
 export const HASH_FUNCTIONS = {
@@ -194,9 +194,24 @@ export function parseReiserfsSuperblock(input, offset = REISERFS_DEFAULT_OFFSET)
   const version = view.getUint16(72, true);
   const reservedForJournal = view.getUint16(74, true);
 
-  // Diagnostics check 1: Magic string
-  const formatDescription = MAGIC_FORMATS[magic] || 'Unknown format';
-  if (!MAGIC_FORMATS[magic]) {
+  // Diagnostics check 1: Magic string & format resolution
+  let formatDescription = 'Unknown format';
+  if (magic === 'ReIsErFs') {
+    formatDescription = '3.5 format';
+  } else if (magic === 'ReIsEr2Fs') {
+    formatDescription = '3.6 format';
+  } else if (magic === 'ReIsEr3Fs') {
+    if (version === 1) {
+      formatDescription = 'ReiserFS 3.5 (journal relocated)';
+    } else if (version === 2) {
+      formatDescription = 'ReiserFS 3.6 (journal relocated)';
+    } else {
+      formatDescription = `ReiserFS unknown version ${version} (journal relocated)`;
+      diagnostics.push(
+        `Unknown ReiserFS version ${version} for relocated journal magic "${magic}". Expected 1 (3.5) or 2 (3.6).`
+      );
+    }
+  } else {
     diagnostics.push(
       `Invalid magic string "${magic}". Expected "ReIsErFs", "ReIsEr2Fs", or "ReIsEr3Fs".`
     );
@@ -353,11 +368,33 @@ export const SAMPLE_VALID_35_HEX = bytesToHex(
   })
 );
 
-export const SAMPLE_RELOCATED_HEX = bytesToHex(
+export const SAMPLE_RELOCATED_36_HEX = bytesToHex(
   buildSampleSuperblock({
     magic: 'ReIsEr3Fs',
     hashFunctionCode: 3,
     version: 2,
+    blockCount: 524288,
+    freeBlocks: 393216,
+  })
+);
+
+export const SAMPLE_RELOCATED_HEX = SAMPLE_RELOCATED_36_HEX;
+
+export const SAMPLE_RELOCATED_35_HEX = bytesToHex(
+  buildSampleSuperblock({
+    magic: 'ReIsEr3Fs',
+    hashFunctionCode: 2,
+    version: 1,
+    blockCount: 524288,
+    freeBlocks: 393216,
+  })
+);
+
+export const SAMPLE_RELOCATED_UNKNOWN_HEX = bytesToHex(
+  buildSampleSuperblock({
+    magic: 'ReIsEr3Fs',
+    hashFunctionCode: 3,
+    version: 3,
     blockCount: 524288,
     freeBlocks: 393216,
   })

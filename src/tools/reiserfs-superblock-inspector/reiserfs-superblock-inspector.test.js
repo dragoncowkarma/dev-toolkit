@@ -8,7 +8,10 @@ import {
   readFileSlice,
   REISERFS_DEFAULT_OFFSET,
   SAMPLE_CORRUPT_HEX,
+  SAMPLE_RELOCATED_35_HEX,
+  SAMPLE_RELOCATED_36_HEX,
   SAMPLE_RELOCATED_HEX,
+  SAMPLE_RELOCATED_UNKNOWN_HEX,
   SAMPLE_VALID_35_HEX,
   SAMPLE_VALID_36_HEX,
 } from './reiserfs-superblock-inspector.utils.js';
@@ -141,7 +144,7 @@ describe('parseReiserfsSuperblock', () => {
     expect(result.superblock.versionDescription).toBe('ReiserFS 3.5 (version 1)');
   });
 
-  it('parses a ReiserFS superblock with journal-relocated magic (ReIsEr3Fs)', () => {
+  it('parses a ReiserFS superblock with journal-relocated magic (ReIsEr3Fs) version 2 as 3.6', () => {
     const buffer = buildSampleSuperblock({
       magic: 'ReIsEr3Fs',
       hashFunctionCode: 3,
@@ -154,6 +157,41 @@ describe('parseReiserfsSuperblock', () => {
     expect(result.diagnostics).toHaveLength(0);
     expect(result.superblock.magic).toBe('ReIsEr3Fs');
     expect(result.superblock.formatDescription).toBe('ReiserFS 3.6 (journal relocated)');
+    expect(result.superblock.versionDescription).toBe('ReiserFS 3.6 (version 2)');
+  });
+
+  it('parses a ReiserFS superblock with journal-relocated magic (ReIsEr3Fs) version 1 as 3.5', () => {
+    const buffer = buildSampleSuperblock({
+      magic: 'ReIsEr3Fs',
+      hashFunctionCode: 2,
+      version: 1,
+    });
+
+    const result = parseReiserfsSuperblock(buffer, 0);
+
+    expect(result.success).toBe(true);
+    expect(result.diagnostics).toHaveLength(0);
+    expect(result.superblock.magic).toBe('ReIsEr3Fs');
+    expect(result.superblock.formatDescription).toBe('ReiserFS 3.5 (journal relocated)');
+    expect(result.superblock.versionDescription).toBe('ReiserFS 3.5 (version 1)');
+  });
+
+  it('parses a ReiserFS superblock with journal-relocated magic (ReIsEr3Fs) and unknown version', () => {
+    const buffer = buildSampleSuperblock({
+      magic: 'ReIsEr3Fs',
+      hashFunctionCode: 3,
+      version: 0,
+    });
+
+    const result = parseReiserfsSuperblock(buffer, 0);
+
+    expect(result.success).toBe(false);
+    expect(result.diagnostics).toContain(
+      'Unknown ReiserFS version 0 for relocated journal magic "ReIsEr3Fs". Expected 1 (3.5) or 2 (3.6).'
+    );
+    expect(result.superblock.magic).toBe('ReIsEr3Fs');
+    expect(result.superblock.formatDescription).toBe('ReiserFS unknown version 0 (journal relocated)');
+    expect(result.superblock.versionDescription).toBe('Version 0');
   });
 
   it('maps Unset and Tea hash function codes properly', () => {
@@ -254,6 +292,18 @@ describe('parseReiserfsSuperblock', () => {
     const resReloc = parseReiserfsSuperblock(hexToBytes(SAMPLE_RELOCATED_HEX), 0);
     expect(resReloc.success).toBe(true);
     expect(resReloc.superblock.magic).toBe('ReIsEr3Fs');
+    expect(resReloc.superblock.formatDescription).toBe('ReiserFS 3.6 (journal relocated)');
+
+    const resReloc35 = parseReiserfsSuperblock(hexToBytes(SAMPLE_RELOCATED_35_HEX), 0);
+    expect(resReloc35.success).toBe(true);
+    expect(resReloc35.superblock.magic).toBe('ReIsEr3Fs');
+    expect(resReloc35.superblock.formatDescription).toBe('ReiserFS 3.5 (journal relocated)');
+
+    const resRelocUnk = parseReiserfsSuperblock(hexToBytes(SAMPLE_RELOCATED_UNKNOWN_HEX), 0);
+    expect(resRelocUnk.success).toBe(false);
+    expect(resRelocUnk.superblock.magic).toBe('ReIsEr3Fs');
+    expect(resRelocUnk.superblock.formatDescription).toBe('ReiserFS unknown version 3 (journal relocated)');
+    expect(resRelocUnk.diagnostics[0]).toContain('Unknown ReiserFS version 3 for relocated journal magic');
 
     const resCorrupt = parseReiserfsSuperblock(hexToBytes(SAMPLE_CORRUPT_HEX), 0);
     expect(resCorrupt.success).toBe(false);

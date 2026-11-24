@@ -30,6 +30,7 @@ export default function ReiserfsSuperblockInspectorTool() {
   const [hexInput, setHexInput] = useState('');
   const [file, setFile] = useState(null);
   const [parseResult, setParseResult] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
   const [copyError, setCopyError] = useState('');
   const [copied, showCopied] = useCopyFeedback({ initialValue: false, resetValue: false });
 
@@ -39,6 +40,7 @@ export default function ReiserfsSuperblockInspectorTool() {
   // Parse hex dump in hex mode
   useEffect(() => {
     if (mode !== INPUT_MODES.HEX) return;
+    setIsLoading(false);
     if (!hexInput.trim()) {
       setParseResult(null);
       return;
@@ -59,19 +61,28 @@ export default function ReiserfsSuperblockInspectorTool() {
 
   // Read slice in file mode
   useEffect(() => {
-    if (mode !== INPUT_MODES.FILE || !file) return;
+    if (mode !== INPUT_MODES.FILE) return;
+    if (!file) {
+      setIsLoading(false);
+      setParseResult(null);
+      return;
+    }
 
     const requestId = (fileRequestRef.current += 1);
+    setIsLoading(true);
+    setParseResult(null);
 
     readFileSlice(file, offset, BOUNDED_SLICE_BYTES)
       .then((sliceBytes) => {
         if (fileRequestRef.current !== requestId) return;
+        setIsLoading(false);
         // The slice starts at `offset`, so the superblock inside the slice is at offset 0
         const result = parseReiserfsSuperblock(sliceBytes, 0);
         setParseResult(result);
       })
       .catch((err) => {
         if (fileRequestRef.current !== requestId) return;
+        setIsLoading(false);
         setParseResult({
           success: false,
           superblock: null,
@@ -85,6 +96,8 @@ export default function ReiserfsSuperblockInspectorTool() {
     if (nextMode === mode) return;
     fileRequestRef.current += 1;
     setMode(nextMode);
+    setParseResult(null);
+    setIsLoading(false);
     if (nextMode === INPUT_MODES.FILE) {
       // Disk images typically place the superblock at 64 KiB
       if (offset === 0) setOffset(REISERFS_DEFAULT_OFFSET);
@@ -94,6 +107,7 @@ export default function ReiserfsSuperblockInspectorTool() {
   function handleSample(sampleHex) {
     fileRequestRef.current += 1;
     setFile(null);
+    setIsLoading(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
     setMode(INPUT_MODES.HEX);
     setOffset(0);
@@ -105,6 +119,7 @@ export default function ReiserfsSuperblockInspectorTool() {
     setHexInput('');
     setFile(null);
     setParseResult(null);
+    setIsLoading(false);
     setCopyError('');
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -244,10 +259,11 @@ export default function ReiserfsSuperblockInspectorTool() {
         </div>
       ) : (
         <div className="reiserfs-file-dropzone">
-          <label className="reiserfs-btn">
-            Select Disk Image / Dump File
+          <label className="reiserfs-file-label" htmlFor="reiserfs-file-input">
+            <span className="reiserfs-btn reiserfs-file-btn">Select Disk Image / Dump File</span>
             <input
               ref={fileInputRef}
+              id="reiserfs-file-input"
               type="file"
               className="reiserfs-file-input"
               aria-label="Upload ReiserFS file"
@@ -262,6 +278,12 @@ export default function ReiserfsSuperblockInspectorTool() {
               Selected: {file.name} ({formatBytes(file.size)})
             </div>
           )}
+        </div>
+      )}
+
+      {isLoading && (
+        <div className="reiserfs-loading" role="status" aria-live="polite">
+          Reading superblock data...
         </div>
       )}
 
