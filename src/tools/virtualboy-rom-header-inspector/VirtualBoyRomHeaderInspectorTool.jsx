@@ -20,6 +20,7 @@ export default function VirtualBoyRomHeaderInspectorTool() {
 
   async function handleFileChange(event) {
     const selected = event.target.files?.[0];
+    event.target.value = '';
     if (!selected) return;
 
     const requestId = (fileRequestRef.current += 1);

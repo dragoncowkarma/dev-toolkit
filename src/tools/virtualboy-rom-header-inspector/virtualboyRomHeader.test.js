@@ -233,7 +233,31 @@ describe('field decoders for unknown and invalid values', () => {
     expect(result.status).toBe('Non-zero');
   });
 
-  it('handles unknown and invalid maker codes without guessing', () => {
+  it('decodes cited maker codes and leaves unlisted or invalid codes as Unknown', () => {
+    const nintendo = decodeMakerCode(new Uint8Array([0x30, 0x31])); // 01
+    expect(nintendo.valid).toBe(true);
+    expect(nintendo.code).toBe('01');
+    expect(nintendo.name).toBe('Nintendo');
+    expect(nintendo.display).toBe('01 — Nintendo');
+
+    const hudson = decodeMakerCode(new Uint8Array([0x31, 0x38])); // 18
+    expect(hudson.valid).toBe(true);
+    expect(hudson.code).toBe('18');
+    expect(hudson.name).toBe('Hudson Soft');
+    expect(hudson.display).toBe('18 — Hudson Soft');
+
+    const kemco = decodeMakerCode(new Uint8Array([0x32, 0x38])); // 28
+    expect(kemco.valid).toBe(true);
+    expect(kemco.code).toBe('28');
+    expect(kemco.name).toBe('Kemco');
+    expect(kemco.display).toBe('28 — Kemco');
+
+    const unlistedCode = decodeMakerCode(new Uint8Array([0x38, 0x42])); // 8B
+    expect(unlistedCode.valid).toBe(true);
+    expect(unlistedCode.code).toBe('8B');
+    expect(unlistedCode.name).toBe('Unknown');
+    expect(unlistedCode.display).toBe('8B (Unknown)');
+
     const unknownCode = decodeMakerCode(new Uint8Array([0x5a, 0x5a])); // ZZ
     expect(unknownCode.valid).toBe(true);
     expect(unknownCode.code).toBe('ZZ');

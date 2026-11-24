@@ -99,6 +99,7 @@ describe('VirtualBoyRomHeaderInspectorTool', () => {
       selectFile(input, new File([new Uint8Array(256)], 'tiny.vb'));
     });
     expect(await screen.findByRole('alert')).toHaveTextContent(/too small/i);
+    expect(input.value).toBe('');
 
     await act(async () => {
       selectFile(input, new File([new Uint8Array(20000)], 'odd.vb'));
@@ -106,6 +107,7 @@ describe('VirtualBoyRomHeaderInspectorTool', () => {
     await waitFor(() => {
       expect(screen.getByRole('alert')).toHaveTextContent(/power of two/i);
     });
+    expect(input.value).toBe('');
   });
 
   it('renders Shift-JIS titles and shows Unknown for invalid non-ASCII bytes', async () => {

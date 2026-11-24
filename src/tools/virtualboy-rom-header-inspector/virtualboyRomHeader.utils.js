@@ -18,19 +18,14 @@ const VERSION_OFFSET = 0x1f;
 
 const ALPHANUMERIC_UPPER = /^[0-9A-Z]+$/;
 
-// Verified Nintendo 2-character ASCII licensee/maker codes used by official
-// Virtual Boy publishers (Planet Virtual Boy ROM header reference & Nintendo
-// licensee code table). Unlisted codes degrade safely to "Unknown".
+// Nintendo 2-character ASCII licensee/maker codes cited from Pan Docs
+// ("The Cartridge Header — New licensee code",
+// https://gbdev.io/pandocs/The_Cartridge_Header.html#01440145--new-licensee-code).
+// Unlisted codes degrade safely to "Unknown".
 const KNOWN_MAKERS = Object.freeze({
   '01': 'Nintendo',
-  18: 'Hudson Soft',
-  28: 'Kemco',
-  '8B': 'Bullet-Proof Software',
-  B2: 'Bandai',
-  C0: 'Taito',
-  E4: 'T&E Soft',
-  E7: 'Athena',
-  EB: 'Atlus',
+  '18': 'Hudson Soft',
+  '28': 'Kemco',
 });
 
 const KNOWN_REGIONS = Object.freeze({
