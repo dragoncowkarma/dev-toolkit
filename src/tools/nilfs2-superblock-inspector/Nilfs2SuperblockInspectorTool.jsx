@@ -52,7 +52,7 @@ export default function Nilfs2SuperblockInspectorTool() {
           const file = event.target.files?.[0];
           if (file) inspect(file, file.name);
         }} /></label>
-        <button type="button" className="btn"
+        <button type="button" className="nilfs2-sample-button"
           onClick={() => inspect(createSampleImage(), 'Sample data')}>
           Load sample data
         </button>
