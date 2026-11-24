@@ -463,7 +463,11 @@ export function validateRomSize(romSize) {
  * Parses a Nintendo Virtual Boy ROM image and extracts its cartridge header
  * (located at `size - 0x220`) and interrupt vector table status.
  *
- * @param {Uint8Array|ArrayBuffer} input - Raw ROM bytes.
+ * @param {Uint8Array|ArrayBuffer} input - Raw ROM bytes, or only the final
+ *   0x220 bytes (header + vector table) of the ROM.
+ * @param {number} [originalRomSize] - Size of the original ROM file. Defaults
+ *   to the input length (full ROM). When larger than the input, the input is
+ *   treated as the ROM tail and absolute offsets are computed from this size.
  * @returns {{
  *   romSize: number,
  *   romSizeLabel: string,
@@ -477,9 +481,10 @@ export function validateRomSize(romSize) {
  *   vectorTable: ReturnType<typeof inspectInterruptVectorTable>,
  * }}
  * @throws {Error} When the file is smaller than 16 KiB, larger than 16 MiB,
- *   or not a power-of-two size.
+ *   or not a power-of-two size, or when the tail is shorter than 0x220 bytes
+ *   or inconsistent with the original size.
  */
-export function parseVirtualBoyRomHeader(input) {
+export function parseVirtualBoyRomHeader(input, originalRomSize) {
   const bytes = input instanceof Uint8Array
     ? input
     : input instanceof ArrayBuffer
@@ -490,13 +495,22 @@ export function parseVirtualBoyRomHeader(input) {
     throw new TypeError('ROM data must be a Uint8Array or ArrayBuffer.');
   }
 
-  const romSize = bytes.length;
+  const romSize = originalRomSize ?? bytes.length;
   validateRomSize(romSize);
 
+  if (bytes.length < HEADER_OFFSET_FROM_END || bytes.length > romSize) {
+    throw new Error(
+      `Incomplete ROM tail (${bytes.length.toLocaleString('en-US')} bytes). ` +
+      `Expected the final ${HEADER_OFFSET_FROM_END} bytes of the ROM.`,
+    );
+  }
+
+  // Absolute ROM offset of bytes[0]; 0 when the full ROM was supplied.
+  const base = romSize - bytes.length;
   const headerOffset = romSize - HEADER_OFFSET_FROM_END;
-  const header = bytes.subarray(headerOffset, headerOffset + HEADER_SIZE);
+  const header = bytes.subarray(headerOffset - base, headerOffset - base + HEADER_SIZE);
   const vectorTableOffset = romSize - VECTOR_TABLE_SIZE;
-  const vectorBytes = bytes.subarray(vectorTableOffset, romSize);
+  const vectorBytes = bytes.subarray(vectorTableOffset - base, bytes.length);
 
   return {
     romSize,

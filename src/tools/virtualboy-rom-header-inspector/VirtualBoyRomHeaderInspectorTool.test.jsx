@@ -188,4 +188,26 @@ describe('VirtualBoyRomHeaderInspectorTool', () => {
     expect(screen.queryByText('SLOW GAME')).not.toBeInTheDocument();
     expect(screen.getByText('FAST GAME')).toBeInTheDocument();
   });
+
+  it('reads only the tail slice and reports absolute offsets', async () => {
+    render(<VirtualBoyRomHeaderInspectorTool />);
+    const input = screen.getByLabelText('Upload Virtual Boy ROM file');
+    const file = new File([createValidRomBytes({ size: 64 * 1024 })], 'big.vb');
+    const sliceSpy = vi.spyOn(file, 'slice');
+
+    await act(async () => selectFile(input, file));
+    await waitFor(() => expect(screen.getByText('WARIO LAND')).toBeInTheDocument());
+
+    expect(sliceSpy).toHaveBeenCalledWith(64 * 1024 - 0x220, 64 * 1024);
+    expect(screen.getAllByText(/0x00FDE0/).length).toBeGreaterThan(0);
+  });
+
+  it('shows an error for a truncated tail', async () => {
+    render(<VirtualBoyRomHeaderInspectorTool />);
+    const input = screen.getByLabelText('Upload Virtual Boy ROM file');
+    utils.readFileAsBytes.mockResolvedValueOnce(new Uint8Array(0x100));
+
+    await act(async () => selectFile(input, new File([createValidRomBytes()], 'trunc.vb')));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/incomplete ROM tail/i);
+  });
 });
