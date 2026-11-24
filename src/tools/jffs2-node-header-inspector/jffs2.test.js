@@ -158,9 +158,87 @@ describe('parseJffs2Nodes', () => {
 
     expect(result.nodes).toHaveLength(1);
     expect(result.nodes[0].truncated).toBe(true);
+    expect(result.nodes[0].windowLimited).toBe(false);
     expect(result.nodes[0].crcValid).toBe(true);
     expect(result.summary.truncatedCount).toBe(1);
-    expect(result.flags.some((f) => f.code === 'truncated-node')).toBe(true);
+    expect(result.flags).toContainEqual(
+      expect.objectContaining({ code: 'truncated-node', severity: 'error' }),
+    );
+  });
+
+  it('reports window-limited-node (info) instead of truncated-node when node exceeds 4096 B cap in an 8192 B file', async () => {
+    const raw = new Uint8Array(8192);
+    const largeInode = buildJffs2Node({
+      nodetype: 0xe002,
+      totlen: 4164,
+      littleEndian: true,
+      bufferLength: 4164,
+    });
+    raw.set(largeInode, 0);
+
+    const file = new File([raw], 'large-inode.jffs2', { type: 'application/octet-stream' });
+    const report = await inspectJffs2File(file);
+
+    expect(report.inspectedBytes).toBe(MAX_INSPECT_BYTES);
+    expect(report.totalBytes).toBe(8192);
+    expect(report.wasWindowTruncated).toBe(true);
+    expect(report.nodes).toHaveLength(1);
+    expect(report.nodes[0].crcValid).toBe(true);
+    expect(report.nodes[0].truncated).toBe(false);
+    expect(report.nodes[0].windowLimited).toBe(true);
+    expect(report.nodes[0].flags).toEqual(['window-limited-node']);
+    expect(report.summary.truncatedCount).toBe(0);
+    expect(report.flags.some((f) => f.code === 'truncated-node')).toBe(false);
+    expect(report.flags).toContainEqual(
+      expect.objectContaining({ code: 'window-limited-node', severity: 'info' }),
+    );
+  });
+
+  it('still flags truncated-node when totlen exceeds the real file size of an 8192 B file', async () => {
+    const raw = new Uint8Array(8192);
+    const oversizedInode = buildJffs2Node({
+      nodetype: 0xe002,
+      totlen: 9000,
+      littleEndian: true,
+      bufferLength: 64,
+    });
+    raw.set(oversizedInode, 0);
+
+    const file = new File([raw], 'eof-truncated.jffs2', { type: 'application/octet-stream' });
+    const report = await inspectJffs2File(file);
+
+    expect(report.nodes).toHaveLength(1);
+    expect(report.nodes[0].truncated).toBe(true);
+    expect(report.nodes[0].windowLimited).toBe(false);
+    expect(report.summary.truncatedCount).toBe(1);
+    expect(report.flags).toContainEqual(
+      expect.objectContaining({ code: 'truncated-node', severity: 'error' }),
+    );
+  });
+
+  it('reports window-limited-header when a node header crosses the 4096 B window boundary', async () => {
+    const raw = new Uint8Array(8192).fill(0xff);
+    const leadingCleanmarker = buildJffs2Node({
+      nodetype: 0x2003,
+      totlen: 12,
+      littleEndian: true,
+    });
+    const boundaryNode = buildJffs2Node({
+      nodetype: 0x2003,
+      totlen: 12,
+      littleEndian: true,
+    });
+    raw.set(leadingCleanmarker, 0);
+    raw.set(boundaryNode, MAX_INSPECT_BYTES - 4);
+
+    const file = new File([raw], 'boundary-header.jffs2', { type: 'application/octet-stream' });
+    const report = await inspectJffs2File(file);
+
+    expect(report.summary.truncatedCount).toBe(0);
+    expect(report.flags.some((f) => f.code === 'truncated-header')).toBe(false);
+    expect(report.flags).toContainEqual(
+      expect.objectContaining({ code: 'window-limited-header', severity: 'info' }),
+    );
   });
 
   it('flags a truncated header when fewer than 12 non-erased bytes remain', () => {

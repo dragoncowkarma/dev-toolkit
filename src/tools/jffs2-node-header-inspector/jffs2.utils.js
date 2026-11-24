@@ -255,22 +255,34 @@ export function parseJffs2Nodes(input, options = {}) {
     }
 
     if (remaining < JFFS2_HEADER_SIZE) {
-      summary.truncatedCount += 1;
-      flags.push({
-        code: 'truncated-header',
-        severity: 'error',
-        offset,
-        nodeIndex: null,
-        message:
-          `Truncated node header at offset ${formatHex(offset)}: ` +
-          `only ${remaining} of ${JFFS2_HEADER_SIZE} header bytes available.`,
-      });
+      if (totalBytes > bytes.length && offset + JFFS2_HEADER_SIZE <= totalBytes) {
+        flags.push({
+          code: 'window-limited-header',
+          severity: 'info',
+          offset,
+          nodeIndex: null,
+          message:
+            `Node header at offset ${formatHex(offset)} extends past the ` +
+            `${bytes.length}-byte inspection window (${remaining} of ${JFFS2_HEADER_SIZE} ` +
+            `header bytes available in window).`,
+        });
+      } else {
+        summary.truncatedCount += 1;
+        flags.push({
+          code: 'truncated-header',
+          severity: 'error',
+          offset,
+          nodeIndex: null,
+          message:
+            `Truncated node header at offset ${formatHex(offset)}: ` +
+            `only ${remaining} of ${JFFS2_HEADER_SIZE} header bytes available.`,
+        });
+      }
       break;
     }
 
     const littleEndian = byteOrder === 'little';
     const magic = view.getUint16(offset, littleEndian);
-    const rawMagicLe = view.getUint16(offset, true);
 
     if (magic !== JFFS2_MAGIC) {
       flags.push({
@@ -292,7 +304,10 @@ export function parseJffs2Nodes(input, options = {}) {
     const expectedCrc = jffs2Crc32(bytes, offset, 8);
     const crcValid = hdrCrc === expectedCrc;
     const totlenTooSmall = totlen < JFFS2_HEADER_SIZE;
-    const truncated = !totlenTooSmall && offset + totlen > bytes.length;
+    const extendsPastBuffer = !totlenTooSmall && offset + totlen > bytes.length;
+    const windowLimited =
+      extendsPastBuffer && totalBytes > bytes.length && offset + totlen <= totalBytes;
+    const truncated = extendsPastBuffer && !windowLimited;
     const alignedLength = totlenTooSmall ? JFFS2_HEADER_SIZE : align4(totlen);
     const nodeIndex = nodes.length;
     const nodeFlags = [];
@@ -327,10 +342,25 @@ export function parseJffs2Nodes(input, options = {}) {
       });
     }
 
+    if (windowLimited) {
+      nodeFlags.push('window-limited-node');
+      const available = bytes.length - offset;
+      flags.push({
+        code: 'window-limited-node',
+        severity: 'info',
+        offset,
+        nodeIndex,
+        message:
+          `Node #${nodeIndex} (${nodetypeName}) at ${formatHex(offset)} declares ` +
+          `totlen ${totlen} bytes, extending past the ${bytes.length}-byte inspection window ` +
+          `(${available} bytes available in window).`,
+      });
+    }
+
     if (truncated) {
       nodeFlags.push('truncated-node');
       summary.truncatedCount += 1;
-      const available = bytes.length - offset;
+      const available = Math.max(0, totalBytes - offset);
       flags.push({
         code: 'truncated-node',
         severity: 'error',
@@ -338,7 +368,7 @@ export function parseJffs2Nodes(input, options = {}) {
         nodeIndex,
         message:
           `Node #${nodeIndex} (${nodetypeName}) at ${formatHex(offset)} declares ` +
-          `totlen ${totlen} bytes, but only ${available} bytes remain in buffer.`,
+          `totlen ${totlen} bytes, but only ${available} bytes remain in file.`,
       });
     }
 
@@ -346,7 +376,6 @@ export function parseJffs2Nodes(input, options = {}) {
       index: nodeIndex,
       offset,
       magic,
-      rawMagicLe,
       nodetype,
       nodetypeName,
       totlen,
@@ -355,12 +384,13 @@ export function parseJffs2Nodes(input, options = {}) {
       expectedCrc,
       crcValid,
       truncated,
+      windowLimited,
       totlenTooSmall,
       flags: nodeFlags,
     });
     summary.nodeCount += 1;
 
-    if (totlenTooSmall || truncated) {
+    if (totlenTooSmall || truncated || windowLimited) {
       break;
     }
 

@@ -40,6 +40,7 @@ function buildJsonReport(sourceName, report) {
         expected_crc: formatHex(node.expectedCrc, 8),
         crcValid: node.crcValid,
         truncated: node.truncated,
+        windowLimited: node.windowLimited,
         totlenTooSmall: node.totlenTooSmall,
         flags: node.flags,
       })),
@@ -74,6 +75,9 @@ export default function Jffs2NodeHeaderInspectorTool() {
   async function processFile(file) {
     if (!file) {
       return;
+    }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
     const requestId = (readRequestRef.current += 1);
     setCopyError('');
@@ -195,11 +199,9 @@ export default function Jffs2NodeHeaderInspectorTool() {
           >
             {copied ? '✓ Copied JSON' : 'Copy JSON'}
           </button>
-          {copied && (
-            <div className="sr-only" role="status" aria-live="polite">
-              Copied JSON report to clipboard
-            </div>
-          )}
+          <div className="sr-only" role="status" aria-live="polite">
+            {copied ? 'Copied JSON report to clipboard' : ''}
+          </div>
           <button
             type="button"
             className="jffs2-btn"
@@ -222,7 +224,8 @@ export default function Jffs2NodeHeaderInspectorTool() {
         </p>
         <p className="jffs2-dropzone__note">
           Processed locally in your browser — files are never uploaded. Only the first{' '}
-          {MAX_INSPECT_BYTES} bytes are read via <code>file.slice(0, 4096)</code>.
+          {MAX_INSPECT_BYTES} bytes are read via{' '}
+          <code>{`file.slice(0, ${MAX_INSPECT_BYTES})`}</code>.
         </p>
       </div>
 
@@ -241,7 +244,7 @@ export default function Jffs2NodeHeaderInspectorTool() {
               <span className="jffs2-card__meta">
                 {formatByteSize(report.inspectedBytes)} inspected
                 {report.wasWindowTruncated
-                  ? ` of ${formatByteSize(report.totalBytes)} (4096 B cap)`
+                  ? ` of ${formatByteSize(report.totalBytes)} (${MAX_INSPECT_BYTES} B cap)`
                   : ''}
               </span>
             </div>
@@ -357,7 +360,10 @@ export default function Jffs2NodeHeaderInspectorTool() {
                               </span>
                             )}
                             {node.truncated && (
-                              <span className="jffs2-pill jffs2-pill--warn">Truncated</span>
+                              <span className="jffs2-pill jffs2-pill--error">Truncated</span>
+                            )}
+                            {node.windowLimited && (
+                              <span className="jffs2-pill jffs2-pill--info">Window-limited</span>
                             )}
                           </div>
                         </td>
