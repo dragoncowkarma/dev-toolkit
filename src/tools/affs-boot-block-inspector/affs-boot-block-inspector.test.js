@@ -192,6 +192,22 @@ describe('affs-boot-block-inspector.utils', () => {
       expect(parsed.filesystem).toBe('OFS');
       expect(parsed.international).toBe(true);
       expect(parsed.dircache).toBe(false);
+      expect(parsed.longFilenames).toBe(false);
+      expect(parsed.checksumValid).toBe(true);
+    });
+
+    it('correctly parses an FFS International (DOS3) boot block', () => {
+      const ffsIntl = buildIndependentBootBlock({
+        magicBytes: [0x44, 0x4f, 0x53, 0x03], // DOS3
+        rootblockPtr: 880,
+      });
+
+      const parsed = parseAffsBootBlock(ffsIntl);
+      expect(parsed.magic).toBe('DOS3');
+      expect(parsed.filesystem).toBe('FFS');
+      expect(parsed.international).toBe(true);
+      expect(parsed.dircache).toBe(false);
+      expect(parsed.longFilenames).toBe(false);
       expect(parsed.checksumValid).toBe(true);
     });
 
@@ -206,7 +222,23 @@ describe('affs-boot-block-inspector.utils', () => {
       expect(parsed.filesystem).toBe('FFS');
       expect(parsed.international).toBe(false);
       expect(parsed.dircache).toBe(false);
+      expect(parsed.longFilenames).toBe(false);
       expect(parsed.rootblockPtr).toBe(880);
+      expect(parsed.checksumValid).toBe(true);
+    });
+
+    it('correctly parses an OFS Directory Cache (DOS4) boot block', () => {
+      const ofsDc = buildIndependentBootBlock({
+        magicBytes: [0x44, 0x4f, 0x53, 0x04], // DOS4 (OFS + dircache)
+        rootblockPtr: 880,
+      });
+
+      const parsed = parseAffsBootBlock(ofsDc);
+      expect(parsed.magic).toBe('DOS4');
+      expect(parsed.filesystem).toBe('OFS');
+      expect(parsed.international).toBe(true);
+      expect(parsed.dircache).toBe(true);
+      expect(parsed.longFilenames).toBe(false);
       expect(parsed.checksumValid).toBe(true);
     });
 
@@ -219,14 +251,30 @@ describe('affs-boot-block-inspector.utils', () => {
       const parsed = parseAffsBootBlock(ffsDc);
       expect(parsed.magic).toBe('DOS5');
       expect(parsed.filesystem).toBe('FFS');
-      expect(parsed.international).toBe(false);
+      expect(parsed.international).toBe(true);
       expect(parsed.dircache).toBe(true);
+      expect(parsed.longFilenames).toBe(false);
       expect(parsed.checksumValid).toBe(true);
     });
 
-    it('correctly parses DOS7 (FFS + INTL + DIRCACHE)', () => {
+    it('correctly parses an OFS Long Filenames (DOS6) boot block', () => {
+      const dos6 = buildIndependentBootBlock({
+        magicBytes: [0x44, 0x4f, 0x53, 0x06], // DOS6 (OFS + long filenames)
+        rootblockPtr: 880,
+      });
+
+      const parsed = parseAffsBootBlock(dos6);
+      expect(parsed.magic).toBe('DOS6');
+      expect(parsed.filesystem).toBe('OFS');
+      expect(parsed.international).toBe(true);
+      expect(parsed.dircache).toBe(false);
+      expect(parsed.longFilenames).toBe(true);
+      expect(parsed.checksumValid).toBe(true);
+    });
+
+    it('correctly parses an FFS Long Filenames (DOS7) boot block', () => {
       const dos7 = buildIndependentBootBlock({
-        magicBytes: [0x44, 0x4f, 0x53, 0x07],
+        magicBytes: [0x44, 0x4f, 0x53, 0x07], // DOS7 (FFS + long filenames)
         rootblockPtr: 880,
       });
 
@@ -234,7 +282,8 @@ describe('affs-boot-block-inspector.utils', () => {
       expect(parsed.magic).toBe('DOS7');
       expect(parsed.filesystem).toBe('FFS');
       expect(parsed.international).toBe(true);
-      expect(parsed.dircache).toBe(true);
+      expect(parsed.dircache).toBe(false);
+      expect(parsed.longFilenames).toBe(true);
       expect(parsed.checksumValid).toBe(true);
     });
   });
@@ -456,6 +505,70 @@ describe('affs-boot-block-inspector.utils', () => {
 
       expect(result.rootBlock).toBeNull();
       expect(result.rootBlockError).toContain('Invalid root block checksum');
+    });
+
+    it('reports an error for an out-of-range pointer without silently validating midpoint', async () => {
+      const floppy = new Uint8Array(1760 * 512);
+      // Boot block with out-of-range rootblockPtr (e.g. 5000)
+      const boot = buildIndependentBootBlock({
+        magicBytes: [0x44, 0x4f, 0x53, 0x01],
+        rootblockPtr: 5000,
+      });
+      floppy.set(boot, 0);
+
+      // Midpoint at sector 880 contains a valid root block
+      const root = buildIndependentRootBlock({
+        volumeName: 'ValidMidpoint',
+      });
+      floppy.set(root, 880 * 512);
+
+      const file = new File([floppy], 'out_of_range_ptr.adf');
+
+      // 1. In pointer mode: must NOT silently validate midpoint
+      const pointerResult = await inspectAffsFile(file, {
+        readRootBlock: true,
+        rootBlockSource: 'pointer',
+      });
+      expect(pointerResult.targetSector).toBe(5000);
+      expect(pointerResult.rootBlock).toBeNull();
+      expect(pointerResult.rootBlockError).toContain('Root block pointer sector 5000 is out of range');
+
+      // 2. In explicit midpoint mode: validates sector 880
+      const midpointResult = await inspectAffsFile(file, {
+        readRootBlock: true,
+        rootBlockSource: 'midpoint',
+      });
+      expect(midpointResult.targetSector).toBe(880);
+      expect(midpointResult.rootBlock).not.toBeNull();
+      expect(midpointResult.rootBlock.volumeName).toBe('ValidMidpoint');
+      expect(midpointResult.rootBlockError).toBeNull();
+    });
+
+    it('reports an error for out-of-range pointer with inspectAffsBuffer', () => {
+      const floppy = new Uint8Array(1760 * 512);
+      const boot = buildIndependentBootBlock({
+        magicBytes: [0x44, 0x4f, 0x53, 0x01],
+        rootblockPtr: 2500,
+      });
+      floppy.set(boot, 0);
+
+      const root = buildIndependentRootBlock({
+        volumeName: 'BufferMidpoint',
+      });
+      floppy.set(root, 880 * 512);
+
+      // Pointer mode
+      const pointerResult = inspectAffsBuffer(floppy, { rootBlockSource: 'pointer' });
+      expect(pointerResult.targetSector).toBe(2500);
+      expect(pointerResult.rootBlock).toBeNull();
+      expect(pointerResult.rootBlockError).toContain('Root block pointer sector 2500 is out of range');
+
+      // Midpoint mode
+      const midpointResult = inspectAffsBuffer(floppy, { rootBlockSource: 'midpoint' });
+      expect(midpointResult.targetSector).toBe(880);
+      expect(midpointResult.rootBlock).not.toBeNull();
+      expect(midpointResult.rootBlock.volumeName).toBe('BufferMidpoint');
+      expect(midpointResult.rootBlockError).toBeNull();
     });
 
     it('works with inspectAffsBuffer', () => {

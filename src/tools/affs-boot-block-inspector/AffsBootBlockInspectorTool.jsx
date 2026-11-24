@@ -304,6 +304,11 @@ export default function AffsBootBlockInspectorTool() {
                   {bootBlock.dircache ? 'Enabled (DIRCACHE)' : 'Disabled'}
                 </span>
 
+                <span className="affs-grid-label">Long Filenames:</span>
+                <span className="affs-grid-value">
+                  {bootBlock.longFilenames ? 'Enabled (LN)' : 'Disabled'}
+                </span>
+
                 <span className="affs-grid-label">Boot Checksum:</span>
                 <span className="affs-grid-value">
                   Stored: {bootBlock.storedChecksumHex} | Calc: {bootBlock.calculatedChecksumHex}

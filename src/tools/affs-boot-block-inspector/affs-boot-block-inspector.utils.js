@@ -177,8 +177,9 @@ export function parseAffsBootBlock(input) {
   }
 
   const filesystem = (magicByte & 1) === 1 ? 'FFS' : 'OFS';
-  const international = (magicByte & 2) !== 0;
-  const dircache = (magicByte & 4) !== 0;
+  const international = magicByte >= 2;
+  const dircache = magicByte === 4 || magicByte === 5;
+  const longFilenames = magicByte === 6 || magicByte === 7;
 
   const storedChecksum = readUint32BE(bytes, 4);
   const calculatedChecksum = calculateBootBlockChecksum(bytes);
@@ -192,6 +193,7 @@ export function parseAffsBootBlock(input) {
     filesystem,
     international,
     dircache,
+    longFilenames,
     storedChecksum,
     storedChecksumHex: `0x${storedChecksum.toString(16).padStart(8, '0').toUpperCase()}`,
     calculatedChecksum,
@@ -318,25 +320,23 @@ export async function inspectAffsFile(file, options = {}) {
 
   if (isFloppyOrLarger && readRootBlock) {
     const defaultMidpointSector = Math.floor(totalSectors / 2);
-    targetSector =
-      rootBlockSource === 'midpoint'
-        ? defaultMidpointSector
-        : bootBlock.rootblockPtr || defaultMidpointSector;
+    const useMidpoint = rootBlockSource === 'midpoint';
+    targetSector = useMidpoint ? defaultMidpointSector : bootBlock.rootblockPtr;
 
-    if (targetSector < 0 || targetSector >= totalSectors) {
-      targetSector = defaultMidpointSector;
-    }
+    if (!useMidpoint && (targetSector < 0 || targetSector >= totalSectors)) {
+      rootBlockError = `Root block pointer sector ${targetSector} is out of range (0–${totalSectors - 1}).`;
+    } else {
+      const rootByteOffset = targetSector * SECTOR_SIZE;
+      const rootSlice = await readBlobAsArrayBuffer(
+        file.slice(rootByteOffset, rootByteOffset + SECTOR_SIZE),
+      );
+      const rootBytes = new Uint8Array(rootSlice);
 
-    const rootByteOffset = targetSector * SECTOR_SIZE;
-    const rootSlice = await readBlobAsArrayBuffer(
-      file.slice(rootByteOffset, rootByteOffset + SECTOR_SIZE),
-    );
-    const rootBytes = new Uint8Array(rootSlice);
-
-    try {
-      rootBlock = parseAffsRootBlock(rootBytes);
-    } catch (err) {
-      rootBlockError = err.message;
+      try {
+        rootBlock = parseAffsRootBlock(rootBytes);
+      } catch (err) {
+        rootBlockError = err.message;
+      }
     }
   }
 
@@ -378,22 +378,20 @@ export function inspectAffsBuffer(buffer, options = {}) {
 
   if (isFloppyOrLarger && readRootBlock) {
     const defaultMidpointSector = Math.floor(totalSectors / 2);
-    targetSector =
-      rootBlockSource === 'midpoint'
-        ? defaultMidpointSector
-        : bootBlock.rootblockPtr || defaultMidpointSector;
+    const useMidpoint = rootBlockSource === 'midpoint';
+    targetSector = useMidpoint ? defaultMidpointSector : bootBlock.rootblockPtr;
 
-    if (targetSector < 0 || targetSector >= totalSectors) {
-      targetSector = defaultMidpointSector;
-    }
+    if (!useMidpoint && (targetSector < 0 || targetSector >= totalSectors)) {
+      rootBlockError = `Root block pointer sector ${targetSector} is out of range (0–${totalSectors - 1}).`;
+    } else {
+      const rootByteOffset = targetSector * SECTOR_SIZE;
+      const rootBytes = bytes.slice(rootByteOffset, rootByteOffset + SECTOR_SIZE);
 
-    const rootByteOffset = targetSector * SECTOR_SIZE;
-    const rootBytes = bytes.slice(rootByteOffset, rootByteOffset + SECTOR_SIZE);
-
-    try {
-      rootBlock = parseAffsRootBlock(rootBytes);
-    } catch (err) {
-      rootBlockError = err.message;
+      try {
+        rootBlock = parseAffsRootBlock(rootBytes);
+      } catch (err) {
+        rootBlockError = err.message;
+      }
     }
   }
 
