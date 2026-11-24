@@ -264,3 +264,32 @@ describe('formatUuid', () => {
     expect(formatUuid(bytes)).toBe('12345678-9abc-def0-fedc-ba9876543210');
   });
 });
+
+describe('checksum and hex input', () => {
+  it('matches the standard CRC32C vector and verifies the sample', async () => {
+    const { crc32c } = await import('./btrfs-superblock-inspector.utils.js');
+    expect(crc32c(new TextEncoder().encode('123456789'))).toBe(0xe3069283);
+    const sample = createSampleBtrfsSuperblock();
+    expect(parseBtrfsSuperblock(sample).checksumStatus).toBe('Valid');
+    sample[0x200] ^= 1;
+    expect(parseBtrfsSuperblock(sample).checksumStatus).toBe('Invalid');
+  });
+
+  it.each([1, 2, 3, 99])('marks checksum type %i unverifiable', (csumType) => {
+    expect(parseBtrfsSuperblock(createSampleBtrfsSuperblock({ csumType })).checksumStatus)
+      .toBe('Unverifiable');
+  });
+
+  it('parses standalone and image hex and rejects malformed input', async () => {
+    const { parseSuperblockHex } = await import('./btrfs-superblock-inspector.utils.js');
+    const sample = createSampleBtrfsSuperblock();
+    const toHex = (bytes) => Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join(' ');
+    expect(parseSuperblockHex(toHex(sample)).checksumStatus).toBe('Valid');
+    const image = new Uint8Array(SUPERBLOCK_OFFSET + SUPERBLOCK_SIZE);
+    image.set(sample, SUPERBLOCK_OFFSET);
+    expect(parseSuperblockHex(toHex(image)).label).toBe('btrfs-data-volume');
+    expect(() => parseSuperblockHex('xyz')).toThrow(/hexadecimal/);
+    expect(() => parseSuperblockHex('abc')).toThrow(/hexadecimal/);
+    expect(() => parseSuperblockHex('00')).toThrow(/4096-byte/);
+  });
+});

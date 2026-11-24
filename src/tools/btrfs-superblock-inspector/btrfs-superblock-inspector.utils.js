@@ -169,6 +169,37 @@ export function decodeFlags(flags, definitions) {
   return result;
 }
 
+/** Compute the standard CRC32C checksum of a byte array. */
+export function crc32c(bytes) {
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc >>> 1) ^ ((crc & 1) ? 0x82f63b78 : 0);
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+/** Parse whitespace-separated or contiguous hex as an image or a standalone superblock. */
+export function parseSuperblockHex(input) {
+  const hex = input.replace(/\s/g, '');
+  if (!hex || !/^[0-9a-f]+$/i.test(hex) || hex.length % 2) {
+    throw new Error('Enter an even number of hexadecimal digits.');
+  }
+  const length = hex.length / 2;
+  if (length !== SUPERBLOCK_SIZE && length < SUPERBLOCK_OFFSET + SUPERBLOCK_SIZE) {
+    throw new Error('Hex input must contain a 4096-byte superblock or a complete image.');
+  }
+  const start = length === SUPERBLOCK_SIZE ? 0 : SUPERBLOCK_OFFSET * 2;
+  const slice = hex.slice(start, start + SUPERBLOCK_SIZE * 2);
+  const bytes = new Uint8Array(SUPERBLOCK_SIZE);
+  for (let i = 0; i < bytes.length; i += 1) {
+    bytes[i] = parseInt(slice.slice(i * 2, i * 2 + 2), 16);
+  }
+  return parseBtrfsSuperblock(bytes);
+}
+
 /**
  * Parses raw Btrfs superblock bytes.
  *
@@ -279,6 +310,10 @@ export function parseBtrfsSuperblock(input) {
     },
     csumHex,
     csumFullHex,
+    checksumStatus: csumType === 0
+      ? (view.getUint32(0, true) === crc32c(bytes.subarray(0x20, SUPERBLOCK_SIZE))
+        ? 'Valid' : 'Invalid')
+      : 'Unverifiable',
     fsid,
     bytenr,
     flags,
@@ -367,7 +402,7 @@ export function createSampleBtrfsSuperblock(overrides = {}) {
   const view = new DataView(buffer.buffer);
 
   // Checksum (default CRC32c)
-  buffer.set(overrides.csum ?? [0x78, 0x56, 0x34, 0x12], 0);
+  if (overrides.csum) buffer.set(overrides.csum, 0);
 
   // FSID
   buffer.set(
@@ -426,5 +461,8 @@ export function createSampleBtrfsSuperblock(overrides = {}) {
   const labelBytes = new TextEncoder().encode(label);
   buffer.set(labelBytes.subarray(0, 255), 0x12b);
 
+  if (!overrides.csum && (overrides.csumType ?? 0) === 0) {
+    view.setUint32(0, crc32c(buffer.subarray(0x20)), true);
+  }
   return buffer;
 }

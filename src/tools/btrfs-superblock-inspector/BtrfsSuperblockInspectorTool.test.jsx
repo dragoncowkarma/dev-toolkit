@@ -429,3 +429,32 @@ describe('BtrfsSuperblockInspectorTool', () => {
     ).toBeInTheDocument();
   });
 });
+
+describe('hex inspection', () => {
+  it('inspects hex and clears stale results when input changes or is invalid', () => {
+    render(<BtrfsSuperblockInspectorTool />);
+    const hex = Array.from(createSampleBtrfsSuperblock(), (b) => b.toString(16).padStart(2, '0'))
+      .join('');
+    const input = screen.getByLabelText('Superblock or image hex');
+    fireEvent.change(input, { target: { value: hex } });
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect Hex' }));
+    expect(screen.getByText('Valid')).toBeInTheDocument();
+    expect(screen.getByText('btrfs-data-volume')).toBeInTheDocument();
+    fireEvent.change(input, { target: { value: 'xyz' } });
+    expect(screen.queryByText('btrfs-data-volume')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect Hex' }));
+    expect(screen.getByRole('alert')).toHaveTextContent('hexadecimal');
+  });
+
+  it('ignores an earlier file read after hex input changes', async () => {
+    let resolveRead;
+    vi.spyOn(btrfsUtils, 'readSuperblockFromImage').mockReturnValue(new Promise((resolve) => {
+      resolveRead = resolve;
+    }));
+    render(<BtrfsSuperblockInspectorTool />);
+    selectFile(screen.getByLabelText('Upload Btrfs filesystem image'), new File(['x'], 'old.img'));
+    fireEvent.change(screen.getByLabelText('Superblock or image hex'), { target: { value: '00' } });
+    await act(async () => resolveRead(createFakeParsed('stale-volume', 'old.img')));
+    expect(screen.queryByText('stale-volume')).not.toBeInTheDocument();
+  });
+});

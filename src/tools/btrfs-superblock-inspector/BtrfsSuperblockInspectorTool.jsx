@@ -4,6 +4,7 @@ import {
   formatBytes,
   formatFileSize,
   parseBtrfsSuperblock,
+  parseSuperblockHex,
   readSuperblockFromImage,
 } from './btrfs-superblock-inspector.utils.js';
 import { useCopyFeedback } from '../../hooks/useCopyFeedback.js';
@@ -20,6 +21,7 @@ export default function BtrfsSuperblockInspectorTool() {
   const [data, setData] = useState(null);
   const [fileInfo, setFileInfo] = useState(null);
   const [error, setError] = useState('');
+  const [hex, setHex] = useState('');
   const [loading, setLoading] = useState(false);
   const [copiedField, showCopied] = useCopyFeedback({ initialValue: null, resetValue: null });
   const fileInputRef = useRef(null);
@@ -45,6 +47,9 @@ export default function BtrfsSuperblockInspectorTool() {
     }
 
     setLoading(true);
+    setData(null);
+    setFileInfo(null);
+    setError('');
     try {
       const parsed = await readSuperblockFromImage(file);
       if (activeRequestIdRef.current !== requestId) {
@@ -65,6 +70,28 @@ export default function BtrfsSuperblockInspectorTool() {
       if (activeRequestIdRef.current === requestId) {
         setLoading(false);
       }
+    }
+  }
+
+  function handleHexChange(event) {
+    activeRequestIdRef.current += 1;
+    setHex(event.target.value);
+    setData(null);
+    setFileInfo(null);
+    setError('');
+    setLoading(false);
+  }
+
+  function handleInspectHex() {
+    activeRequestIdRef.current += 1;
+    setLoading(false);
+    setData(null);
+    setFileInfo(null);
+    try {
+      setData(parseSuperblockHex(hex));
+      setError('');
+    } catch (err) {
+      setError(err.message);
     }
   }
 
@@ -98,6 +125,7 @@ export default function BtrfsSuperblockInspectorTool() {
     setData(null);
     setFileInfo(null);
     setError('');
+    setHex('');
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -157,11 +185,17 @@ export default function BtrfsSuperblockInspectorTool() {
             type="button"
             className="btn"
             onClick={handleClear}
-            disabled={!data && !fileInfo && !error && !loading}
+            disabled={!data && !fileInfo && !error && !loading && !hex}
           >
             Clear
           </button>
         </div>
+      </div>
+
+      <div className="btrfs-hex-input">
+        <label htmlFor="btrfs-hex">Superblock or image hex</label>
+        <textarea id="btrfs-hex" value={hex} onChange={handleHexChange} rows={4} />
+        <button type="button" className="btn" onClick={handleInspectHex}>Inspect Hex</button>
       </div>
 
       {error && (
@@ -265,6 +299,10 @@ export default function BtrfsSuperblockInspectorTool() {
                 <span className="field-value">
                   {data.csumType.name} (Type {data.csumType.value})
                 </span>
+              </div>
+              <div className="btrfs-field-row">
+                <span className="field-label">Checksum Status:</span>
+                <span className="field-value">{data.checksumStatus}</span>
               </div>
               <div className="btrfs-field-row">
                 <span className="field-label">Superblock Checksum:</span>
