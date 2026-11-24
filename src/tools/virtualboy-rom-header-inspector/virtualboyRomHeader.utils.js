@@ -18,17 +18,14 @@ const VERSION_OFFSET = 0x1f;
 
 const ALPHANUMERIC_UPPER = /^[0-9A-Z]+$/;
 
+// Verified Nintendo 2-character ASCII licensee/maker codes used by official
+// Virtual Boy publishers (Planet Virtual Boy ROM header reference & Nintendo
+// licensee code table). Unlisted codes degrade safely to "Unknown".
 const KNOWN_MAKERS = Object.freeze({
   '01': 'Nintendo',
-  '08': 'Capcom',
   18: 'Hudson Soft',
   28: 'Kemco',
-  67: 'Ocean',
   '8B': 'Bullet-Proof Software',
-  '8F': "I'Max",
-  99: 'Pack-In-Video',
-  A4: 'Konami',
-  AF: 'Namco',
   B2: 'Bandai',
   C0: 'Taito',
   E4: 'T&E Soft',
@@ -437,6 +434,37 @@ export function inspectInterruptVectorTable(bytes, tableOffset) {
 }
 
 /**
+ * Validates that a Virtual Boy ROM byte size is within bounds and a power of two.
+ *
+ * @param {number} romSize - Byte length to validate.
+ * @throws {Error} When the size is smaller than 16 KiB, larger than 16 MiB,
+ *   or not a power of two.
+ */
+export function validateRomSize(romSize) {
+  if (romSize < MIN_ROM_SIZE) {
+    throw new Error(
+      `ROM file is too small (${romSize.toLocaleString('en-US')} bytes). ` +
+      'Virtual Boy ROMs must be at least 16 KiB (16,384 bytes) ' +
+      'to contain a valid header at size - 0x220.',
+    );
+  }
+
+  if (romSize > MAX_ROM_SIZE) {
+    throw new Error(
+      `ROM file is too large (${romSize.toLocaleString('en-US')} bytes). ` +
+      'Virtual Boy ROMs cannot exceed 16 MiB (16,777,216 bytes).',
+    );
+  }
+
+  if (!isPowerOfTwo(romSize)) {
+    throw new Error(
+      `Invalid ROM size (${romSize.toLocaleString('en-US')} bytes): ` +
+      'Virtual Boy ROM sizes must be a power of two between 16 KiB and 16 MiB.',
+    );
+  }
+}
+
+/**
  * Parses a Nintendo Virtual Boy ROM image and extracts its cartridge header
  * (located at `size - 0x220`) and interrupt vector table status.
  *
@@ -468,27 +496,7 @@ export function parseVirtualBoyRomHeader(input) {
   }
 
   const romSize = bytes.length;
-  if (romSize < MIN_ROM_SIZE) {
-    throw new Error(
-      `ROM file is too small (${romSize.toLocaleString('en-US')} bytes). ` +
-      'Virtual Boy ROMs must be at least 16 KiB (16,384 bytes) ' +
-      'to contain a valid header at size - 0x220.',
-    );
-  }
-
-  if (romSize > MAX_ROM_SIZE) {
-    throw new Error(
-      `ROM file is too large (${romSize.toLocaleString('en-US')} bytes). ` +
-      'Virtual Boy ROMs cannot exceed 16 MiB (16,777,216 bytes).',
-    );
-  }
-
-  if (!isPowerOfTwo(romSize)) {
-    throw new Error(
-      `Invalid ROM size (${romSize.toLocaleString('en-US')} bytes): ` +
-      'Virtual Boy ROM sizes must be a power of two between 16 KiB and 16 MiB.',
-    );
-  }
+  validateRomSize(romSize);
 
   const headerOffset = romSize - HEADER_OFFSET_FROM_END;
   const header = bytes.subarray(headerOffset, headerOffset + HEADER_SIZE);

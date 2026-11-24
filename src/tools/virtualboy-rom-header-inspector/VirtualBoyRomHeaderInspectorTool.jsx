@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import {
   parseVirtualBoyRomHeader,
   readFileAsBytes,
+  validateRomSize,
 } from './virtualboyRomHeader.utils.js';
 import './virtualboy-rom-header-inspector.css';
 
@@ -23,6 +24,7 @@ export default function VirtualBoyRomHeaderInspectorTool() {
 
     const requestId = (fileRequestRef.current += 1);
     try {
+      validateRomSize(selected.size);
       const bytes = await readFileAsBytes(selected);
       if (fileRequestRef.current !== requestId) return;
       const parsed = parseVirtualBoyRomHeader(bytes);

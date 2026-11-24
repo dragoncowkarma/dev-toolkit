@@ -11,6 +11,7 @@ import {
   isPowerOfTwo,
   parseVirtualBoyRomHeader,
   readFileAsBytes,
+  validateRomSize,
 } from './virtualboyRomHeader.utils.js';
 
 /**
@@ -263,6 +264,20 @@ describe('field decoders for unknown and invalid values', () => {
   });
 });
 
+describe('validateRomSize', () => {
+  it('accepts valid power-of-two ROM sizes within bounds', () => {
+    expect(() => validateRomSize(MIN_ROM_SIZE)).not.toThrow();
+    expect(() => validateRomSize(1024 * 1024)).not.toThrow();
+    expect(() => validateRomSize(MAX_ROM_SIZE)).not.toThrow();
+  });
+
+  it('rejects sizes that are too small, too large, or not a power of two', () => {
+    expect(() => validateRomSize(MIN_ROM_SIZE - 1)).toThrow(/too small/i);
+    expect(() => validateRomSize(MAX_ROM_SIZE + 1)).toThrow(/too large/i);
+    expect(() => validateRomSize(20000)).toThrow(/power of two/i);
+  });
+});
+
 describe('readFileAsBytes', () => {
   it('reads a File into a Uint8Array', async () => {
     const file = new File([new Uint8Array([0x56, 0x42])], 'test.vb');
@@ -281,10 +296,12 @@ describe('readFileAsBytes', () => {
       return failingReader;
     });
 
-    await expect(readFileAsBytes(new File(['x'], 'bad.vb'))).rejects.toThrow(
-      'Failed to read the selected ROM file.',
-    );
-
-    global.FileReader = OriginalFileReader;
+    try {
+      await expect(readFileAsBytes(new File(['x'], 'bad.vb'))).rejects.toThrow(
+        'Failed to read the selected ROM file.',
+      );
+    } finally {
+      global.FileReader = OriginalFileReader;
+    }
   });
 });

@@ -47,6 +47,7 @@ function createDeferred() {
 
 afterEach(() => {
   cleanup();
+  vi.clearAllMocks();
   vi.restoreAllMocks();
 });
 
@@ -124,18 +125,33 @@ describe('VirtualBoyRomHeaderInspectorTool', () => {
     await waitFor(() => expect(screen.getByText('Encoding: Unknown')).toBeInTheDocument());
   });
 
-  it('clears results and ignores stale in-flight file reads after Clear', async () => {
-    const deferred = createDeferred();
-    utils.readFileAsBytes.mockReturnValueOnce(deferred.promise);
-
+  it('rejects oversized files before reading them into memory', async () => {
     render(<VirtualBoyRomHeaderInspectorTool />);
     const input = screen.getByLabelText('Upload Virtual Boy ROM file');
-    selectFile(input, new File([createValidRomBytes()], 'late.vb'));
+    const oversizedFile = new File([], 'huge.vb');
+    Object.defineProperty(oversizedFile, 'size', { value: 2 * 1024 * 1024 * 1024 });
 
-    // Also test Clear after a loaded ROM
-    const immediateRom = createValidRomBytes();
-    await act(async () => selectFile(input, new File([immediateRom], 'now.vb')));
+    await act(async () => {
+      selectFile(input, oversizedFile);
+    });
+
+    expect(screen.getByRole('alert')).toHaveTextContent(/too large/i);
+    expect(utils.readFileAsBytes).not.toHaveBeenCalled();
+  });
+
+  it('clears results and ignores stale in-flight file reads after Clear', async () => {
+    render(<VirtualBoyRomHeaderInspectorTool />);
+    const input = screen.getByLabelText('Upload Virtual Boy ROM file');
+
+    // Load a ROM first so the Clear button is enabled.
+    const loadedRom = createValidRomBytes();
+    await act(async () => selectFile(input, new File([loadedRom], 'now.vb')));
     await waitFor(() => expect(screen.getByText('WARIO LAND')).toBeInTheDocument());
+
+    // Start a deferred read and click Clear directly with no second selection in between.
+    const deferred = createDeferred();
+    utils.readFileAsBytes.mockReturnValueOnce(deferred.promise);
+    selectFile(input, new File([createValidRomBytes()], 'late.vb'));
 
     fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
     expect(screen.getByText('No ROM loaded')).toBeInTheDocument();
@@ -147,5 +163,27 @@ describe('VirtualBoyRomHeaderInspectorTool', () => {
 
     expect(screen.queryByText('STALE GAME')).not.toBeInTheDocument();
     expect(screen.getByText('No ROM loaded')).toBeInTheDocument();
+  });
+
+  it('ignores a slower in-flight read when superseded by a second selection', async () => {
+    const slowDeferred = createDeferred();
+    utils.readFileAsBytes.mockReturnValueOnce(slowDeferred.promise);
+
+    render(<VirtualBoyRomHeaderInspectorTool />);
+    const input = screen.getByLabelText('Upload Virtual Boy ROM file');
+
+    selectFile(input, new File([createValidRomBytes()], 'slow.vb'));
+
+    const fastRom = createValidRomBytes({ title: 'FAST GAME' });
+    await act(async () => selectFile(input, new File([fastRom], 'fast.vb')));
+    await waitFor(() => expect(screen.getByText('FAST GAME')).toBeInTheDocument());
+
+    await act(async () => {
+      slowDeferred.resolve(createValidRomBytes({ title: 'SLOW GAME' }));
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText('SLOW GAME')).not.toBeInTheDocument();
+    expect(screen.getByText('FAST GAME')).toBeInTheDocument();
   });
 });
