@@ -58,6 +58,24 @@ describe('UFS superblock decoding', () => {
 });
 
 describe('UFS inspector input', () => {
+  it('wraps the image offset and all fields in matching definition-list rows', async () => {
+    const file = {
+      name: 'image.img', size: 100000,
+      slice: () => ({ arrayBuffer: async () => fixture(2).buffer }),
+    };
+    render(<UfsSuperblockTool />);
+    fireEvent.change(screen.getByLabelText(/choose or drop/i), { target: { files: [file] } });
+    const offset = await screen.findByText('Image offset');
+    const list = offset.closest('dl');
+    expect(offset.parentElement.tagName).toBe('DIV');
+    expect(offset.parentElement).toHaveTextContent('65536');
+    expect(list.children.length).toBeGreaterThan(1);
+    for (const row of list.children) {
+      expect(row.tagName).toBe('DIV');
+      expect(Array.from(row.children, (child) => child.tagName)).toEqual(['DT', 'DD']);
+    }
+  });
+
   it('displays alerts for invalid and truncated pasted bytes', () => {
     render(<UfsSuperblockTool />);
     const input = screen.getByLabelText(/paste hex/i);
