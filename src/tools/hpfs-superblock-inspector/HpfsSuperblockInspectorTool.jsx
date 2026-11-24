@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   HPFS_SECTOR_SIZE,
+  HPFS_SUPERBLOCK_OFFSET,
   createSampleHpfsSuperblockHex,
   formatFileSize,
   hexToBytes,
@@ -84,11 +85,18 @@ export default function HpfsSuperblockInspectorTool() {
     const readStart = offsetNumber === 0 ? 0 : Math.max(0, offsetNumber);
     const readLength = 16384; // 16 KB covers boot block, superblock and spare block
 
-    const needSeparateBootBlock = readStart >= HPFS_SECTOR_SIZE && file.size >= HPFS_SECTOR_SIZE;
+    // Derive partition boot location from selected superblock location when established
+    const canEstablishBoot = offsetNumber >= HPFS_SUPERBLOCK_OFFSET;
+    const partitionBootOffset = canEstablishBoot
+      ? offsetNumber - HPFS_SUPERBLOCK_OFFSET
+      : null;
+    const needSeparateBootBlock =
+      partitionBootOffset !== null &&
+      file.size >= partitionBootOffset + HPFS_SECTOR_SIZE;
 
     const readMainPromise = readSlice(file, readStart, readLength);
     const readBootPromise = needSeparateBootBlock
-      ? readSlice(file, 0, HPFS_SECTOR_SIZE)
+      ? readSlice(file, partitionBootOffset, HPFS_SECTOR_SIZE)
       : Promise.resolve(null);
 
     Promise.all([readMainPromise, readBootPromise])
@@ -310,7 +318,8 @@ export default function HpfsSuperblockInspectorTool() {
               <div className="data-item">
                 <span className="data-item-label">Superblock Location</span>
                 <span className="data-item-value">
-                  Offset 0x{sb.offset.toString(16).toUpperCase()} ({sb.offset} bytes, Sector {sb.sector})
+                  Offset 0x{sb.offset.toString(16).toUpperCase()}
+                  {' '}({sb.offset} bytes, Sector {sb.sector})
                 </span>
               </div>
               <div className="data-item">

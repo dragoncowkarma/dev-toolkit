@@ -165,7 +165,7 @@ describe('readSlice', () => {
 });
 
 describe('parseHpfsSuperblock - Acceptance Criteria & Layouts', () => {
-  it('correctly parses an independently encoded HPFS superblock fixture with accurate directory-band offsets', () => {
+  it('correctly parses independently encoded HPFS superblock with directory-band offsets', () => {
     // Independently encoded 512-byte buffer according to Linux kernel fs/hpfs/hpfs.h
     const rawBuffer = new Uint8Array(HPFS_SECTOR_SIZE);
     const view = new DataView(rawBuffer.buffer);
@@ -421,5 +421,44 @@ describe('HPFS Partition Image with Boot Block and Spare Block', () => {
     const result = parseHpfsSuperblock(bytes);
     expect(result.ok).toBe(true);
     expect(result.data.superblock.magicHex).toBe('0xF995E849');
+  });
+});
+
+describe('HPFS Boot Block and Spare Block Utilities', () => {
+  it('parses valid boot block and exposes constants', () => {
+    expect(HPFS_BOOT_MAGIC).toBe(0xaa55);
+    expect(HPFS_SUPERBLOCK_OFFSET).toBe(0x2000);
+    expect(HPFS_SPAREBLOCK_OFFSET).toBe(0x2200);
+
+    const bootBytes = createHpfsBootBlockBuffer({
+      oemId: 'OS2 2.0',
+      volumeLabel: 'TEST_VOL',
+    });
+    const parsed = parseHpfsBootBlock(bootBytes, 0);
+    expect(parsed).not.toBeNull();
+    expect(parsed.oemId).toBe('OS2 2.0');
+    expect(parsed.volumeLabel).toBe('TEST_VOL');
+    expect(parsed.bootMagicHex).toBe('0xAA55');
+  });
+
+  it('rejects truncated boot block or non-512 sector size', () => {
+    expect(parseHpfsBootBlock(new Uint8Array(100))).toBeNull();
+
+    const nonHpfsSector = new Uint8Array(HPFS_SECTOR_SIZE);
+    nonHpfsSector[510] = 0x55;
+    nonHpfsSector[511] = 0xaa;
+    // bytesPerSector at offset 11 is 0 (not 512)
+    expect(parseHpfsBootBlock(nonHpfsSector, 0)).toBeNull();
+  });
+
+  it('creates and parses spare block buffer with createHpfsSpareBlockBuffer', () => {
+    const spareBytes = createHpfsSpareBlockBuffer({
+      dirty: true,
+      usedHotfixes: 3,
+    });
+    const parsed = parseHpfsSpareBlock(spareBytes, 0);
+    expect(parsed).not.toBeNull();
+    expect(parsed.dirty).toBe(true);
+    expect(parsed.usedHotfixes).toBe(3);
   });
 });

@@ -60,7 +60,8 @@ export function bytesToHex(bytes, separator = ' ') {
 }
 
 /**
- * Parses a byte offset from a string or number (supports decimal and hex e.g. "0x2000", "2000h", or "8192").
+ * Parses a byte offset from a string or number.
+ * Supports decimal and hex (e.g. "0x2000", "2000h", or "8192").
  * Validates the full string without allowing trailing garbage and checks safe integer boundaries.
  *
  * @param {string|number|null|undefined} value
@@ -166,6 +167,11 @@ export function parseHpfsBootBlock(bytes, offset = 0) {
     return null;
   }
 
+  const bytesPerSector = view.getUint16(offset + 11, true);
+  if (bytesPerSector !== HPFS_SECTOR_SIZE) {
+    return null;
+  }
+
   // Extract OEM ID (offset 3, 8 chars)
   let oemId = '';
   for (let i = 0; i < 8; i += 1) {
@@ -187,7 +193,6 @@ export function parseHpfsBootBlock(bytes, offset = 0) {
     if (code >= 32 && code <= 126) systemId += String.fromCharCode(code);
   }
 
-  const bytesPerSector = view.getUint16(offset + 11, true);
   const sectorsPerCluster = view.getUint8(offset + 13);
   const reservedSectors = view.getUint16(offset + 14, true);
   const fatsCount = view.getUint8(offset + 16);
@@ -289,7 +294,8 @@ export function parseHpfsSpareBlock(bytes, offset = 0) {
  * @param {Uint8Array|ArrayBuffer} input
  * @param {object} [options={}]
  * @param {number|string} [options.offset=0] - Optional byte offset to superblock inside input.
- * @param {number|string} [options.baseOffset=0] - Optional absolute base offset of the slice within the file.
+ * @param {number|string} [options.baseOffset=0] - Optional absolute base offset
+ *   of the slice within the file.
  * @param {object|null} [options.bootBlock=null] - Pre-parsed boot block if read separately.
  * @returns {object} Result object containing ok, data, error, and diagnostics.
  */
@@ -321,8 +327,8 @@ export function parseHpfsSuperblock(input, options = {}) {
     }
   }
 
-  // Auto-detect: If offset is 0 and baseOffset is 0 but offset 0x2000 contains the superblock signature,
-  // automatically locate the superblock at sector 16 (0x2000).
+  // Auto-detect: If offset is 0 and baseOffset is 0, but offset 0x2000 contains
+  // the superblock signature, automatically locate superblock at sector 16.
   if (
     sbOffset === 0 &&
     baseOffset === 0 &&
@@ -413,10 +419,13 @@ export function parseHpfsSuperblock(input, options = {}) {
   // Standard HPFS Spare Block is at sector 17
   const spareBlockSector = 17;
 
-  // Optional boot block parsing (if sector 0 is included in this buffer)
+  // Optional boot block parsing (if partition boot sector is included in this buffer)
   let bootBlock = options.bootBlock || null;
-  if (!bootBlock && baseOffset === 0 && sbOffset >= HPFS_SECTOR_SIZE && bytes.length >= HPFS_SECTOR_SIZE) {
-    bootBlock = parseHpfsBootBlock(bytes, 0);
+  if (!bootBlock && sbOffset >= HPFS_SUPERBLOCK_OFFSET) {
+    const candidateBootOffset = sbOffset - HPFS_SUPERBLOCK_OFFSET;
+    if (bytes.length >= candidateBootOffset + HPFS_SECTOR_SIZE) {
+      bootBlock = parseHpfsBootBlock(bytes, candidateBootOffset);
+    }
   }
 
   // Optional spare block parsing (if sector 17 is included)
@@ -563,7 +572,11 @@ export function createHpfsSpareBlockBuffer(overrides = {}) {
   view.setUint32(16, overrides.usedHotfixes !== undefined ? overrides.usedHotfixes : 0, true);
   view.setUint32(20, overrides.totalHotfixes !== undefined ? overrides.totalHotfixes : 0, true);
   view.setUint32(24, overrides.freeDnodeSpares !== undefined ? overrides.freeDnodeSpares : 0, true);
-  view.setUint32(28, overrides.totalDnodeSpares !== undefined ? overrides.totalDnodeSpares : 0, true);
+  view.setUint32(
+    28,
+    overrides.totalDnodeSpares !== undefined ? overrides.totalDnodeSpares : 0,
+    true
+  );
   view.setUint32(32, overrides.codePageDir !== undefined ? overrides.codePageDir : 0, true);
   view.setUint32(36, overrides.nCodePages !== undefined ? overrides.nCodePages : 0, true);
   view.setUint32(40, overrides.superCrc !== undefined ? overrides.superCrc : 0, true);

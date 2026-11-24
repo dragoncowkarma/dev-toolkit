@@ -168,67 +168,161 @@ describe('HpfsSuperblockInspectorTool file upload and async slicing', () => {
     expect(screen.getByText('Valid Superblock')).toBeInTheDocument();
   });
 
-  it('parses full image file with explicit offset, preserving absolute location and boot block', async () => {
+  it(
+    'parses full image file with explicit offset, preserving absolute location and boot block',
+    async () => {
+      render(<HpfsSuperblockInspectorTool />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'File Upload' }));
+
+      // Create a full HPFS partition image
+      // (sector 0: boot block, sector 16: superblock, sector 17: spare block)
+      const fullImageBytes = hpfsUtils.createHpfsPartitionImageBuffer({
+        bootBlock: {
+          oemId: 'IBM 4.0',
+          volumeLabel: 'FULL_IMG',
+          systemId: 'HPFS',
+        },
+        superblock: {
+          volumeName: 'OS2_FULL',
+          nDirBand: 1600,
+          dirBandStart: 102400,
+          dirBandEnd: 103999,
+          dirBandBitmap: 120,
+        },
+        spareBlock: {
+          dirty: false,
+          usedHotfixes: 5,
+          totalHotfixes: 99,
+          codePageDir: 777,
+        },
+      });
+
+      const file = new File([fullImageBytes], 'full_hpfs.img', {
+        type: 'application/octet-stream',
+      });
+      const offsetInput = screen.getByLabelText('Byte Offset:');
+      fireEvent.change(offsetInput, { target: { value: '8192' } });
+
+      const fileInput = screen.getByLabelText('Upload HPFS image or superblock file');
+      await act(async () => {
+        selectFile(fileInput, file);
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText('Valid Superblock')).toBeInTheDocument();
+      });
+
+      // Check that superblock location reports offset 8192 / Sector 16
+      expect(screen.getByText(/Offset 0x2000 \(8192 bytes, Sector 16\)/)).toBeInTheDocument();
+      expect(screen.getByText('OS2_FULL')).toBeInTheDocument();
+
+      // Check directory band fields
+      expect(screen.getByText('102400')).toBeInTheDocument();
+      expect(screen.getByText('103999')).toBeInTheDocument();
+      expect(screen.getByText('120')).toBeInTheDocument();
+
+      // Check that Boot Block (Sector 0) is parsed and rendered
+      expect(screen.getByText('Boot Block (Sector 0)')).toBeInTheDocument();
+      expect(screen.getByText('IBM 4.0')).toBeInTheDocument();
+      expect(screen.getByText('FULL_IMG')).toBeInTheDocument();
+
+      // Check that Spare Block (Sector 17) is parsed and rendered
+      expect(screen.getByText('Spare Block (Sector 17)')).toBeInTheDocument();
+      expect(screen.getByText('Used Hotfixes')).toBeInTheDocument();
+      expect(screen.getByText('5')).toBeInTheDocument();
+      expect(screen.getByText('Total Hotfix Spares')).toBeInTheDocument();
+      expect(screen.getByText('99')).toBeInTheDocument();
+      expect(screen.getByText('777')).toBeInTheDocument();
+    }
+  );
+
+  it(
+    'reads boot sector for selected superblock in disk image with MBR and nonzero partition',
+    async () => {
+      render(<HpfsSuperblockInspectorTool />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'File Upload' }));
+
+      const partitionStart = 65536; // 128 sectors (nonzero partition start byte P)
+      const superblockOffset = partitionStart + 8192; // Sector 144 (0x12000)
+      const totalSize = partitionStart + 18 * hpfsUtils.HPFS_SECTOR_SIZE;
+      const diskImageBytes = new Uint8Array(totalSize);
+
+      // Signed MBR at sector 0 (offset 0..511) ending in 0xAA55
+      diskImageBytes[0] = 0xfa; // CLI
+      diskImageBytes[1] = 0x33; // XOR AX, AX
+      diskImageBytes[2] = 0xc0;
+      diskImageBytes[510] = 0x55;
+      diskImageBytes[511] = 0xaa;
+
+      // HPFS partition image starting at partitionStart (65536)
+      const partitionBytes = hpfsUtils.createHpfsPartitionImageBuffer({
+        bootBlock: {
+          oemId: 'IBM 4.0',
+          volumeLabel: 'PART_BOOT',
+          systemId: 'HPFS',
+        },
+        superblock: {
+          volumeName: 'OS2_NONZERO',
+        },
+        spareBlock: {
+          dirty: false,
+        },
+      });
+      diskImageBytes.set(partitionBytes, partitionStart);
+
+      const file = new File([diskImageBytes], 'disk_with_mbr.img', {
+        type: 'application/octet-stream',
+      });
+
+      const offsetInput = screen.getByLabelText('Byte Offset:');
+      fireEvent.change(offsetInput, {
+        target: { value: `0x${superblockOffset.toString(16)}` },
+      });
+
+      const fileInput = screen.getByLabelText('Upload HPFS image or superblock file');
+      await act(async () => {
+        selectFile(fileInput, file);
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText('Valid Superblock')).toBeInTheDocument();
+      });
+
+      // Verify superblock was parsed from the nonzero offset (0x12000 / 73728)
+      expect(
+        screen.getByText(new RegExp(`Offset 0x${superblockOffset.toString(16).toUpperCase()}`))
+      ).toBeInTheDocument();
+      expect(screen.getByText('OS2_NONZERO')).toBeInTheDocument();
+
+      // Verify partition boot block was read from partitionStart (not MBR from offset 0)
+      expect(screen.getByText('Boot Block (Sector 0)')).toBeInTheDocument();
+      expect(screen.getByText('IBM 4.0')).toBeInTheDocument();
+      expect(screen.getByText('PART_BOOT')).toBeInTheDocument();
+      expect(screen.getByText('HPFS')).toBeInTheDocument();
+    }
+  );
+
+  it('does not attribute an unrelated sector as boot block for isolated superblock', async () => {
     render(<HpfsSuperblockInspectorTool />);
 
     fireEvent.click(screen.getByRole('button', { name: 'File Upload' }));
 
-    // Create a full HPFS partition image (sector 0: boot block, sector 16: superblock, sector 17: spare block)
-    const fullImageBytes = hpfsUtils.createHpfsPartitionImageBuffer({
-      bootBlock: {
-        oemId: 'IBM 4.0',
-        volumeLabel: 'FULL_IMG',
-        systemId: 'HPFS',
-      },
-      superblock: {
-        volumeName: 'OS2_FULL',
-        nDirBand: 1600,
-        dirBandStart: 102400,
-        dirBandEnd: 103999,
-        dirBandBitmap: 120,
-      },
-      spareBlock: {
-        dirty: false,
-        usedHotfixes: 5,
-        totalHotfixes: 99,
-        codePageDir: 777,
-      },
-    });
-
-    const file = new File([fullImageBytes], 'full_hpfs.img', { type: 'application/octet-stream' });
-    const offsetInput = screen.getByLabelText('Byte Offset:');
-    fireEvent.change(offsetInput, { target: { value: '8192' } });
-
+    const sbBytes = hpfsUtils.createHpfsSuperblockBuffer({ volumeName: 'ISOLATED_SB' });
+    const file = new File([sbBytes], 'isolated.sb', { type: 'application/octet-stream' });
     const fileInput = screen.getByLabelText('Upload HPFS image or superblock file');
+
     await act(async () => {
       selectFile(fileInput, file);
     });
 
     await waitFor(() => {
-      expect(screen.getByText('Valid Superblock')).toBeInTheDocument();
+      expect(screen.getByText('ISOLATED_SB')).toBeInTheDocument();
     });
 
-    // Check that superblock location reports offset 8192 / Sector 16
-    expect(screen.getByText(/Offset 0x2000 \(8192 bytes, Sector 16\)/)).toBeInTheDocument();
-    expect(screen.getByText('OS2_FULL')).toBeInTheDocument();
-
-    // Check directory band fields
-    expect(screen.getByText('102400')).toBeInTheDocument();
-    expect(screen.getByText('103999')).toBeInTheDocument();
-    expect(screen.getByText('120')).toBeInTheDocument();
-
-    // Check that Boot Block (Sector 0) is parsed and rendered
-    expect(screen.getByText('Boot Block (Sector 0)')).toBeInTheDocument();
-    expect(screen.getByText('IBM 4.0')).toBeInTheDocument();
-    expect(screen.getByText('FULL_IMG')).toBeInTheDocument();
-
-    // Check that Spare Block (Sector 17) is parsed and rendered
-    expect(screen.getByText('Spare Block (Sector 17)')).toBeInTheDocument();
-    expect(screen.getByText('Used Hotfixes')).toBeInTheDocument();
-    expect(screen.getByText('5')).toBeInTheDocument();
-    expect(screen.getByText('Total Hotfix Spares')).toBeInTheDocument();
-    expect(screen.getByText('99')).toBeInTheDocument();
-    expect(screen.getByText('777')).toBeInTheDocument();
+    expect(screen.getByText('Valid Superblock')).toBeInTheDocument();
+    expect(screen.queryByText('Boot Block (Sector 0)')).not.toBeInTheDocument();
   });
 
   it('rejects malformed offset in file mode and sets error alert', async () => {
