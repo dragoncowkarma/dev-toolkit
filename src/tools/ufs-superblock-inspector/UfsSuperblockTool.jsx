@@ -57,7 +57,7 @@ export default function UfsSuperblockTool() {
       {result?.error && <div role="alert" className="ufs-error">{result.error}</div>}
       {result && Object.keys(result.fields).length > 0 && (
         <dl>
-          {result.offset !== undefined && <><dt>Image offset</dt><dd>{result.offset}</dd></>}
+          {result.offset !== undefined && <div><dt>Image offset</dt><dd>{result.offset}</dd></div>}
           {Object.entries(result.fields).map(([name, value]) => (
             <div key={name}><dt>{name}</dt><dd>{String(value)}</dd></div>
           ))}
