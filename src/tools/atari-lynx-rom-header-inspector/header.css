@@ -1,0 +1,28 @@
+.lynx-tool {
+  display: grid;
+  gap: 0.75rem;
+  color: var(--color-text);
+}
+
+.lynx-tool textarea, .lynx-tool input {
+  width: 100%;
+  padding: 0.75rem;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  font: inherit;
+}
+
+.lynx-tool textarea { min-height: 8rem; resize: vertical; }
+.lynx-tool :focus-visible { outline: 2px solid var(--color-primary-light); }
+.lynx-tool [role='alert'] { color: var(--color-error-light); }
+.lynx-fields { border: 1px solid var(--color-border); border-radius: var(--radius); }
+.lynx-fields > div { padding: 0.6rem; border-bottom: 1px solid var(--color-border); }
+.lynx-fields > div:last-child { border-bottom: 0; }
+.lynx-fields dt { color: var(--color-text-muted); }
+.lynx-fields dd { overflow-wrap: anywhere; }
+
+@media (min-width: 600px) {
+  .lynx-fields > div { display: grid; grid-template-columns: 1fr 2fr; gap: 1rem; }
+}
