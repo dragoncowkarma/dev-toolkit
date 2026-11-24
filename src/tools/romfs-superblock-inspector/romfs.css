@@ -1,0 +1,32 @@
+.romfs-tool {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.romfs-tool dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.5rem 1rem;
+}
+
+.romfs-tool dt {
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
+.romfs-tool dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.romfs-tool .romfs-error {
+  color: var(--color-error-light);
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+}
