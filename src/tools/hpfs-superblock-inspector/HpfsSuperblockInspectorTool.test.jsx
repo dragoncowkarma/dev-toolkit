@@ -1,0 +1,240 @@
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import HpfsSuperblockInspectorTool from './HpfsSuperblockInspectorTool.jsx';
+import * as hpfsUtils from './hpfs-superblock-inspector.utils.js';
+
+function selectFile(input, file) {
+  Object.defineProperty(input, 'files', { value: [file], configurable: true });
+  fireEvent.change(input);
+}
+
+function createDeferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
+
+describe('HpfsSuperblockInspectorTool rendering and basic interactions', () => {
+  it('renders initial state with toolbar and hex textarea', () => {
+    render(<HpfsSuperblockInspectorTool />);
+
+    expect(
+      screen.queryByRole('heading', { level: 3, name: /HPFS Superblock/i })
+    ).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Hex Data')).toBeInTheDocument();
+    expect(screen.getByLabelText('Byte Offset:')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Load Sample' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Clear' })).toBeInTheDocument();
+  });
+
+  it('loads valid sample data on "Load Sample" click and renders superblock fields', async () => {
+    render(<HpfsSuperblockInspectorTool />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Load Sample' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Valid Superblock')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('0xF995E849')).toBeInTheDocument();
+    expect(screen.getByText('0xFA53E9C5')).toBeInTheDocument();
+    expect(screen.getByText('OS2_HPFS')).toBeInTheDocument();
+    expect(screen.getAllByText('Version 2')).toHaveLength(2); // HPFS Version and Functional Version
+    expect(screen.getByText('17')).toBeInTheDocument(); // spare block sector
+    expect(screen.getByText('Dir Band Sector Count')).toBeInTheDocument();
+  });
+
+  it('displays diagnostic alert on truncated hex input without valid result', async () => {
+    render(<HpfsSuperblockInspectorTool />);
+
+    const textarea = screen.getByLabelText('Hex Data');
+    fireEvent.change(textarea, { target: { value: '49 E8 95 F9 C5 E9 53 FA' } }); // only 8 bytes
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole('alert')).toHaveTextContent(/Truncated input/);
+    expect(screen.queryByText('Valid Superblock')).not.toBeInTheDocument();
+  });
+
+  it('displays diagnostic alert on bad superblock signature without valid result', async () => {
+    render(<HpfsSuperblockInspectorTool />);
+
+    // Generate a full 512-byte buffer with invalid magic
+    const badBuffer = hpfsUtils.createHpfsSuperblockBuffer({ magic: 0x12345678 });
+    const hex = hpfsUtils.bytesToHex(badBuffer);
+
+    const textarea = screen.getByLabelText('Hex Data');
+    fireEvent.change(textarea, { target: { value: hex } });
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole('alert')).toHaveTextContent(/Invalid HPFS superblock signature/);
+    expect(screen.queryByText('Valid Superblock')).not.toBeInTheDocument();
+  });
+
+  it('displays diagnostic alert on unknown version without valid result', async () => {
+    render(<HpfsSuperblockInspectorTool />);
+
+    const unknownVerBuffer = hpfsUtils.createHpfsSuperblockBuffer({ version: 99 });
+    const hex = hpfsUtils.bytesToHex(unknownVerBuffer);
+
+    const textarea = screen.getByLabelText('Hex Data');
+    fireEvent.change(textarea, { target: { value: hex } });
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole('alert')).toHaveTextContent(/Unknown HPFS version: 99/);
+    expect(screen.queryByText('Valid Superblock')).not.toBeInTheDocument();
+  });
+
+  it('clears all inputs, parsed results, and errors on "Clear" button click', async () => {
+    render(<HpfsSuperblockInspectorTool />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Load Sample' }));
+    await waitFor(() => expect(screen.getByText('Valid Superblock')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
+
+    expect(screen.getByLabelText('Hex Data')).toHaveValue('');
+    expect(screen.queryByText('Valid Superblock')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+});
+
+describe('HpfsSuperblockInspectorTool file upload and async slicing', () => {
+  it('switches to file upload mode and displays file info', async () => {
+    render(<HpfsSuperblockInspectorTool />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'File Upload' }));
+    expect(screen.getByText(/No file selected/)).toBeInTheDocument();
+
+    const sampleBuffer = hpfsUtils.createHpfsSuperblockBuffer({ volumeName: 'UPLOAD_TEST' });
+    const file = new File([sampleBuffer], 'hpfs_image.img', { type: 'application/octet-stream' });
+    const fileInput = screen.getByLabelText('Upload HPFS image or superblock file');
+
+    await act(async () => {
+      selectFile(fileInput, file);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('UPLOAD_TEST')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText(/hpfs_image\.img/)).toBeInTheDocument();
+    expect(screen.getByText('Valid Superblock')).toBeInTheDocument();
+  });
+
+  it('clears results and displays loading indicator while reading file slice', async () => {
+    const deferred = createDeferred();
+    vi.spyOn(hpfsUtils, 'readSlice').mockImplementation(() => deferred.promise);
+
+    render(<HpfsSuperblockInspectorTool />);
+
+    const sampleBuffer = hpfsUtils.createHpfsSuperblockBuffer();
+    const file = new File([sampleBuffer], 'test.img', { type: 'application/octet-stream' });
+    const fileInput = screen.getByLabelText('Upload HPFS image or superblock file');
+
+    act(() => {
+      selectFile(fileInput, file);
+    });
+
+    expect(screen.getByText(/Reading file slice asynchronously/)).toBeInTheDocument();
+    expect(screen.queryByText('Valid Superblock')).not.toBeInTheDocument();
+
+    await act(async () => {
+      deferred.resolve(sampleBuffer);
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText(/Reading file slice asynchronously/)).not.toBeInTheDocument();
+      expect(screen.getByText('Valid Superblock')).toBeInTheDocument();
+    });
+  });
+
+  it('discards stale file read results if a new read or clear occurs in flight', async () => {
+    const deferred1 = createDeferred();
+    const deferred2 = createDeferred();
+
+    vi.spyOn(hpfsUtils, 'readSlice')
+      .mockImplementationOnce(() => deferred1.promise)
+      .mockImplementationOnce(() => deferred2.promise);
+
+    render(<HpfsSuperblockInspectorTool />);
+
+    const file1 = new File([new Uint8Array(512)], 'file1.img');
+    const sampleSb = hpfsUtils.createHpfsSuperblockBuffer({ volumeName: 'SECOND_FILE' });
+    const file2 = new File([sampleSb], 'file2.img');
+    const fileInput = screen.getByLabelText('Upload HPFS image or superblock file');
+
+    // First file read starts
+    act(() => {
+      selectFile(fileInput, file1);
+    });
+
+    // Second file read starts before first completes
+    act(() => {
+      selectFile(fileInput, file2);
+    });
+
+    // Complete the first (now stale) read with bad buffer
+    await act(async () => {
+      deferred1.resolve(new Uint8Array(512));
+    });
+
+    // Verify first result did NOT overwrite or set error for second
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+    // Complete second read with valid buffer
+    await act(async () => {
+      deferred2.resolve(hpfsUtils.createHpfsSuperblockBuffer({ volumeName: 'SECOND_FILE' }));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('SECOND_FILE')).toBeInTheDocument();
+    });
+  });
+
+  it('handles keyboard accessibility with visible focus styling for file input', () => {
+    render(<HpfsSuperblockInspectorTool />);
+
+    const fileInput = screen.getByLabelText('Upload HPFS image or superblock file');
+    const label = fileInput.closest('label');
+
+    expect(label).toHaveClass('file-btn');
+    expect(fileInput).toHaveClass('file-input');
+  });
+
+  it('copies JSON summary to clipboard and displays accessible live status', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    render(<HpfsSuperblockInspectorTool />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Load Sample' }));
+    await waitFor(() => expect(screen.getByText('Valid Superblock')).toBeInTheDocument());
+
+    const copyBtn = screen.getByRole('button', { name: 'Copy JSON' });
+    await act(async () => {
+      fireEvent.click(copyBtn);
+    });
+
+    expect(writeText).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('status')).toHaveTextContent('Copied to clipboard');
+  });
+});
