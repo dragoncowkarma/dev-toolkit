@@ -12,6 +12,7 @@ import {
   encodeUtf16Le,
   formatBytes,
   formatHex,
+  HEADER_SIZE,
   hexToBytes,
   MAX_DEVICE_CAPACITY,
   MIN_BANNER_SIZE,
@@ -735,7 +736,7 @@ describe('NDS Icon/Title Banner Inspector', () => {
     expect(result.validationErrors.some((e) => e.includes('Unknown banner version'))).toBe(true);
   });
 
-  it('reports diagnostic when banner offset is within header (< MIN_HEADER_SIZE)', () => {
+  it('reports diagnostic when banner offset is within header (< HEADER_SIZE 0x200)', () => {
     const rom = createSyntheticHeader({ bannerOffset: 0x080 });
     const result = parseNdsHeader(rom);
 
@@ -744,6 +745,108 @@ describe('NDS Icon/Title Banner Inspector', () => {
     expect(result.banner.present).toBe(false);
     expect(result.banner.valid).toBe(false);
     expect(result.banner.diagnostic).toMatch(/within header/);
+    expect(result.banner.diagnostic).toContain('< 0x0200');
+  });
+
+  it('rejects banner offsets throughout the 0x160..0x1ff header range', () => {
+    // Test boundary at 0x160
+    const rom160 = createSyntheticHeader({ bannerOffset: 0x160 });
+    const res160 = parseNdsHeader(rom160);
+    expect(res160.valid).toBe(false);
+    expect(res160.banner.present).toBe(false);
+    expect(res160.banner.valid).toBe(false);
+    expect(res160.banner.diagnostic).toBe(
+      'Banner offset (0x00000160) is within header (< 0x0200).'
+    );
+
+    // Test offset 0x180 with synthetic banner placed there
+    const banner = createSyntheticBanner({ version: 0x0001 });
+    const total = 0x180 + banner.length;
+    const rom180 = new Uint8Array(total);
+    // Write header
+    const synthHeader = createSyntheticHeader({ bannerOffset: 0x180, totalSize: total });
+    rom180.set(synthHeader.subarray(0, 0x160), 0);
+    // Place valid synthetic banner at 0x180
+    rom180.set(banner, 0x180);
+
+    const res180 = parseNdsHeader(rom180);
+    expect(res180.ok).toBe(true);
+    expect(res180.valid).toBe(false);
+    expect(res180.banner.present).toBe(false);
+    expect(res180.banner.valid).toBe(false);
+    expect(res180.banner.diagnostic).toBe(
+      'Banner offset (0x00000180) is within header (< 0x0200).'
+    );
+    expect(res180.validationErrors).toContain(
+      'Banner offset (0x00000180) is within header (< 0x0200).'
+    );
+
+    // Test boundary at 0x1FF
+    const rom1ff = createSyntheticHeader({ bannerOffset: 0x1ff });
+    const res1ff = parseNdsHeader(rom1ff);
+    expect(res1ff.valid).toBe(false);
+    expect(res1ff.banner.present).toBe(false);
+    expect(res1ff.banner.valid).toBe(false);
+    expect(res1ff.banner.diagnostic).toBe(
+      'Banner offset (0x000001FF) is within header (< 0x0200).'
+    );
+
+    // Test valid offset at 0x200
+    const rom200 = createSyntheticHeader({ bannerOffset: 0x200, includeBanner: true });
+    const res200 = parseNdsHeader(rom200);
+    expect(res200.ok).toBe(true);
+    expect(res200.valid).toBe(true);
+    expect(res200.banner.present).toBe(true);
+    expect(res200.banner.valid).toBe(true);
+  });
+
+  it('supports separate bounded banner slice with options.bannerBytes', () => {
+    const bannerOffset = 0x4000;
+    const banner = createSyntheticBanner({
+      version: 0x0001,
+      titles: {
+        english: 'Custom Game\nPublisher',
+      },
+    });
+    const headerBytes = createSyntheticHeader({
+      bannerOffset,
+      totalRomSize: 64 * 1024 * 1024,
+    });
+
+    // Pass header slice (0x200 bytes) and separate banner slice (0x840 bytes)
+    const result = parseNdsHeader(headerBytes.subarray(0, HEADER_SIZE), {
+      bannerBytes: banner,
+      fileSize: 64 * 1024 * 1024,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.valid).toBe(true);
+    expect(result.banner.present).toBe(true);
+    expect(result.banner.valid).toBe(true);
+    expect(result.banner.offset).toBe(0x4000);
+    expect(result.banner.version).toBe(0x0001);
+    expect(result.banner.crc.v1.valid).toBe(true);
+    expect(result.banner.titles.english.lines).toEqual(['Custom Game', 'Publisher']);
+  });
+
+  it('bounds check against real fileSize when banner offset is beyond fileSize', () => {
+    const headerBytes = createSyntheticHeader({
+      bannerOffset: 0x04000000, // 64 MB
+    });
+
+    // File is only 32 MB
+    const result = parseNdsHeader(headerBytes.subarray(0, HEADER_SIZE), {
+      bannerBytes: null,
+      fileSize: 32 * 1024 * 1024,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.valid).toBe(false);
+    expect(result.banner.present).toBe(false);
+    expect(result.banner.valid).toBe(false);
+    expect(result.banner.diagnostic).toBe(
+      'Banner offset (0x04000000) is beyond end of file (size: 0x02000000).'
+    );
   });
 
   it('verifies v2, v3, and v103 banner CRCs when applicable', () => {

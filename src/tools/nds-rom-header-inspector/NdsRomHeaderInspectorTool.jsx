@@ -5,7 +5,8 @@ import {
   fileToArrayBuffer,
   formatBytes,
   formatHex,
-  MIN_HEADER_SIZE,
+  HEADER_SIZE,
+  MAX_BANNER_SIZE,
   parseNdsHeader,
 } from './ndsRomHeaderInspector.utils.js';
 import { useCopyFeedback } from '../../hooks/useCopyFeedback.js';
@@ -56,28 +57,32 @@ export default function NdsRomHeaderInspectorTool() {
     if (!file) return;
     const requestId = (fileRequestRef.current += 1);
     try {
-      let buffer;
+      let headerBuffer;
+      let bannerBuffer = null;
+
       if (typeof file.slice === 'function') {
-        const initialSlice = await fileToArrayBuffer(
-          file.slice(0, Math.min(file.size, MIN_HEADER_SIZE))
-        );
-        if (file.size <= 16 * 1024 * 1024) {
-          buffer = await fileToArrayBuffer(file);
-        } else if (initialSlice.byteLength >= 0x06c) {
-          const view = new DataView(initialSlice);
+        const headerBlob = file.slice(0, Math.min(file.size, HEADER_SIZE));
+        headerBuffer = await fileToArrayBuffer(headerBlob);
+        if (fileRequestRef.current !== requestId) return;
+
+        if (headerBuffer.byteLength >= 0x06c) {
+          const view = new DataView(headerBuffer);
           const bannerOffset = view.getUint32(0x068, true);
-          const bannerEnd = bannerOffset > 0 ? bannerOffset + 0x2400 : MIN_HEADER_SIZE;
-          const readLength = Math.min(file.size, Math.max(MIN_HEADER_SIZE, bannerEnd));
-          buffer = await fileToArrayBuffer(file.slice(0, readLength));
-        } else {
-          buffer = initialSlice;
+          if (bannerOffset >= HEADER_SIZE && bannerOffset < file.size) {
+            const bannerLength = Math.min(file.size - bannerOffset, MAX_BANNER_SIZE);
+            const bannerBlob = file.slice(bannerOffset, bannerOffset + bannerLength);
+            bannerBuffer = await fileToArrayBuffer(bannerBlob);
+          }
         }
       } else {
-        buffer = await fileToArrayBuffer(file);
+        headerBuffer = await fileToArrayBuffer(file);
       }
       if (fileRequestRef.current !== requestId) return;
 
-      const result = parseNdsHeader(buffer);
+      const result = parseNdsHeader(headerBuffer, {
+        bannerBytes: bannerBuffer,
+        fileSize: file.size,
+      });
       if (result.ok) {
         setHeaderData(result);
         setFileName(file.name);
@@ -188,30 +193,37 @@ export default function NdsRomHeaderInspectorTool() {
       if (headerData.banner.present) {
         lines.push(
           `  Version:       ${headerData.banner.versionHex} (${headerData.banner.versionName})`,
-          `  v1 CRC-16:     Expected ${headerData.banner.crc.v1.expectedHex} | ` +
-            `Actual ${headerData.banner.crc.v1.actualHex} ` +
-            `(${headerData.banner.crc.v1.valid ? 'VALID' : 'MISMATCH'})`,
         );
-        if (headerData.banner.crc.v2?.applicable) {
+        if (headerData.banner.crc) {
           lines.push(
-            `  v2 CRC-16:     Expected ${headerData.banner.crc.v2.expectedHex} | ` +
-              `Actual ${headerData.banner.crc.v2.actualHex} ` +
-              `(${headerData.banner.crc.v2.valid ? 'VALID' : 'MISMATCH'})`,
+            `  v1 CRC-16:     Expected ${headerData.banner.crc.v1.expectedHex} | ` +
+              `Actual ${headerData.banner.crc.v1.actualHex} ` +
+              `(${headerData.banner.crc.v1.valid ? 'VALID' : 'MISMATCH'})`,
           );
+          if (headerData.banner.crc.v2?.applicable) {
+            lines.push(
+              `  v2 CRC-16:     Expected ${headerData.banner.crc.v2.expectedHex} | ` +
+                `Actual ${headerData.banner.crc.v2.actualHex} ` +
+                `(${headerData.banner.crc.v2.valid ? 'VALID' : 'MISMATCH'})`,
+            );
+          }
+          if (headerData.banner.crc.v3?.applicable) {
+            lines.push(
+              `  v3 CRC-16:     Expected ${headerData.banner.crc.v3.expectedHex} | ` +
+                `Actual ${headerData.banner.crc.v3.actualHex} ` +
+                `(${headerData.banner.crc.v3.valid ? 'VALID' : 'MISMATCH'})`,
+            );
+          }
+          if (headerData.banner.crc.v103?.applicable) {
+            lines.push(
+              `  v103 CRC-16:   Expected ${headerData.banner.crc.v103.expectedHex} | ` +
+                `Actual ${headerData.banner.crc.v103.actualHex} ` +
+                `(${headerData.banner.crc.v103.valid ? 'VALID' : 'MISMATCH'})`,
+            );
+          }
         }
-        if (headerData.banner.crc.v3?.applicable) {
-          lines.push(
-            `  v3 CRC-16:     Expected ${headerData.banner.crc.v3.expectedHex} | ` +
-              `Actual ${headerData.banner.crc.v3.actualHex} ` +
-              `(${headerData.banner.crc.v3.valid ? 'VALID' : 'MISMATCH'})`,
-          );
-        }
-        if (headerData.banner.crc.v103?.applicable) {
-          lines.push(
-            `  v103 CRC-16:   Expected ${headerData.banner.crc.v103.expectedHex} | ` +
-              `Actual ${headerData.banner.crc.v103.actualHex} ` +
-              `(${headerData.banner.crc.v103.valid ? 'VALID' : 'MISMATCH'})`,
-          );
+        if (headerData.banner.diagnostic) {
+          lines.push(`  Diagnostic:    ${headerData.banner.diagnostic}`);
         }
         if (headerData.banner.titlesList?.length > 0) {
           lines.push(``, `Banner Titles:`);
@@ -549,14 +561,15 @@ export default function NdsRomHeaderInspectorTool() {
                   <span className="field-label">Banner Offset (0x068)</span>
                   <span className="field-value mono">{headerData.banner.offsetHex}</span>
                 </div>
-                {headerData.banner.present ? (
+                {headerData.banner.present && (
                   <div className="field-item">
                     <span className="field-label">Banner Version</span>
                     <span className="field-value">
                       {headerData.banner.versionHex} ({headerData.banner.versionName})
                     </span>
                   </div>
-                ) : (
+                )}
+                {headerData.banner.diagnostic && (
                   <div className="field-item">
                     <span className="field-label">Banner Diagnostic</span>
                     <span className="field-value">{headerData.banner.diagnostic}</span>

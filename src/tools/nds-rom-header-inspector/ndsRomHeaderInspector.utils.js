@@ -4,9 +4,20 @@
 export const MIN_HEADER_SIZE = 0x160;
 
 /**
+ * Total standard cartridge header byte length (0x000 - 0x1FF).
+ * Offsets below this boundary reside within the cartridge header area.
+ */
+export const HEADER_SIZE = 0x200;
+
+/**
  * Minimum byte length required for a version 1 Nintendo DS icon/title banner block.
  */
 export const MIN_BANNER_SIZE = 0x840;
+
+/**
+ * Maximum byte length required for an icon/title banner block (covers v103h 0x23C0 bytes).
+ */
+export const MAX_BANNER_SIZE = 0x2400;
 
 /**
  * Standard NDS banner versions and human-readable names.
@@ -510,14 +521,22 @@ export function createSyntheticBanner(overrides = {}) {
 }
 
 /**
- * Parses and verifies an NDS icon/title banner block from ROM bytes.
+ * Parses and verifies an NDS icon/title banner block from ROM bytes or a separate banner slice.
  *
- * @param {Uint8Array} bytes - Full ROM or buffer containing header and banner.
+ * @param {Uint8Array} bytes - Header bytes or full ROM byte buffer.
  * @param {number} bannerOffset - Header offset pointing to the banner.
+ * @param {object} [options={}] - Optional parsing options.
+ * @param {Uint8Array|ArrayBuffer|string} [options.bannerBytes] - Separate bounded banner slice
+ *     at bannerOffset.
+ * @param {number} [options.fileSize] - Total file size in bytes for bounds checking.
  * @returns {object} Banner parsing result.
  */
-export function parseNdsBanner(bytes, bannerOffset) {
+export function parseNdsBanner(bytes, bannerOffset, options = {}) {
   const offsetHex = formatHex(bannerOffset, 8);
+  const effectiveFileSize =
+    typeof options?.fileSize === 'number'
+      ? options.fileSize
+      : bytes?.length ?? 0;
 
   if (bannerOffset === 0) {
     return {
@@ -535,8 +554,8 @@ export function parseNdsBanner(bytes, bannerOffset) {
     };
   }
 
-  if (bannerOffset < MIN_HEADER_SIZE) {
-    const minHex = formatHex(MIN_HEADER_SIZE, 4);
+  if (bannerOffset < HEADER_SIZE) {
+    const minHex = formatHex(HEADER_SIZE, 4);
     return {
       present: false,
       offset: bannerOffset,
@@ -552,8 +571,8 @@ export function parseNdsBanner(bytes, bannerOffset) {
     };
   }
 
-  if (bannerOffset >= bytes.length) {
-    const sizeHex = formatHex(bytes.length, 8);
+  if (bannerOffset >= effectiveFileSize) {
+    const sizeHex = formatHex(effectiveFileSize, 8);
     return {
       present: false,
       offset: bannerOffset,
@@ -569,8 +588,39 @@ export function parseNdsBanner(bytes, bannerOffset) {
     };
   }
 
-  const available = bytes.length - bannerOffset;
-  if (available < MIN_BANNER_SIZE) {
+  const availableInFile = effectiveFileSize - bannerOffset;
+  if (availableInFile < MIN_BANNER_SIZE) {
+    const reqHex = `0x${MIN_BANNER_SIZE.toString(16)}`;
+    return {
+      present: false,
+      offset: bannerOffset,
+      offsetHex,
+      version: null,
+      versionHex: null,
+      versionName: null,
+      valid: false,
+      diagnostic:
+        `Truncated banner block: requires at least ${reqHex} bytes at offset ${offsetHex}, ` +
+        `but only ${availableInFile} bytes available.`,
+      crc: null,
+      titles: null,
+      titlesList: [],
+    };
+  }
+
+  let data;
+  let baseOffset;
+
+  if (options?.bannerBytes) {
+    data = parseInputToBytes(options.bannerBytes);
+    baseOffset = 0;
+  } else {
+    data = bytes;
+    baseOffset = bannerOffset;
+  }
+
+  if (!data || data.length - baseOffset < MIN_BANNER_SIZE) {
+    const available = data ? Math.max(0, data.length - baseOffset) : 0;
     const reqHex = `0x${MIN_BANNER_SIZE.toString(16)}`;
     return {
       present: false,
@@ -589,7 +639,8 @@ export function parseNdsBanner(bytes, bannerOffset) {
     };
   }
 
-  const view = new DataView(bytes.buffer, bytes.byteOffset + bannerOffset, available);
+  const available = data.length - baseOffset;
+  const view = new DataView(data.buffer, data.byteOffset + baseOffset, available);
   const version = view.getUint16(0x000, true);
   const versionHex = formatHex(version, 4);
   const versionName = BANNER_VERSIONS[version] || null;
@@ -619,7 +670,7 @@ export function parseNdsBanner(bytes, bannerOffset) {
   const storedV103 = view.getUint16(0x008, true);
 
   // v1 CRC-16 check: 0x020..0x83F (0x820 = 2080 bytes)
-  const actualV1 = calculateCrc16(bytes, bannerOffset + 0x020, 0x820);
+  const actualV1 = calculateCrc16(data, baseOffset + 0x020, 0x820);
   const v1Valid = storedV1 === actualV1;
 
   // v2 CRC-16 check: 0x020..0x93F (0x920 = 2336 bytes)
@@ -627,7 +678,7 @@ export function parseNdsBanner(bytes, bannerOffset) {
   let v2Valid = null;
   const v2Applicable = version >= 0x0002 || (storedV2 !== 0 && available >= 0x940);
   if (available >= 0x940) {
-    actualV2 = calculateCrc16(bytes, bannerOffset + 0x020, 0x920);
+    actualV2 = calculateCrc16(data, baseOffset + 0x020, 0x920);
     if (v2Applicable) {
       v2Valid = storedV2 === actualV2;
     }
@@ -640,7 +691,7 @@ export function parseNdsBanner(bytes, bannerOffset) {
   let v3Valid = null;
   const v3Applicable = version >= 0x0003 || (storedV3 !== 0 && available >= 0x0a40);
   if (available >= 0x0a40) {
-    actualV3 = calculateCrc16(bytes, bannerOffset + 0x020, 0x0a20);
+    actualV3 = calculateCrc16(data, baseOffset + 0x020, 0x0a20);
     if (v3Applicable) {
       v3Valid = storedV3 === actualV3;
     }
@@ -653,7 +704,7 @@ export function parseNdsBanner(bytes, bannerOffset) {
   let v103Valid = null;
   const v103Applicable = version >= 0x0103 || (storedV103 !== 0 && available >= 0x23c0);
   if (available >= 0x23c0) {
-    actualV103 = calculateCrc16(bytes, bannerOffset + 0x1240, 0x1180);
+    actualV103 = calculateCrc16(data, baseOffset + 0x1240, 0x1180);
     if (v103Applicable) {
       v103Valid = storedV103 === actualV103;
     }
@@ -671,7 +722,7 @@ export function parseNdsBanner(bytes, bannerOffset) {
   const titles = {};
   const titlesList = [];
   for (const lang of BANNER_LANGUAGES) {
-    const decoded = decodeUtf16LeTitle(bytes, bannerOffset + lang.offset, 0x100);
+    const decoded = decodeUtf16LeTitle(data, baseOffset + lang.offset, 0x100);
     const entry = {
       id: lang.id,
       label: lang.label,
@@ -747,7 +798,7 @@ export function createSyntheticHeader(overrides = {}) {
   const includeBanner =
     overrides.includeBanner ??
     (Boolean(overrides.bannerOffset) || overrides.bannerTitles !== undefined);
-  const bannerOffset = overrides.bannerOffset ?? (includeBanner ? 0x200 : 0);
+  const bannerOffset = overrides.bannerOffset ?? (includeBanner ? HEADER_SIZE : 0);
 
   let bannerBytes = null;
   if (includeBanner) {
@@ -840,12 +891,16 @@ export function bytesToHexString(bytes) {
 }
 
 /**
- * Parses and verifies a Nintendo DS ROM header (0x000 - 0x15F).
+ * Parses and verifies a Nintendo DS ROM header (0x000 - 0x15F) and optional banner block.
  *
  * @param {Uint8Array|ArrayBuffer|string} input - ROM header bytes or Base64/Hex string.
+ * @param {object} [options={}] - Optional parsing options.
+ * @param {Uint8Array|ArrayBuffer|string} [options.bannerBytes] - Separate bounded banner slice
+ *     at bannerOffset.
+ * @param {number} [options.fileSize] - Total file size in bytes for bounds checking.
  * @returns {object} Parsing result with { ok: true, ...fields } or { ok: false, error: string }.
  */
-export function parseNdsHeader(input) {
+export function parseNdsHeader(input, options = {}) {
   try {
     const bytes = parseInputToBytes(input);
     if (!bytes) {
@@ -897,7 +952,7 @@ export function parseNdsHeader(input) {
 
     // Banner offset at 0x068
     const bannerOffset = view.getUint32(0x068, true);
-    const banner = parseNdsBanner(bytes, bannerOffset);
+    const banner = parseNdsBanner(bytes, bannerOffset, options);
 
     // Total used ROM size at 0x080
     const totalRomSize = view.getUint32(0x080, true);
