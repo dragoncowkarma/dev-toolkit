@@ -219,4 +219,69 @@ describe('FdsDiskHeaderInspectorTool', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
+
+  it('clears previous report and keeps status visible while replacement inspection is pending',
+    async () => {
+      const file1 = createHeaderedFile(
+        [{ gameName: 'ZEL', sideNumber: 0x00, diskNumber: 0x00 }],
+        'first.fds',
+      );
+      const deferredSecond = createDeferred();
+
+      render(<FdsDiskHeaderInspectorTool />);
+      const input = screen.getByLabelText('Select an FDS disk image file');
+
+      selectFile(input, file1);
+      await waitFor(() => expect(screen.getByText('first.fds')).toBeInTheDocument());
+      expect(screen.queryByText('Inspecting disk image…')).not.toBeInTheDocument();
+
+      fdsUtils.inspectFdsFile.mockReturnValueOnce(deferredSecond.promise);
+      const file2 = createHeaderedFile(
+        [{ gameName: 'MET', sideNumber: 0x00, diskNumber: 0x00 }],
+        'second.fds',
+      );
+      selectFile(input, file2);
+
+      expect(screen.getByText('Inspecting disk image…')).toBeInTheDocument();
+      expect(screen.queryByText('first.fds')).not.toBeInTheDocument();
+      expect(screen.queryByText('Image Summary')).not.toBeInTheDocument();
+
+      await act(async () => {
+        deferredSecond.resolve({
+          fileName: 'second.fds',
+          fileSize: fdsUtils.FDS_SIDE_SIZE,
+          isEmpty: false,
+          fwNesHeader: { present: false, sideCount: null },
+          derivedSideCount: 1,
+          trailingBytes: 0,
+          sides: [],
+          warnings: [],
+          scopeNote: 'Limited checks.',
+        });
+        await Promise.resolve();
+      });
+
+      expect(screen.getByText('second.fds')).toBeInTheDocument();
+      expect(screen.queryByText('Inspecting disk image…')).not.toBeInTheDocument();
+    });
+
+  it('does not restore the previous report when a replacement inspection fails', async () => {
+    const file1 = createHeaderedFile(
+      [{ gameName: 'ZEL', sideNumber: 0x00, diskNumber: 0x00 }],
+      'first.fds',
+    );
+
+    render(<FdsDiskHeaderInspectorTool />);
+    const input = screen.getByLabelText('Select an FDS disk image file');
+
+    selectFile(input, file1);
+    await waitFor(() => expect(screen.getByText('first.fds')).toBeInTheDocument());
+
+    fdsUtils.inspectFdsFile.mockRejectedValueOnce(new Error('Corrupt file read'));
+    selectFile(input, new File(['broken'], 'broken.fds'));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Corrupt file read');
+    expect(screen.queryByText('first.fds')).not.toBeInTheDocument();
+    expect(screen.queryByText('Image Summary')).not.toBeInTheDocument();
+  });
 });
