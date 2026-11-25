@@ -1,0 +1,223 @@
+.sfs-inspector-tool {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.sfs-inspector-tool .tool-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.sfs-inspector-tool .tool-header h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.sfs-inspector-tool .tool-header p {
+  color: var(--color-text-muted);
+  font-size: 0.95rem;
+}
+
+.sfs-inspector-tool .actions-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.sfs-inspector-tool .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.sfs-inspector-tool .btn:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-primary-light);
+}
+
+.sfs-inspector-tool .btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.sfs-inspector-tool .file-btn {
+  position: relative;
+  overflow: hidden;
+  background: var(--color-primary);
+  color: #fff;
+  border-color: var(--color-primary);
+}
+
+.sfs-inspector-tool .file-btn:hover:not(:disabled) {
+  background: var(--color-primary-light);
+  color: #fff;
+  border-color: var(--color-primary-light);
+}
+
+.sfs-inspector-tool .file-input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  width: 100%;
+}
+
+.sfs-inspector-tool .dropzone {
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius);
+  padding: 2rem 1.5rem;
+  text-align: center;
+  background: var(--color-surface);
+  transition: border-color var(--transition);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  cursor: pointer;
+}
+
+.sfs-inspector-tool .dropzone:hover,
+.sfs-inspector-tool .dropzone.active {
+  border-color: var(--color-primary);
+}
+
+.sfs-inspector-tool .dropzone-icon {
+  font-size: 2.25rem;
+}
+
+.sfs-inspector-tool .status-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+}
+
+.sfs-inspector-tool .status-banner-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.sfs-inspector-tool .status-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.sfs-inspector-tool .status-badge--valid {
+  background: rgba(52, 211, 153, 0.15);
+  color: var(--color-success);
+  border: 1px solid var(--color-success);
+}
+
+.sfs-inspector-tool .status-badge--invalid {
+  background: var(--color-error-bg);
+  color: var(--color-error);
+  border: 1px solid var(--color-error);
+}
+
+.sfs-inspector-tool .status-badge--unknown {
+  background: rgba(251, 191, 36, 0.15);
+  color: var(--color-warning);
+  border: 1px solid var(--color-warning);
+}
+
+.sfs-inspector-tool .alert-box {
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius);
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  color: var(--color-error-light);
+  font-size: 0.9rem;
+}
+
+.sfs-inspector-tool .alert-box--warning {
+  background: rgba(251, 191, 36, 0.1);
+  border-color: rgba(251, 191, 36, 0.3);
+  color: var(--color-warning);
+}
+
+.sfs-inspector-tool .details-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.sfs-inspector-tool .card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.sfs-inspector-tool .card h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-accent);
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 0.5rem;
+}
+
+.sfs-inspector-tool .field-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.sfs-inspector-tool .field-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 0.88rem;
+}
+
+.sfs-inspector-tool .field-label {
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+.sfs-inspector-tool .field-value {
+  color: var(--color-text);
+  font-weight: 600;
+  font-family: monospace;
+  text-align: right;
+  word-break: break-all;
+}
+
+.sfs-inspector-tool .empty-state {
+  text-align: center;
+  padding: 3rem 1.5rem;
+  color: var(--color-text-muted);
+  background: var(--color-surface);
+  border-radius: var(--radius);
+  border: 1px dashed var(--color-border);
+}
