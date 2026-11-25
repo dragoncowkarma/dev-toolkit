@@ -247,7 +247,7 @@ describe('parseJaguarRomHeader - Cartridge ROMs', () => {
     expect(result.bootAddressHex).toBe('0x00802000');
   });
 
-  it('falls back to copier header when raw offset 0x404 address is absent in standard size', () => {
+  it('reads cartridge start address from copier-header offset in standard copier-sized ROM when raw offset is zeroed', () => {
     const bytes = createCartridgeRomBuffer({
       bootAddress: 0x00802000,
       hasCopierHeader: true,
@@ -259,6 +259,33 @@ describe('parseJaguarRomHeader - Cartridge ROMs', () => {
 
     expect(result.bootAddress).toBe(0x00802000);
     expect(result.bootAddressHex).toBe('0x00802000');
+  });
+
+  it('does not fall back to copier offset for raw-sized image when actual 0x404 is zeroed and 0x604 has plausible address', () => {
+    const bytes = new Uint8Array(2048);
+    const copierOffset = COPIER_HEADER_SIZE + CART_START_OFFSET;
+    bytes[copierOffset] = 0x00;
+    bytes[copierOffset + 1] = 0x80;
+    bytes[copierOffset + 2] = 0x20;
+    bytes[copierOffset + 3] = 0x00;
+
+    const result = parseJaguarRomHeader(bytes, 2097152);
+
+    expect(result.bootAddress).toBeNull();
+    expect(result.bootAddressHex).toBe('Unknown');
+  });
+
+  it('does not fall back to raw offset for copier-sized image when actual copier offset 0x604 is zeroed and 0x404 has plausible address', () => {
+    const bytes = new Uint8Array(2048);
+    bytes[CART_START_OFFSET] = 0x00;
+    bytes[CART_START_OFFSET + 1] = 0x80;
+    bytes[CART_START_OFFSET + 2] = 0x20;
+    bytes[CART_START_OFFSET + 3] = 0x00;
+
+    const result = parseJaguarRomHeader(bytes, 2097152 + 512);
+
+    expect(result.bootAddress).toBeNull();
+    expect(result.bootAddressHex).toBe('Unknown');
   });
 
   it('rejects invalid raw start address (e.g. byte 0x407 = 1 resulting in 0x00000001)', () => {
@@ -524,5 +551,24 @@ describe('extractCartridgeStartAddress', () => {
     const bytes = new Uint8Array(2048);
     // Irregular file size with zeroed header
     expect(extractCartridgeStartAddress(bytes, 2049)).toBeNull();
+  });
+
+  it('does not read copier offset for raw-sized image when 0x404 is zeroed and 0x604 has plausible address', () => {
+    const bytes = new Uint8Array(2048);
+    const copierOffset = COPIER_HEADER_SIZE + CART_START_OFFSET;
+    bytes[copierOffset] = 0x00;
+    bytes[copierOffset + 1] = 0x80;
+    bytes[copierOffset + 2] = 0x20;
+    bytes[copierOffset + 3] = 0x00;
+    expect(extractCartridgeStartAddress(bytes, 2097152)).toBeNull();
+  });
+
+  it('does not read raw offset for copier-sized image when copier offset 0x604 is zeroed and 0x404 has plausible address', () => {
+    const bytes = new Uint8Array(2048);
+    bytes[CART_START_OFFSET] = 0x00;
+    bytes[CART_START_OFFSET + 1] = 0x80;
+    bytes[CART_START_OFFSET + 2] = 0x20;
+    bytes[CART_START_OFFSET + 3] = 0x00;
+    expect(extractCartridgeStartAddress(bytes, 2097152 + 512)).toBeNull();
   });
 });

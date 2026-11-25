@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import AtariJaguarRomHeaderInspectorTool from './AtariJaguarRomHeaderInspectorTool.jsx';
 import {
   CART_START_OFFSET,
+  COPIER_HEADER_SIZE,
   MARKER_TRACK_2,
 } from './atari-jaguar-rom-header-inspector.utils.js';
 
@@ -202,5 +203,50 @@ describe('AtariJaguarRomHeaderInspectorTool', () => {
     });
 
     expect(screen.queryByText('0x00000001')).not.toBeInTheDocument();
+  });
+
+  it('displays Unknown for raw-sized file when non-header offset has plausible address and header offset is zeroed', async () => {
+    render(<AtariJaguarRomHeaderInspectorTool />);
+
+    // 2 MB raw image with 00 80 20 00 at copier offset 0x604 and 0 at 0x404
+    const file = createRomFile('raw_false_fallback.j64', 2097152, (bytes) => {
+      const copierOffset = COPIER_HEADER_SIZE + CART_START_OFFSET;
+      bytes[copierOffset] = 0x00;
+      bytes[copierOffset + 1] = 0x80;
+      bytes[copierOffset + 2] = 0x20;
+      bytes[copierOffset + 3] = 0x00;
+    });
+    const input = screen.getByLabelText('Upload Atari Jaguar ROM');
+
+    await act(async () => selectFile(input, file));
+
+    await waitFor(() => {
+      expect(screen.getByText('Header Marker')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText('0x00802000')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Unknown').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('displays Unknown for copier-sized file when non-header offset has plausible address and copier header offset is zeroed', async () => {
+    render(<AtariJaguarRomHeaderInspectorTool />);
+
+    // 2 MB copier-sized image with 00 80 20 00 at raw offset 0x404 and 0 at copier offset 0x604
+    const file = createRomFile('copier_false_fallback.jag', 2097152 + 512, (bytes) => {
+      bytes[CART_START_OFFSET] = 0x00;
+      bytes[CART_START_OFFSET + 1] = 0x80;
+      bytes[CART_START_OFFSET + 2] = 0x20;
+      bytes[CART_START_OFFSET + 3] = 0x00;
+    });
+    const input = screen.getByLabelText('Upload Atari Jaguar ROM');
+
+    await act(async () => selectFile(input, file));
+
+    await waitFor(() => {
+      expect(screen.getByText('Header Marker')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText('0x00802000')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Unknown').length).toBeGreaterThanOrEqual(1);
   });
 });

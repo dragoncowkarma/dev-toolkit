@@ -238,7 +238,8 @@ function decodeCartridgeAddressAt(bytes, offset, fileSize) {
 
 /**
  * Extracts cartridge start address from ROM offset 0x404 (and 512 + 0x404 for copier headers).
- * Probes the copier-header offset directly at most once without unbounded recursion.
+ * Only uses the size-selected offset when file size identifies a normal raw or copier-headered
+ * image, avoiding false fallbacks on arbitrary ROM data at the alternate offset.
  *
  * @param {Uint8Array} bytes - Header bytes.
  * @param {number} [fileSize] - Total file size in bytes.
@@ -251,23 +252,40 @@ export function extractCartridgeStartAddress(bytes, fileSize) {
 
   const isCopierSized =
     typeof fileSize === 'number' &&
-    (fileSize % 524288 === COPIER_HEADER_SIZE || fileSize % 1048576 === COPIER_HEADER_SIZE);
+    fileSize >= 524288 + COPIER_HEADER_SIZE &&
+    fileSize % 524288 === COPIER_HEADER_SIZE;
 
-  const primaryOffset = isCopierSized
-    ? COPIER_HEADER_SIZE + CART_START_OFFSET
-    : CART_START_OFFSET;
-  const fallbackOffset = isCopierSized
-    ? CART_START_OFFSET
-    : COPIER_HEADER_SIZE + CART_START_OFFSET;
+  const isRawSized =
+    typeof fileSize === 'number' &&
+    fileSize >= 524288 &&
+    fileSize % 524288 === 0;
 
-  const primaryAddress = decodeCartridgeAddressAt(bytes, primaryOffset, fileSize);
-  if (primaryAddress !== null) {
-    return primaryAddress;
+  if (isCopierSized) {
+    return decodeCartridgeAddressAt(
+      bytes,
+      COPIER_HEADER_SIZE + CART_START_OFFSET,
+      fileSize,
+    );
   }
 
-  // Probe the alternate offset at most once (e.g. copier header fallback or absent raw address)
-  if (bytes.length >= fallbackOffset + 4) {
-    return decodeCartridgeAddressAt(bytes, fallbackOffset, fileSize);
+  if (isRawSized) {
+    return decodeCartridgeAddressAt(bytes, CART_START_OFFSET, fileSize);
+  }
+
+  // When file size does not identify a normal raw or copier-headered image,
+  // check raw offset 0x404 first.
+  const rawAddress = decodeCartridgeAddressAt(bytes, CART_START_OFFSET, fileSize);
+  if (rawAddress !== null) {
+    return rawAddress;
+  }
+
+  // Probe the alternate offset at most once when raw address is absent
+  if (bytes.length >= COPIER_HEADER_SIZE + CART_START_OFFSET + 4) {
+    return decodeCartridgeAddressAt(
+      bytes,
+      COPIER_HEADER_SIZE + CART_START_OFFSET,
+      fileSize,
+    );
   }
 
   return null;
