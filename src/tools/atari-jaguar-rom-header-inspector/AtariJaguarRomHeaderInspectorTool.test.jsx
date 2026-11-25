@@ -205,7 +205,8 @@ describe('AtariJaguarRomHeaderInspectorTool', () => {
     expect(screen.queryByText('0x00000001')).not.toBeInTheDocument();
   });
 
-  it('displays Unknown for raw-sized file when non-header offset has plausible address and header offset is zeroed', async () => {
+  it('displays Unknown for raw-sized file when non-header offset has plausible address ' +
+    'and header offset is zeroed', async () => {
     render(<AtariJaguarRomHeaderInspectorTool />);
 
     // 2 MB raw image with 00 80 20 00 at copier offset 0x604 and 0 at 0x404
@@ -228,7 +229,8 @@ describe('AtariJaguarRomHeaderInspectorTool', () => {
     expect(screen.getAllByText('Unknown').length).toBeGreaterThanOrEqual(1);
   });
 
-  it('displays Unknown for copier-sized file when non-header offset has plausible address and copier header offset is zeroed', async () => {
+  it('displays Unknown for copier-sized file when non-header offset has plausible address ' +
+    'and copier header offset is zeroed', async () => {
     render(<AtariJaguarRomHeaderInspectorTool />);
 
     // 2 MB copier-sized image with 00 80 20 00 at raw offset 0x404 and 0 at copier offset 0x604
