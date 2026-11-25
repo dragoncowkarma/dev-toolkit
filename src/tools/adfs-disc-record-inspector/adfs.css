@@ -1,0 +1,5 @@
+.adfs-inspector { max-width: 1000px; margin: 0 auto; padding: 0 1.25rem 2rem; }
+.adfs-inspector dl { border: 1px solid var(--color-border); border-radius: var(--radius); }
+.adfs-inspector dl div { display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0.5rem; }
+.adfs-inspector dt { flex: 1 1 14rem; color: var(--color-text-muted); }
+.adfs-inspector dd { flex: 1 1 10rem; margin: 0; overflow-wrap: anywhere; }
