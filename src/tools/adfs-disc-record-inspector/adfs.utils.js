@@ -40,7 +40,7 @@ function oldMap(data) {
     lastEnd = start + length;
   }
   const name = [];
-  for (let i = 0; i < 5; i += 1) name.push(data[247 + i], data[503 + i]);
+  for (let i = 0; i < 5; i += 1) name.push(data[247 + i], data[502 + i]);
   return {
     format: 'Old map', log2SectorSize: 8, sectorsPerTrack: UNKNOWN, heads: UNKNOWN,
     density: UNKNOWN, idLength: UNKNOWN, log2BytesPerMapBit: UNKNOWN, skew: UNKNOWN,

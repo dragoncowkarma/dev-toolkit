@@ -12,6 +12,8 @@ function sign(data, offset, length, initial) {
 function oldImage() {
   const data = new Uint8Array(512);
   put(data, 252, 800, 3); put(data, 0, 10, 3); put(data, 256, 100, 3);
+  data.set(new TextEncoder().encode('TsDs '), 247);
+  data.set(new TextEncoder().encode('etic '), 502);
   data[510] = 3; data[509] = 2; put(data, 507, 1234, 2);
   sign(data, 0, 256, 255); sign(data, 256, 256, 255);
   return data;
@@ -29,7 +31,8 @@ describe('ADFS inspection', () => {
   });
   it('parses old map extents and verifies both sectors', () => {
     expect(inspectAdfs(oldImage())).toMatchObject({ format: 'Old map', discSize: 204800,
-      extents: [{ start: 10, length: 100 }], mapChecksums: ['Valid', 'Valid'] });
+      discId: 1234, discName: 'TestDisc', extents: [{ start: 10, length: 100 }],
+      mapChecksums: ['Valid', 'Valid'] });
   });
   it('reports a bad checksum', () => {
     const data = oldImage(); data[20] ^= 1;
