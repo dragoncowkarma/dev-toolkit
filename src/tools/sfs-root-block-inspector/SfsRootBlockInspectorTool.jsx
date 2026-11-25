@@ -21,27 +21,40 @@ export default function SfsRootBlockInspectorTool() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [loadError, setLoadError] = useState('');
   const fileInputRef = useRef(null);
+  const activeRequestIdRef = useRef(0);
 
   async function handleFileSelect(event) {
     const file = event.target.files?.[0];
     if (!file) return;
+    const requestId = ++activeRequestIdRef.current;
     setLoadError('');
     setIsProcessing(true);
     setFileName(file.name);
     setFileSize(file.size);
+    setResult(null);
 
     try {
       const parsed = await readRootBlockFromBlob(file);
+      if (requestId !== activeRequestIdRef.current) {
+        return;
+      }
       setResult(parsed);
     } catch (err) {
+      if (requestId !== activeRequestIdRef.current) {
+        return;
+      }
       setLoadError(err.message || 'Failed to inspect file.');
       setResult(null);
     } finally {
-      setIsProcessing(false);
+      if (requestId === activeRequestIdRef.current) {
+        setIsProcessing(false);
+      }
     }
   }
 
   function handleLoadSampleValid() {
+    activeRequestIdRef.current += 1;
+    setIsProcessing(false);
     setLoadError('');
     setFileName('sample_valid_sfs.img');
     const buffer = createSfsRootBlockBuffer({
@@ -59,9 +72,14 @@ export default function SfsRootBlockInspectorTool() {
     setFileSize(buffer.byteLength);
     const parsed = parseSfsRootBlock(buffer);
     setResult(parsed);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   }
 
   function handleLoadSampleBadChecksum() {
+    activeRequestIdRef.current += 1;
+    setIsProcessing(false);
     setLoadError('');
     setFileName('sample_bad_checksum.img');
     const buffer = createSfsRootBlockBuffer({
@@ -72,29 +90,44 @@ export default function SfsRootBlockInspectorTool() {
     setFileSize(buffer.byteLength);
     const parsed = parseSfsRootBlock(buffer);
     setResult(parsed);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   }
 
   function handleLoadSampleWrongMagic() {
+    activeRequestIdRef.current += 1;
+    setIsProcessing(false);
     setLoadError('');
     setFileName('sample_wrong_magic.img');
     const buffer = createSfsRootBlockBuffer({
-      magic: 0x444f5300, // 'DOS\0'
+      magic: 0x53465300, // 'SFS\0' filesystem DOS-type, not root block ID 'ROOT'
     });
     setFileSize(buffer.byteLength);
     const parsed = parseSfsRootBlock(buffer);
     setResult(parsed);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   }
 
   function handleLoadSampleTruncated() {
+    activeRequestIdRef.current += 1;
+    setIsProcessing(false);
     setLoadError('');
     setFileName('sample_truncated.img');
     const buffer = new ArrayBuffer(64);
     setFileSize(64);
     const parsed = parseSfsRootBlock(buffer);
     setResult(parsed);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   }
 
   function handleClear() {
+    activeRequestIdRef.current += 1;
+    setIsProcessing(false);
     setResult(null);
     setFileName('');
     setFileSize(null);

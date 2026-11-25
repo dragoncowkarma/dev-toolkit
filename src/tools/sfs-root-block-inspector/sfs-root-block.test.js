@@ -7,8 +7,11 @@ import {
   isPowerOfTwo,
   parseSfsRootBlock,
   readRootBlockFromBlob,
+  SFS_CHECKSUM_TARGET,
   SFS_MAGIC,
   SFS_MAGIC_STRING,
+  SFS_ROOT_MAGIC,
+  SFS_ROOT_MAGIC_STRING,
 } from './sfs-root-block.utils.js';
 
 describe('isPowerOfTwo', () => {
@@ -57,10 +60,10 @@ describe('formatBytes', () => {
 });
 
 describe('calculateBlockChecksum', () => {
-  it('produces a checksum whose longword sum equals 0', () => {
+  it('produces a checksum whose longword sum equals 0xffffffff modulo 2^32', () => {
     const buffer = new ArrayBuffer(512);
     const view = new DataView(buffer);
-    view.setUint32(0, SFS_MAGIC, false);
+    view.setUint32(0, SFS_ROOT_MAGIC, false);
     view.setUint32(52, 512, false);
 
     const checksum = calculateBlockChecksum(buffer, 512);
@@ -70,12 +73,39 @@ describe('calculateBlockChecksum', () => {
     for (let i = 0; i < 512; i += 4) {
       sum = (sum + view.getUint32(i, false)) >>> 0;
     }
-    expect(sum).toBe(0);
+    expect(sum).toBe(SFS_CHECKSUM_TARGET);
+  });
+
+  it('correctly derives the expected checksum for an independently specified layout', () => {
+    // 512-byte root block layout with independent field values
+    const buffer = new ArrayBuffer(512);
+    const view = new DataView(buffer);
+    view.setUint32(0, 0x524f4f54, false); // 'ROOT'
+    view.setUint32(4, 0, false);          // checksum cleared during calculation
+    view.setUint32(8, 2, false);          // ownblock
+    view.setUint16(12, 1, false);         // version
+    view.setUint16(14, 1, false);         // sequencenumber
+    view.setUint32(16, 100, false);       // datecreated
+    view.setUint8(20, 1);                 // flags
+    view.setUint32(44, 1048576, false);   // lastbyte
+    view.setUint32(48, 2048, false);      // totalblocks
+    view.setUint32(52, 512, false);       // blocksize
+    view.setUint32(96, 4, false);         // bitmapbase
+    view.setUint32(100, 8, false);        // adminspacecontainer
+    view.setUint32(104, 12, false);       // rootobjectcontainer
+    view.setUint32(108, 16, false);       // extentbnoderoot
+
+    // Hand-calculated sum starting at 1:
+    // 1 + 0x524f4f54 + 2 + 0x00010001 + 100 (0x64) + 0x01000000 + 0x00100000 + 2048 (0x800)
+    // + 512 (0x200) + 4 + 8 + 12 (0xc) + 16 (0x10) = 0x536059e4
+    // Negated: (0x100000000 - 0x536059e4) = 0xac9fa61c
+    const checksum = calculateBlockChecksum(buffer, 512);
+    expect(checksum).toBe(0xac9fa61c);
   });
 });
 
 describe('parseSfsRootBlock', () => {
-  it('successfully parses a valid SFS root block', () => {
+  it('successfully parses a valid SFS root block generated with helper', () => {
     const buffer = createSfsRootBlockBuffer({
       blockSize: 512,
       totalBlocks: 4000,
@@ -97,8 +127,8 @@ describe('parseSfsRootBlock', () => {
     expect(result.status).toBe('Valid');
     expect(result.checksumStatus).toBe('Valid');
     expect(result.isValid).toBe(true);
-    expect(result.id).toBe(SFS_MAGIC_STRING);
-    expect(result.idHex).toBe('0x53465300');
+    expect(result.id).toBe(SFS_ROOT_MAGIC_STRING);
+    expect(result.idHex).toBe('0x524f4f54');
     expect(result.isKnownMagic).toBe(true);
     expect(result.blockSize).toBe(512);
     expect(result.totalBlocks).toBe(4000);
@@ -119,6 +149,99 @@ describe('parseSfsRootBlock', () => {
     expect(result.errorMessage).toBeNull();
   });
 
+  it('parses and validates an independently specified on-disk SFS root block fixture', () => {
+    // Construct independent binary fixture without using createSfsRootBlockBuffer
+    const fixture = new Uint8Array(512);
+    const view = new DataView(fixture.buffer);
+
+    // 0x00: 'ROOT' (0x524f4f54)
+    view.setUint32(0, 0x524f4f54, false);
+    // 0x04: Independently derived checksum (0xac9fa61c)
+    view.setUint32(4, 0xac9fa61c, false);
+    // 0x08: ownblock = 2
+    view.setUint32(8, 2, false);
+    // 0x0C: version = 1, sequencenumber = 1
+    view.setUint16(12, 1, false);
+    view.setUint16(14, 1, false);
+    // 0x10: datecreated = 100
+    view.setUint32(16, 100, false);
+    // 0x14: flags = 0x01
+    view.setUint8(20, 0x01);
+    // 0x24: firstbyte = 0
+    view.setUint32(36, 0, false);
+    // 0x2C: lastbyte = 1048576 (1 MB)
+    view.setUint32(44, 1048576, false);
+    // 0x30: totalblocks = 2048
+    view.setUint32(48, 2048, false);
+    // 0x34: blocksize = 512
+    view.setUint32(52, 512, false);
+    // 0x60: bitmapbase = 4
+    view.setUint32(96, 4, false);
+    // 0x64: adminspacecontainer = 8
+    view.setUint32(100, 8, false);
+    // 0x68: rootobjectcontainer = 12
+    view.setUint32(104, 12, false);
+    // 0x6C: extentbnoderoot = 16
+    view.setUint32(108, 16, false);
+
+    const result = parseSfsRootBlock(fixture.buffer);
+
+    expect(result.status).toBe('Valid');
+    expect(result.checksumStatus).toBe('Valid');
+    expect(result.isValid).toBe(true);
+    expect(result.id).toBe('ROOT');
+    expect(result.idHex).toBe('0x524f4f54');
+    expect(result.checksum).toBe(0xac9fa61c);
+    expect(result.checksumHex).toBe('0xac9fa61c');
+    expect(result.calculatedSum).toBe(0xffffffff);
+    expect(result.ownBlock).toBe(2);
+    expect(result.version).toBe(1);
+    expect(result.sequenceNumber).toBe(1);
+    expect(result.dateCreatedRaw).toBe(100);
+    expect(result.flags).toBe(1);
+    expect(result.totalBlocks).toBe(2048);
+    expect(result.blockSize).toBe(512);
+    expect(result.bitmapBase).toBe(4);
+    expect(result.adminSpaceContainer).toBe(8);
+    expect(result.rootObjectContainer).toBe(12);
+    expect(result.extentBnodeRoot).toBe(16);
+    expect(result.errorMessage).toBeNull();
+  });
+
+  it('detects checksum corruption in an independently specified on-disk fixture', () => {
+    const fixture = new Uint8Array(512);
+    const view = new DataView(fixture.buffer);
+    view.setUint32(0, 0x524f4f54, false);
+    view.setUint32(4, 0xac9fa61c, false);
+    view.setUint32(48, 2048, false);
+    view.setUint32(52, 512, false);
+
+    // Corrupt one byte (e.g. at offset 8)
+    view.setUint32(8, 0xdeadbeef, false);
+
+    const result = parseSfsRootBlock(fixture.buffer);
+    expect(result.checksumStatus).toBe('Invalid');
+    expect(result.status).toBe('Invalid');
+    expect(result.isValid).toBe(false);
+    expect(result.errorMessage).toMatch(/Checksum mismatch.*expected 0xffffffff/i);
+  });
+
+  it('rejects Amiga filesystem/DOS type (SFS\\0) as unknown root-block identifier', () => {
+    // 0x53465300 is 'SFS\0' which is the Amiga partition DOS-type, NOT the root block ID 'ROOT'
+    const buffer = createSfsRootBlockBuffer({
+      magic: 0x53465300,
+    });
+
+    const result = parseSfsRootBlock(buffer);
+
+    expect(result.status).toBe('Unknown');
+    expect(result.checksumStatus).toBe('Unknown');
+    expect(result.isValid).toBe(false);
+    expect(result.isKnownMagic).toBe(false);
+    expect(result.id).toBe('SFS\\0');
+    expect(result.errorMessage).toMatch(/Unknown root block identifier: 0x53465300 \("SFS\\0"\)\. Expected ROOT \(0x524f4f54\)/i);
+  });
+
   it('detects a bad/corrupted checksum and reports Invalid', () => {
     const buffer = createSfsRootBlockBuffer({
       blockSize: 512,
@@ -131,7 +254,7 @@ describe('parseSfsRootBlock', () => {
     expect(result.status).toBe('Invalid');
     expect(result.isValid).toBe(false);
     expect(result.errorMessage).toMatch(/Checksum mismatch/i);
-    expect(result.id).toBe(SFS_MAGIC_STRING);
+    expect(result.id).toBe(SFS_ROOT_MAGIC_STRING);
   });
 
   it('treats wrong magic as Unknown', () => {
@@ -145,7 +268,7 @@ describe('parseSfsRootBlock', () => {
     expect(result.checksumStatus).toBe('Unknown');
     expect(result.isValid).toBe(false);
     expect(result.isKnownMagic).toBe(false);
-    expect(result.errorMessage).toMatch(/Unknown magic identifier/i);
+    expect(result.errorMessage).toMatch(/Unknown root block identifier/i);
   });
 
   it('treats truncated input as Unknown', () => {
