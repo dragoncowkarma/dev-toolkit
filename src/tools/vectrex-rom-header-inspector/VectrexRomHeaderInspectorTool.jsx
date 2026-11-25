@@ -372,7 +372,10 @@ export default function VectrexRomHeaderInspectorTool() {
                             Line {idx + 1}: &quot;{block.title}&quot;
                           </span>
                           <span className="vectrex-title-block-params">
-                            Height: {block.height} ({formatHex(block.heightRaw)}), Width: {block.width} ({formatHex(block.widthRaw)}), Rel Y: {block.relY} ({formatHex(block.relYRaw)}), Rel X: {block.relX} ({formatHex(block.relXRaw)})
+                            Height: {block.height} ({formatHex(block.heightRaw)}),
+                            {' '}Width: {block.width} ({formatHex(block.widthRaw)}),
+                            {' '}Rel Y: {block.relY} ({formatHex(block.relYRaw)}),
+                            {' '}Rel X: {block.relX} ({formatHex(block.relXRaw)})
                           </span>
                         </div>
                       ))}
