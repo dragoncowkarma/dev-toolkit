@@ -40,6 +40,7 @@ export default function FdsDiskHeaderInspectorTool() {
   async function inspectSelectedFile(selectedFile) {
     if (!selectedFile) return;
     const requestId = (requestIdRef.current += 1);
+    setReport(null);
     setIsInspecting(true);
     setError('');
 
