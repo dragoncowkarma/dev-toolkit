@@ -258,6 +258,35 @@
   font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
 }
 
+.vectrex-title-blocks {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.vectrex-title-block-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: calc(var(--radius) - 4px);
+  padding: 0.5rem 0.75rem;
+}
+
+.vectrex-title-block-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.vectrex-title-block-params {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+}
+
 .vectrex-hexdump {
   background: var(--color-bg);
   border: 1px solid var(--color-border);

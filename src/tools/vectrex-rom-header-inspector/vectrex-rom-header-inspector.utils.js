@@ -22,21 +22,17 @@ export const MAX_ROM_SIZE_BYTES = 32 * 1024; // 32 KiB (32768 bytes)
 export const MIN_HEADER_BYTES = 15; // Minimum possible header size
 
 /**
- * Common Vectrex BIOS music addresses mapped to titles.
+ * Verified Vectrex BIOS music addresses mapped to titles.
+ * Documented in Vectrex BIOS reference and developer sound guides.
  */
 export const KNOWN_BIOS_MUSIC = {
   0xfd0d: 'Power-On / Mine Storm',
   0xfd1d: 'Berzerk',
-  0xfe38: 'Armor..Attack',
+  0xfd81: 'Armor Attack',
+  0xfdd3: 'Scramble',
+  0xfe38: 'Solar Quest',
   0xfe76: 'Clean Sweep',
-  0xfeb6: 'Star Hawk',
-  0xfec6: 'Rip Off',
-  0xfef8: 'Hyperchase',
-  0xff16: 'Scramble',
-  0xff44: 'Fortress of Narzod',
-  0xff62: 'Bedlam',
-  0xff7a: 'Polar Rescue',
-  0xff8f: 'Solar Quest',
+  0xfef8: 'Melody Master',
 };
 
 /**
@@ -214,6 +210,8 @@ export function parseVectrexHeader(data, fileSize = null) {
       titleRelX: null,
       titleRelXRaw: null,
       title: '',
+      titles: [],
+      titleBlocks: [],
       headerSize: bytes.length,
     };
   }
@@ -250,6 +248,8 @@ export function parseVectrexHeader(data, fileSize = null) {
       titleRelX: null,
       titleRelXRaw: null,
       title: '',
+      titles: [],
+      titleBlocks: [],
       headerSize: offset,
     };
   }
@@ -259,7 +259,7 @@ export function parseVectrexHeader(data, fileSize = null) {
   const musicName = KNOWN_BIOS_MUSIC[musicPointer] || null;
   offset += 2;
 
-  // Read splash text display parameters (height, width, rel Y, rel X)
+  // Header must contain at least the first title display parameters
   if (offset + 4 > bytes.length) {
     flags.tooSmall = true;
     errors.push('Truncated header: File ended before text display parameters.');
@@ -283,104 +283,104 @@ export function parseVectrexHeader(data, fileSize = null) {
       titleRelX: null,
       titleRelXRaw: null,
       title: '',
+      titles: [],
+      titleBlocks: [],
       headerSize: offset,
     };
   }
 
-  const titleHeightRaw = bytes[offset];
-  const titleWidthRaw = bytes[offset + 1];
-  const titleRelYRaw = bytes[offset + 2];
-  const titleRelXRaw = bytes[offset + 3];
+  // Walk the title blocks until 0x00 terminator
+  // Vectrex BIOS Print_List_hw expects entries of:
+  //   height, width, rel Y, rel X, string, 0x80
+  // until a leading 0x00 terminates the list.
+  const titleBlocks = [];
+  let foundTerminator = false;
+  const maxTitleBlocks = 32;
 
-  const titleHeight = toSignedInt8(titleHeightRaw);
-  const titleWidth = toSignedInt8(titleWidthRaw);
-  const titleRelY = toSignedInt8(titleRelYRaw);
-  const titleRelX = toSignedInt8(titleRelXRaw);
-  offset += 4;
-
-  // Find title string terminator (0x80)
-  let titleEnd = -1;
-  const maxTitleScan = Math.min(bytes.length, offset + 128);
-  for (let i = offset; i < maxTitleScan; i++) {
-    if (bytes[i] === VECTREX_STRING_TERMINATOR) {
-      titleEnd = i;
+  while (offset < bytes.length && titleBlocks.length < maxTitleBlocks) {
+    if (bytes[offset] === VECTREX_HEADER_TERMINATOR) {
+      foundTerminator = true;
+      offset += 1;
       break;
     }
-    // If non-printable ASCII before 0x80, title terminator is missing
-    if (bytes[i] < 32 || bytes[i] > 126) {
+
+    // Subsequent blocks must have 4 display parameters
+    if (offset + 4 > bytes.length) {
+      flags.tooSmall = true;
+      flags.missingTerminator = true;
+      errors.push(
+        `Missing terminator: Expected 0x00 after title string, found ${formatHex(bytes[offset])}.`
+      );
       break;
     }
+
+    const titleHeightRaw = bytes[offset];
+    const titleWidthRaw = bytes[offset + 1];
+    const titleRelYRaw = bytes[offset + 2];
+    const titleRelXRaw = bytes[offset + 3];
+
+    const titleHeight = toSignedInt8(titleHeightRaw);
+    const titleWidth = toSignedInt8(titleWidthRaw);
+    const titleRelY = toSignedInt8(titleRelYRaw);
+    const titleRelX = toSignedInt8(titleRelXRaw);
+    offset += 4;
+
+    // Find title string terminator (0x80)
+    let titleEnd = -1;
+    const maxTitleScan = Math.min(bytes.length, offset + 128);
+    for (let i = offset; i < maxTitleScan; i++) {
+      if (bytes[i] === VECTREX_STRING_TERMINATOR) {
+        titleEnd = i;
+        break;
+      }
+      // If non-printable ASCII before 0x80, title terminator is missing
+      if (bytes[i] < 32 || bytes[i] > 126) {
+        break;
+      }
+    }
+
+    if (titleEnd === -1) {
+      flags.missingTerminator = true;
+      flags.tooSmall = true;
+      errors.push('Missing terminator: Title string is not terminated by 0x80.');
+      break;
+    }
+
+    const titleBytes = bytes.slice(offset, titleEnd);
+    const blockTitle = String.fromCharCode(...titleBytes);
+    offset = titleEnd + 1;
+
+    titleBlocks.push({
+      title: blockTitle,
+      text: blockTitle,
+      height: titleHeight,
+      heightRaw: titleHeightRaw,
+      width: titleWidth,
+      widthRaw: titleWidthRaw,
+      relY: titleRelY,
+      relYRaw: titleRelYRaw,
+      relX: titleRelX,
+      relXRaw: titleRelXRaw,
+    });
   }
 
-  if (titleEnd === -1) {
+  if (titleBlocks.length === 0 && !flags.tooSmall && !flags.missingTerminator) {
     flags.missingTerminator = true;
-    flags.tooSmall = true;
-    errors.push('Missing terminator: Title string is not terminated by 0x80.');
-    return {
-      valid: false,
-      fileSize: actualFileSize,
-      flags,
-      errors,
-      warnings,
-      copyright,
-      copyrightNotice,
-      musicPointer,
-      musicPointerHex,
-      musicName,
-      titleHeight,
-      titleHeightRaw,
-      titleWidth,
-      titleWidthRaw,
-      titleRelY,
-      titleRelYRaw,
-      titleRelX,
-      titleRelXRaw,
-      title: String.fromCharCode(...bytes.slice(offset)),
-      headerSize: bytes.length,
-    };
+    errors.push('Missing title: Cartridge header contains no title string blocks.');
   }
 
-  const titleBytes = bytes.slice(offset, titleEnd);
-  const title = String.fromCharCode(...titleBytes);
-  offset = titleEnd + 1;
-
-  // Verify header terminator 0x00 immediately following title terminator
-  if (offset >= bytes.length) {
+  if (!foundTerminator && !flags.tooSmall && !flags.missingTerminator) {
     flags.missingTerminator = true;
-    flags.tooSmall = true;
+    if (offset >= bytes.length) {
+      flags.tooSmall = true;
+    }
     errors.push('Missing terminator: Header terminator 0x00 missing after title string.');
-    return {
-      valid: false,
-      fileSize: actualFileSize,
-      flags,
-      errors,
-      warnings,
-      copyright,
-      copyrightNotice,
-      musicPointer,
-      musicPointerHex,
-      musicName,
-      titleHeight,
-      titleHeightRaw,
-      titleWidth,
-      titleWidthRaw,
-      titleRelY,
-      titleRelYRaw,
-      titleRelX,
-      titleRelXRaw,
-      title,
-      headerSize: offset,
-    };
   }
 
-  if (bytes[offset] !== VECTREX_HEADER_TERMINATOR) {
-    flags.missingTerminator = true;
-    errors.push(
-      `Missing terminator: Expected 0x00 after title string, found ${formatHex(bytes[offset])}.`
-    );
-  }
-
-  const headerSize = offset + 1;
+  const primaryBlock = titleBlocks[0] || null;
+  const title = titleBlocks.map((b) => b.title).join(' / ');
+  const titles = titleBlocks.map((b) => b.title);
+  const headerSize = offset;
   const valid =
     errors.length === 0 &&
     !flags.missingSignature &&
@@ -396,15 +396,17 @@ export function parseVectrexHeader(data, fileSize = null) {
     musicPointer,
     musicPointerHex,
     musicName,
-    titleHeight,
-    titleHeightRaw,
-    titleWidth,
-    titleWidthRaw,
-    titleRelY,
-    titleRelYRaw,
-    titleRelX,
-    titleRelXRaw,
+    titleHeight: primaryBlock ? primaryBlock.height : null,
+    titleHeightRaw: primaryBlock ? primaryBlock.heightRaw : null,
+    titleWidth: primaryBlock ? primaryBlock.width : null,
+    titleWidthRaw: primaryBlock ? primaryBlock.widthRaw : null,
+    titleRelY: primaryBlock ? primaryBlock.relY : null,
+    titleRelYRaw: primaryBlock ? primaryBlock.relYRaw : null,
+    titleRelX: primaryBlock ? primaryBlock.relX : null,
+    titleRelXRaw: primaryBlock ? primaryBlock.relXRaw : null,
     title,
+    titles,
+    titleBlocks,
     flags,
     errors,
     warnings,
@@ -463,6 +465,7 @@ export function buildVectrexHeader({
   titleRelY = 32,
   titleRelX = -85,
   title = 'MINE STORM',
+  titleBlocks = null,
   omitCopyrightTerminator = false,
   omitMusicPointer = false,
   omitTextParams = false,
@@ -487,20 +490,43 @@ export function buildVectrexHeader({
     bytes.push(musicPointer & 0xff);
   }
 
-  // Text display parameters
-  if (!omitTextParams) {
-    bytes.push(titleHeight & 0xff);
-    bytes.push(titleWidth & 0xff);
-    bytes.push(titleRelY & 0xff);
-    bytes.push(titleRelX & 0xff);
-  }
+  if (Array.isArray(titleBlocks) && titleBlocks.length > 0) {
+    for (let i = 0; i < titleBlocks.length; i++) {
+      const block = titleBlocks[i];
+      const h = typeof block.height === 'number' ? block.height : titleHeight;
+      const w = typeof block.width === 'number' ? block.width : titleWidth;
+      const y = typeof block.relY === 'number' ? block.relY : titleRelY;
+      const x = typeof block.relX === 'number' ? block.relX : titleRelX;
+      const text = typeof block.title === 'string' ? block.title : (block.text || '');
 
-  // Title string
-  for (let i = 0; i < title.length; i++) {
-    bytes.push(title.charCodeAt(i));
-  }
-  if (!omitTitleTerminator) {
-    bytes.push(VECTREX_STRING_TERMINATOR);
+      bytes.push(h & 0xff);
+      bytes.push(w & 0xff);
+      bytes.push(y & 0xff);
+      bytes.push(x & 0xff);
+
+      for (let j = 0; j < text.length; j++) {
+        bytes.push(text.charCodeAt(j));
+      }
+      if (!block.omitTerminator) {
+        bytes.push(VECTREX_STRING_TERMINATOR);
+      }
+    }
+  } else {
+    // Text display parameters
+    if (!omitTextParams) {
+      bytes.push(titleHeight & 0xff);
+      bytes.push(titleWidth & 0xff);
+      bytes.push(titleRelY & 0xff);
+      bytes.push(titleRelX & 0xff);
+    }
+
+    // Title string
+    for (let i = 0; i < title.length; i++) {
+      bytes.push(title.charCodeAt(i));
+    }
+    if (!omitTitleTerminator) {
+      bytes.push(VECTREX_STRING_TERMINATOR);
+    }
   }
 
   // Header terminator (0x00)

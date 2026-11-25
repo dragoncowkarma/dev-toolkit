@@ -44,6 +44,31 @@ describe('Vectrex Header Inspector - Utilities', () => {
     });
   });
 
+  describe('KNOWN_BIOS_MUSIC table verification', () => {
+    it('correctly maps verified Vectrex BIOS music addresses', () => {
+      expect(KNOWN_BIOS_MUSIC[0xfd0d]).toBe('Power-On / Mine Storm');
+      expect(KNOWN_BIOS_MUSIC[0xfd1d]).toBe('Berzerk');
+      expect(KNOWN_BIOS_MUSIC[0xfd81]).toBe('Armor Attack');
+      expect(KNOWN_BIOS_MUSIC[0xfdd3]).toBe('Scramble');
+      expect(KNOWN_BIOS_MUSIC[0xfe38]).toBe('Solar Quest');
+      expect(KNOWN_BIOS_MUSIC[0xfe76]).toBe('Clean Sweep');
+      expect(KNOWN_BIOS_MUSIC[0xfef8]).toBe('Melody Master');
+    });
+
+    it('does not include audio tables or unverified entries', () => {
+      // 0xFEB6 is a twang table, not a music track
+      expect(KNOWN_BIOS_MUSIC[0xfeb6]).toBeUndefined();
+      // 0xFF16 is an ADSR table, not a music track
+      expect(KNOWN_BIOS_MUSIC[0xff16]).toBeUndefined();
+      // 0xFE38 is Solar Quest, not Armor Attack
+      expect(KNOWN_BIOS_MUSIC[0xfe38]).not.toBe('Armor..Attack');
+      // 0xFEF8 is Melody Master, not Hyperchase
+      expect(KNOWN_BIOS_MUSIC[0xfef8]).not.toBe('Hyperchase');
+      // 0xFF8F is not Solar Quest (Solar Quest is 0xFE38)
+      expect(KNOWN_BIOS_MUSIC[0xff8f]).toBeUndefined();
+    });
+  });
+
   describe('formatHex', () => {
     it('formats numbers as hex with leading dollar sign', () => {
       expect(formatHex(0x50, 2)).toBe('$50');
@@ -128,6 +153,74 @@ describe('Vectrex Header Inspector - Utilities', () => {
       expect(result.flags.exceeds32KiB).toBe(false);
       expect(result.errors).toHaveLength(0);
       expect(result.warnings).toHaveLength(0);
+    });
+
+    it('parses a multi-line Vectrex cartridge header with two title blocks', () => {
+      // Constructs header equivalent to: FIRST 80 F8 50 10 D0 SECOND 80 00
+      const romBytes = buildVectrexHeader({
+        copyright: 'g GCE 1982',
+        musicPointer: 0xfd81,
+        titleBlocks: [
+          { title: 'FIRST', height: -8, width: 80, relY: 32, relX: -85 },
+          { title: 'SECOND', height: -8, width: 80, relY: 16, relX: -48 },
+        ],
+        totalRomSize: 8192,
+      });
+
+      const result = parseVectrexHeader(romBytes, 8192);
+
+      expect(result.valid).toBe(true);
+      expect(result.musicPointer).toBe(0xfd81);
+      expect(result.musicName).toBe('Armor Attack');
+      expect(result.title).toBe('FIRST / SECOND');
+      expect(result.titles).toEqual(['FIRST', 'SECOND']);
+      expect(result.titleBlocks).toHaveLength(2);
+      expect(result.titleBlocks[0]).toEqual({
+        title: 'FIRST',
+        text: 'FIRST',
+        height: -8,
+        heightRaw: 0xf8,
+        width: 80,
+        widthRaw: 0x50,
+        relY: 32,
+        relYRaw: 0x20,
+        relX: -85,
+        relXRaw: 0xab,
+      });
+      expect(result.titleBlocks[1]).toEqual({
+        title: 'SECOND',
+        text: 'SECOND',
+        height: -8,
+        heightRaw: 0xf8,
+        width: 80,
+        widthRaw: 0x50,
+        relY: 16,
+        relYRaw: 0x10,
+        relX: -48,
+        relXRaw: 0xd0,
+      });
+      expect(result.errors).toHaveLength(0);
+      expect(result.flags.missingTerminator).toBe(false);
+    });
+
+    it('parses raw byte sequence matching Print_List_hw multi-line format', () => {
+      // "g GCE 1982\x80" + musicPointer $FD81 + F8 50 20 AB FIRST 80 + F8 50 10 D0 SECOND 80 + 00
+      const bytes = new Uint8Array([
+        0x67, 0x20, 0x47, 0x43, 0x45, 0x20, 0x31, 0x39, 0x38, 0x32, 0x80, // copyright
+        0xfd, 0x81, // music pointer ($FD81 Armor Attack)
+        0xf8, 0x50, 0x20, 0xab, 0x46, 0x49, 0x52, 0x53, 0x54, 0x80, // block 1: "FIRST"
+        0xf8, 0x50, 0x10, 0xd0, 0x53, 0x45, 0x43, 0x4f, 0x4e, 0x44, 0x80, // block 2: "SECOND"
+        0x00, // list terminator
+      ]);
+
+      const result = parseVectrexHeader(bytes, 8192);
+
+      expect(result.valid).toBe(true);
+      expect(result.titleBlocks).toHaveLength(2);
+      expect(result.title).toBe('FIRST / SECOND');
+      expect(result.titleBlocks[0].title).toBe('FIRST');
+      expect(result.titleBlocks[1].title).toBe('SECOND');
+      expect(result.flags.missingTerminator).toBe(false);
     });
   });
 
@@ -235,6 +328,61 @@ describe('Vectrex Header Inspector - Utilities', () => {
       expect(result.valid).toBe(false);
       expect(result.flags.missingTerminator).toBe(true);
       expect(result.errors.some((e) => e.includes('Expected 0x00 after title string'))).toBe(true);
+    });
+
+    it('flags truncated text parameters in a subsequent title block', () => {
+      // First block is complete, but second block only has 2 bytes (F8 50) before EOF
+      const bytes = new Uint8Array([
+        0x67, 0x20, 0x47, 0x43, 0x45, 0x20, 0x31, 0x39, 0x38, 0x32, 0x80, // copyright
+        0xfd, 0x0d, // music pointer
+        0xf8, 0x50, 0x20, 0xab, 0x46, 0x49, 0x52, 0x53, 0x54, 0x80, // block 1: "FIRST\x80"
+        0xf8, 0x50, // partial parameters for block 2, then EOF
+      ]);
+
+      const result = parseVectrexHeader(bytes, bytes.length);
+
+      expect(result.valid).toBe(false);
+      expect(result.flags.tooSmall).toBe(true);
+      expect(result.flags.missingTerminator).toBe(true);
+      expect(result.titleBlocks).toHaveLength(1);
+      expect(result.titleBlocks[0].title).toBe('FIRST');
+    });
+
+    it('flags missing 0x80 terminator in a subsequent title block string', () => {
+      // First block is complete, second block has parameters and characters but no 0x80 before EOF
+      const bytes = new Uint8Array([
+        0x67, 0x20, 0x47, 0x43, 0x45, 0x20, 0x31, 0x39, 0x38, 0x32, 0x80, // copyright
+        0xfd, 0x0d, // music pointer
+        0xf8, 0x50, 0x20, 0xab, 0x46, 0x49, 0x52, 0x53, 0x54, 0x80, // block 1: "FIRST\x80"
+        0xf8, 0x50, 0x10, 0xd0, 0x53, 0x45, 0x43, 0x4f, 0x4e, 0x44, // block 2: "SECOND" without 0x80
+      ]);
+
+      const result = parseVectrexHeader(bytes, bytes.length);
+
+      expect(result.valid).toBe(false);
+      expect(result.flags.missingTerminator).toBe(true);
+      expect(
+        result.errors.some((e) => e.includes('Title string is not terminated by 0x80'))
+      ).toBe(true);
+      expect(result.titleBlocks).toHaveLength(1);
+    });
+
+    it('flags missing 0x00 header terminator after subsequent title block', () => {
+      // First and second block complete, but no 0x00 at EOF
+      const bytes = new Uint8Array([
+        0x67, 0x20, 0x47, 0x43, 0x45, 0x20, 0x31, 0x39, 0x38, 0x32, 0x80, // copyright
+        0xfd, 0x0d, // music pointer
+        0xf8, 0x50, 0x20, 0xab, 0x46, 0x49, 0x52, 0x53, 0x54, 0x80, // block 1: "FIRST\x80"
+        0xf8, 0x50, 0x10, 0xd0, 0x53, 0x45, 0x43, 0x4f, 0x4e, 0x44, 0x80, // block 2: "SECOND\x80"
+        // Missing 0x00 terminator
+      ]);
+
+      const result = parseVectrexHeader(bytes, bytes.length);
+
+      expect(result.valid).toBe(false);
+      expect(result.flags.missingTerminator).toBe(true);
+      expect(result.errors.some((e) => e.includes('Header terminator 0x00 missing'))).toBe(true);
+      expect(result.titleBlocks).toHaveLength(2);
     });
   });
 

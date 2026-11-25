@@ -40,6 +40,20 @@ describe('VectrexRomHeaderInspectorTool UI', () => {
     expect(screen.getByLabelText('Hex dump preview')).toBeInTheDocument();
   });
 
+  it('loads and displays a multi-line Vectrex ROM sample (Armor Attack)', () => {
+    render(<VectrexRomHeaderInspectorTool />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Armor Attack (Multi-Line)' }));
+
+    expect(screen.getByText('✓ Valid Header')).toBeInTheDocument();
+    expect(screen.getByText('ARMOR / ATTACK')).toBeInTheDocument();
+    expect(screen.getByText('$FD81')).toBeInTheDocument();
+    expect(screen.getByText('Armor Attack')).toBeInTheDocument();
+    expect(screen.getByText(/Title Blocks \(2\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Line 1: "ARMOR"/)).toBeInTheDocument();
+    expect(screen.getByText(/Line 2: "ATTACK"/)).toBeInTheDocument();
+  });
+
   it('loads and displays a sample with a bad signature', () => {
     render(<VectrexRomHeaderInspectorTool />);
 

@@ -29,6 +29,21 @@ const SAMPLE_PRESETS = [
     fileSize: 8192,
   },
   {
+    label: 'Armor Attack (Multi-Line)',
+    generator: () =>
+      buildVectrexHeader({
+        copyright: 'g GCE 1982',
+        musicPointer: 0xfd81,
+        titleBlocks: [
+          { title: 'ARMOR', height: -8, width: 80, relY: 32, relX: -85 },
+          { title: 'ATTACK', height: -8, width: 80, relY: 16, relX: -48 },
+        ],
+        totalRomSize: 8192,
+      }),
+    fileName: 'armor_attack.vec',
+    fileSize: 8192,
+  },
+  {
     label: 'Berzerk (Valid 16 KiB)',
     generator: () =>
       buildVectrexHeader({
@@ -344,6 +359,26 @@ export default function VectrexRomHeaderInspectorTool() {
                   <span className="vectrex-field-label">Cartridge Title</span>
                   <span className="vectrex-field-value">{headerData.title || '—'}</span>
                 </div>
+
+                {headerData.titleBlocks && headerData.titleBlocks.length > 1 && (
+                  <div className="vectrex-field full-width">
+                    <span className="vectrex-field-label">
+                      Title Blocks ({headerData.titleBlocks.length})
+                    </span>
+                    <div className="vectrex-title-blocks">
+                      {headerData.titleBlocks.map((block, idx) => (
+                        <div key={`title-block-${idx}`} className="vectrex-title-block-item">
+                          <span className="vectrex-title-block-name">
+                            Line {idx + 1}: &quot;{block.title}&quot;
+                          </span>
+                          <span className="vectrex-title-block-params">
+                            Height: {block.height} ({formatHex(block.heightRaw)}), Width: {block.width} ({formatHex(block.widthRaw)}), Rel Y: {block.relY} ({formatHex(block.relYRaw)}), Rel X: {block.relX} ({formatHex(block.relXRaw)})
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div className="vectrex-field">
                   <span className="vectrex-field-label">Music Pointer</span>
