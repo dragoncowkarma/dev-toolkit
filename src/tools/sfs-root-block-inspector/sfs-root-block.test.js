@@ -8,8 +8,6 @@ import {
   parseSfsRootBlock,
   readRootBlockFromBlob,
   SFS_CHECKSUM_TARGET,
-  SFS_MAGIC,
-  SFS_MAGIC_STRING,
   SFS_ROOT_MAGIC,
   SFS_ROOT_MAGIC_STRING,
 } from './sfs-root-block.utils.js';
@@ -239,7 +237,9 @@ describe('parseSfsRootBlock', () => {
     expect(result.isValid).toBe(false);
     expect(result.isKnownMagic).toBe(false);
     expect(result.id).toBe('SFS\\0');
-    expect(result.errorMessage).toMatch(/Unknown root block identifier: 0x53465300 \("SFS\\0"\)\. Expected ROOT \(0x524f4f54\)/i);
+    expect(result.errorMessage).toMatch(
+      /Unknown root block identifier: 0x53465300 \("SFS\\0"\)\. Expected ROOT \(0x524f4f54\)/i,
+    );
   });
 
   it('detects a bad/corrupted checksum and reports Invalid', () => {

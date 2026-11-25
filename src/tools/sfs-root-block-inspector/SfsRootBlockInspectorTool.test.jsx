@@ -187,7 +187,7 @@ describe('SfsRootBlockInspectorTool', () => {
       expect(screen.queryByText(/slow\.img/)).not.toBeInTheDocument();
     });
 
-    it('ignores delayed earlier file-read completion when a second file completes earlier', async () => {
+    it('ignores delayed earlier file-read when second file finishes first', async () => {
       let resolveFirst;
       const firstPromise = new Promise((resolve) => {
         resolveFirst = resolve;

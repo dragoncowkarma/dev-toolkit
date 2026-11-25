@@ -63,9 +63,11 @@ export function formatBytes(bytes) {
 }
 
 /**
- * Calculates the 32-bit checksum value that balances the sum of all longwords in the block to 0xffffffff.
- * In Amiga SFS, the checksum calculation starts the sum at 1, sums all longwords (skipping the checksum
- * longword at offset 4), and negates the sum so that the sum of all longwords in the block equals 0xffffffff modulo 2^32.
+ * Calculates the 32-bit checksum value that balances the sum of all longwords in
+ * the block to 0xffffffff.
+ * In Amiga SFS, the checksum calculation starts the sum at 1, sums all
+ * longwords (skipping the checksum longword at offset 4), and negates the sum so
+ * that the sum of all longwords in the block equals 0xffffffff modulo 2^32.
  *
  * @param {ArrayBuffer | Uint8Array | DataView} buffer - Buffer containing the block.
  * @param {number} blockSize - Size of the block in bytes.
@@ -252,14 +254,19 @@ export function parseSfsRootBlock(input) {
   const b2 = view.getUint8(2);
   const b3 = view.getUint8(3);
   const idStr = [b0, b1, b2, b3]
-    .map((b) => (b === 0 ? '\\0' : b >= 32 && b <= 126 ? String.fromCharCode(b) : `\\x${b.toString(16).padStart(2, '0')}`))
+    .map((b) => {
+      if (b === 0) return '\\0';
+      if (b >= 32 && b <= 126) return String.fromCharCode(b);
+      return `\\x${b.toString(16).padStart(2, '0')}`;
+    })
     .join('');
   const idHex = `0x${magic.toString(16).padStart(8, '0')}`;
   const isKnownMagic = magic === SFS_ROOT_MAGIC;
 
   if (!isKnownMagic) {
     return createUnknownResult(
-      `Unknown root block identifier: ${idHex} ("${idStr}"). Expected ${SFS_ROOT_MAGIC_STRING} (0x524f4f54).`,
+      `Unknown root block identifier: ${idHex} ("${idStr}"). ` +
+        `Expected ${SFS_ROOT_MAGIC_STRING} (0x524f4f54).`,
       byteLength,
       { id: idStr, idHex, isKnownMagic: false },
     );
